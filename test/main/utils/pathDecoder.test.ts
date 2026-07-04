@@ -16,7 +16,6 @@ import {
   getProjectDirNameCandidates,
   getAppDataPath,
   getProjectsBasePath,
-  getSchedulesBasePath,
   getTodosBasePath,
   isValidEncodedPath,
   setAppDataBasePath,
@@ -276,71 +275,6 @@ describe('pathDecoder', () => {
   describe('getTodosBasePath', () => {
     it('should return todos base path', () => {
       expect(getTodosBasePath()).toBe(path.join(defaultHome, '.claude', 'todos'));
-    });
-  });
-
-  describe('getSchedulesBasePath', () => {
-    it('should use the new schedules directory when no legacy data exists', () => {
-      const root = path.join(createTempHome(), '.claude');
-      setClaudeBasePathOverride(root);
-
-      expect(getSchedulesBasePath()).toBe(path.join(root, 'agent-teams-schedules'));
-    });
-
-    it('should migrate legacy schedules data when the new directory is absent', () => {
-      const root = path.join(createTempHome(), '.claude');
-      const legacyRoot = path.join(root, 'claude-devtools-schedules');
-      const files = [
-        ['schedules.json', '[{"id":"sched-1"}]'],
-        ['runs/sched-1.json', '[{"id":"run-1"}]'],
-        ['logs/sched-1/run-1.log', 'stdout'],
-      ] as const;
-      setClaudeBasePathOverride(root);
-
-      for (const [relativePath, content] of files) {
-        const legacyFile = path.join(legacyRoot, relativePath);
-        fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
-        fs.writeFileSync(legacyFile, content);
-      }
-
-      expect(getSchedulesBasePath()).toBe(path.join(root, 'agent-teams-schedules'));
-      for (const [relativePath, content] of files) {
-        expect(
-          fs.readFileSync(path.join(root, 'agent-teams-schedules', relativePath), 'utf8')
-        ).toBe(content);
-      }
-      expect(fs.existsSync(legacyRoot)).toBe(true);
-    });
-
-    it('should prefer populated new schedules data over legacy schedules data', () => {
-      const root = path.join(createTempHome(), '.claude');
-      const currentFile = path.join(root, 'agent-teams-schedules', 'schedules.json');
-      const legacyFile = path.join(root, 'claude-devtools-schedules', 'schedules.json');
-      setClaudeBasePathOverride(root);
-
-      fs.mkdirSync(path.dirname(currentFile), { recursive: true });
-      fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
-      fs.writeFileSync(currentFile, '[{"id":"current"}]');
-      fs.writeFileSync(legacyFile, '[{"id":"legacy"}]');
-
-      expect(getSchedulesBasePath()).toBe(path.join(root, 'agent-teams-schedules'));
-      expect(fs.readFileSync(currentFile, 'utf8')).toBe('[{"id":"current"}]');
-    });
-
-    it('should fall back to legacy schedules when copying fails and new directory is empty', () => {
-      const root = path.join(createTempHome(), '.claude');
-      const currentRoot = path.join(root, 'agent-teams-schedules');
-      const legacyRoot = path.join(root, 'claude-devtools-schedules');
-      setClaudeBasePathOverride(root);
-
-      fs.mkdirSync(currentRoot, { recursive: true });
-      fs.mkdirSync(legacyRoot, { recursive: true });
-      fs.writeFileSync(path.join(legacyRoot, 'schedules.json'), '[{"id":"legacy"}]');
-      __setPathDecoderCopyDirectoryForTests(() => {
-        throw new Error('copy failed');
-      });
-
-      expect(getSchedulesBasePath()).toBe(legacyRoot);
     });
   });
 

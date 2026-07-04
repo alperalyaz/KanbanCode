@@ -5,8 +5,8 @@
  * a login/interactive shell and reading its exported variables. The result is
  * cached for the lifetime of the process.
  *
- * Extracted from TeamProvisioningService for reuse by ScheduledTaskExecutor
- * and any other service that needs the user's shell environment.
+ * Extracted from TeamProvisioningService for reuse by any other service that
+ * needs the user's shell environment.
  */
 
 import { getHomeDir } from '@main/utils/pathDecoder';

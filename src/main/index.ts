@@ -79,9 +79,6 @@ import {
   setAliveTeamsProvider,
   setTeamWatchScopeChangeListener,
 } from '@main/services/infrastructure/teamWatchScope';
-import { JsonScheduleRepository } from '@main/services/schedule/JsonScheduleRepository';
-import { ScheduledTaskExecutor } from '@main/services/schedule/ScheduledTaskExecutor';
-import { SchedulerService } from '@main/services/schedule/SchedulerService';
 import { JsonTaskChangePresenceRepository } from '@main/services/team/cache/JsonTaskChangePresenceRepository';
 import { ChangeExtractorService } from '@main/services/team/ChangeExtractorService';
 import { CrossTeamService } from '@main/services/team/CrossTeamService';
@@ -113,7 +110,6 @@ import {
   APP_STARTUP_GET_STATUS,
   APP_STARTUP_PROGRESS,
   CONTEXT_CHANGED,
-  SCHEDULE_CHANGE,
   SKILLS_CHANGED,
   TEAM_CHANGE,
   TEAM_PROJECT_BRANCH_CHANGE,
@@ -956,7 +952,6 @@ let cliInstallerService: CliInstallerService;
 let openCodeRuntimeInstallerService: OpenCodeRuntimeInstallerService;
 let pricingRefreshService: PricingRefreshService | null = null;
 let httpServer: HttpServer;
-let schedulerService: SchedulerService;
 let teamTaskStallMonitor: TeamTaskStallMonitor | null = null;
 let skillsWatcherService: SkillsWatcherService | null = null;
 let teamBackupService: TeamBackupService | null = null;
@@ -1813,19 +1808,6 @@ async function initializeServices(): Promise<void> {
   const fileContentResolver = new FileContentResolver(teamMemberLogsFinder, gitDiffFallback);
   const reviewApplier = new ReviewApplierService();
 
-  // Create SchedulerService for cron-based task execution
-  const scheduleRepository = new JsonScheduleRepository();
-  const scheduledTaskExecutor = new ScheduledTaskExecutor();
-  schedulerService = new SchedulerService(
-    scheduleRepository,
-    scheduledTaskExecutor,
-    async (cwd: string) => {
-      const result = await teamProvisioningService.prepareForProvisioning(cwd, {
-        forceFresh: true,
-      });
-      return { ready: result.ready, message: result.message };
-    }
-  );
   // Extension Store services
   const pluginCatalogService = new PluginCatalogService();
   const pluginStateService = new PluginInstallationStateService();
@@ -1951,11 +1933,6 @@ async function initializeServices(): Promise<void> {
       );
   }, STARTUP_RECOVERY_DELAY_MS);
   teamTaskStallMonitor.start();
-
-  // Allow SchedulerService to push schedule events to renderer
-  schedulerService.setChangeEmitter((event) => {
-    safeSendToRenderer(mainWindow, SCHEDULE_CHANGE, event);
-  });
 
   skillsWatcherService.setEmitter((event) => {
     safeSendToRenderer(mainWindow, SKILLS_CHANGED, event);
@@ -2426,7 +2403,6 @@ async function initializeServices(): Promise<void> {
       full: onContextSwitched,
       onClaudeRootPathUpdated: (_claudeRootPath: string | null) => {
         reconfigureLocalContextForClaudeRoot();
-        void schedulerService?.reloadForClaudeRootChange();
         if (httpServer?.isRunning()) {
           void syncTeamControlApiState().catch(() => undefined);
         }
@@ -2442,7 +2418,6 @@ async function initializeServices(): Promise<void> {
     gitDiffFallback,
     cliInstallerService,
     openCodeRuntimeInstallerService,
-    schedulerService,
     extensionFacadeService,
     pluginInstallService,
     mcpInstallService,
@@ -2626,10 +2601,6 @@ async function shutdownServices(): Promise<void> {
     await runShutdownStep('branch status dispose', () => branchStatusService?.dispose());
     branchStatusService = null;
 
-    if (schedulerService) {
-      await runShutdownStep('scheduler stop', () => schedulerService.stop());
-    }
-
     await runShutdownStep('skills watcher stop', () => skillsWatcherService?.stopAll());
     await runShutdownStep('provider connection feature detach', () => {
       providerConnectionService.setCodexModelCatalogFeature(null);
@@ -2748,7 +2719,6 @@ function runPostRendererStartupTasks(): void {
 
   scheduleStartupTask(() => {
     teamDataService.startProcessHealthPolling();
-    void schedulerService?.start();
   }, STARTUP_BACKGROUND_SERVICE_DELAY_MS);
   scheduleStartupTask(() => {
     void teamProvisioningService.warmup();

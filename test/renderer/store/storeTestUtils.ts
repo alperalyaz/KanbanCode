@@ -11,7 +11,6 @@ import { createContextSlice } from '../../../src/renderer/store/slices/contextSl
 import { createExtensionsSlice } from '../../../src/renderer/store/slices/extensionsSlice';
 import { createConversationSlice } from '../../../src/renderer/store/slices/conversationSlice';
 import { createNotificationSlice } from '../../../src/renderer/store/slices/notificationSlice';
-import { createScheduleSlice } from '../../../src/renderer/store/slices/scheduleSlice';
 import { createPaneSlice } from '../../../src/renderer/store/slices/paneSlice';
 import { createProjectSlice } from '../../../src/renderer/store/slices/projectSlice';
 import { createRepositorySlice } from '../../../src/renderer/store/slices/repositorySlice';
@@ -49,7 +48,6 @@ export function createTestStore() {
     ...createUpdateSlice(...args),
     ...createChangeReviewSlice(...args),
     ...createCliInstallerSlice(...args),
-    ...createScheduleSlice(...args),
     ...createExtensionsSlice(...args),
   }));
 }

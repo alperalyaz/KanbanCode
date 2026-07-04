@@ -65,7 +65,6 @@ import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskI
 import {
   AlertTriangle,
   BarChart3,
-  Clock,
   Columns3,
   FolderOpen,
   GitBranch,
@@ -135,7 +134,6 @@ const ChangeReviewDialog = lazy(() =>
 );
 import { MemberList } from './members/MemberList';
 import { MessagesPanel } from './messages/MessagesPanel';
-import { ScheduleSection } from './schedule/ScheduleSection';
 import { TeamSidebarHost } from './sidebar/TeamSidebarHost';
 import { TeamSidebarPortalSource } from './sidebar/TeamSidebarPortalSource';
 import { TeamSidebarRail } from './sidebar/TeamSidebarRail';
@@ -3158,15 +3156,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                 onOpenTask={openTaskDetailDialog}
                 onViewChanges={handleViewChangesForFile}
               />
-
-              <CollapsibleTeamSection
-                sectionId="schedules"
-                title={t('schedule.title')}
-                icon={<Clock size={14} />}
-                defaultOpen={false}
-              >
-                <ScheduleSection teamName={teamName} />
-              </CollapsibleTeamSection>
 
               <LiveRuntimeStatusBridge teamName={teamName} members={membersWithLiveBranches} />
 

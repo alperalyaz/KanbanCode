@@ -10,43 +10,28 @@ import {
 } from '@renderer/components/ui/dialog';
 import { Loader2 } from 'lucide-react';
 
-type LaunchTeamDialogLoadingMode = 'launch' | 'relaunch' | 'schedule';
+type LaunchTeamDialogLoadingMode = 'launch' | 'relaunch';
 
 interface LaunchTeamDialogLoadingFallbackProps {
   readonly mode: LaunchTeamDialogLoadingMode;
   readonly teamName?: string;
-  readonly isEditingSchedule?: boolean;
   readonly onClose: () => void;
 }
 
 export const LaunchTeamDialogLoadingFallback = ({
   mode,
   teamName,
-  isEditingSchedule = false,
   onClose,
 }: LaunchTeamDialogLoadingFallbackProps): React.JSX.Element => {
   const { t } = useAppTranslation('team');
   const { t: tCommon } = useAppTranslation('common');
 
-  const title =
-    mode === 'schedule'
-      ? isEditingSchedule
-        ? t('launch.title.editSchedule')
-        : t('launch.title.createSchedule')
-      : mode === 'relaunch'
-        ? t('launch.title.relaunch')
-        : t('launch.title.launch');
+  const title = mode === 'relaunch' ? t('launch.title.relaunch') : t('launch.title.launch');
 
   const description =
-    mode === 'schedule'
-      ? isEditingSchedule && teamName
-        ? t('launch.description.editSchedule', { team: teamName })
-        : teamName
-          ? t('launch.description.createScheduleForTeam', { team: teamName })
-          : t('launch.description.createSchedule')
-      : mode === 'relaunch'
-        ? t('launch.description.relaunchPrefix')
-        : t('launch.description.launchPrefix');
+    mode === 'relaunch'
+      ? t('launch.description.relaunchPrefix')
+      : t('launch.description.launchPrefix');
 
   return (
     <Dialog
@@ -61,16 +46,10 @@ export const LaunchTeamDialogLoadingFallback = ({
         <DialogHeader>
           <DialogTitle className="text-sm">{title}</DialogTitle>
           <DialogDescription className="text-xs">
-            {mode === 'schedule' ? (
-              description
-            ) : (
-              <>
-                {description} <span className="font-mono font-medium">{teamName}</span>{' '}
-                {mode === 'relaunch'
-                  ? t('launch.description.relaunchSuffix')
-                  : t('launch.description.launchSuffix')}
-              </>
-            )}
+            {description} <span className="font-mono font-medium">{teamName}</span>{' '}
+            {mode === 'relaunch'
+              ? t('launch.description.relaunchSuffix')
+              : t('launch.description.launchSuffix')}
           </DialogDescription>
         </DialogHeader>
         <div

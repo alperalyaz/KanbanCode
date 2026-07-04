@@ -13,7 +13,6 @@ import type { NotificationSlice } from './slices/notificationSlice';
 import type { PaneSlice } from './slices/paneSlice';
 import type { ProjectSlice } from './slices/projectSlice';
 import type { RepositorySlice } from './slices/repositorySlice';
-import type { ScheduleSlice } from './slices/scheduleSlice';
 import type { SessionDetailSlice } from './slices/sessionDetailSlice';
 import type { SessionSlice } from './slices/sessionSlice';
 import type { SubagentSlice } from './slices/subagentSlice';
@@ -97,5 +96,4 @@ export type AppState = ProjectSlice &
   UpdateSlice &
   ChangeReviewSlice &
   CliInstallerSlice &
-  ScheduleSlice &
   ExtensionsSlice;

@@ -61,11 +61,6 @@ import {
 } from './projects';
 import { registerRendererLogHandlers, removeRendererLogHandlers } from './rendererLogs';
 import { initializeReviewHandlers, registerReviewHandlers, removeReviewHandlers } from './review';
-import {
-  initializeScheduleHandlers,
-  registerScheduleHandlers,
-  removeScheduleHandlers,
-} from './schedule';
 import { initializeSearchHandlers, registerSearchHandlers, removeSearchHandlers } from './search';
 import {
   initializeSessionHandlers,
@@ -123,7 +118,6 @@ import type { SkillsWatcherService } from '../services/extensions/skills/SkillsW
 import type { McpHealthDiagnosticsService } from '../services/extensions/state/McpHealthDiagnosticsService';
 import type { HttpServer } from '../services/infrastructure/HttpServer';
 import type { PricingRefreshService } from '../services/infrastructure/PricingRefreshService';
-import type { SchedulerService } from '../services/schedule/SchedulerService';
 import type { CrossTeamService } from '../services/team/CrossTeamService';
 import type { LaunchIoGovernor } from '../services/team/LaunchIoGovernor';
 import type { TeamBackupService } from '../services/team/TeamBackupService';
@@ -163,7 +157,6 @@ export function initializeIpcHandlers(
   gitDiffFallback?: GitDiffFallback,
   cliInstaller?: CliInstallerService,
   openCodeRuntimeInstaller?: OpenCodeRuntimeInstallerService,
-  schedulerService?: SchedulerService,
   extensionFacade?: ExtensionFacadeService,
   pluginInstaller?: PluginInstallService,
   mcpInstaller?: McpInstallService,
@@ -215,9 +208,6 @@ export function initializeIpcHandlers(
   if (openCodeRuntimeInstaller) {
     initializeOpenCodeRuntimeHandlers(openCodeRuntimeInstaller);
   }
-  if (schedulerService) {
-    initializeScheduleHandlers(schedulerService);
-  }
   if (extensionFacade) {
     initializeExtensionHandlers(
       extensionFacade,
@@ -259,7 +249,6 @@ export function initializeIpcHandlers(
   registerReviewHandlers(ipcMain);
   registerWindowHandlers(ipcMain);
   registerRendererLogHandlers(ipcMain);
-  registerScheduleHandlers(ipcMain);
   registerTelemetryHandlers(ipcMain);
   if (cliInstaller) {
     registerCliInstallerHandlers(ipcMain);
@@ -305,7 +294,6 @@ export function removeIpcHandlers(): void {
   removeReviewHandlers(ipcMain);
   removeWindowHandlers(ipcMain);
   removeRendererLogHandlers(ipcMain);
-  removeScheduleHandlers(ipcMain);
   removeTelemetryHandlers(ipcMain);
   removeCliInstallerHandlers(ipcMain);
   removeOpenCodeRuntimeHandlers(ipcMain);

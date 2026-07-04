@@ -56,7 +56,6 @@ import type {
   ConfigAPI,
   ContextInfo,
   ConversationGroup,
-  CreateScheduleInput,
   CreateTaskRequest,
   CrossTeamAPI,
   ElectronAPI,
@@ -72,8 +71,6 @@ import type {
   PaginatedSessionsResult,
   Project,
   RepositoryGroup,
-  Schedule,
-  ScheduleRun,
   SearchSessionsResult,
   SendMessageRequest,
   SendMessageResult,
@@ -113,7 +110,6 @@ import type {
   TriggerTestResult,
   UpdateKanbanPatch,
   UpdaterAPI,
-  UpdateSchedulePatch,
   WaterfallData,
   WindowsElevationStatus,
   WslClaudeRootCandidate,
@@ -1521,52 +1517,6 @@ export class HttpAPIClient implements ElectronAPI {
   project: ProjectAPI = {
     listFiles: async () => {
       throw new Error('Project API not available in browser mode');
-    },
-  };
-
-  schedules: ElectronAPI['schedules'] = {
-    list: async () => {
-      console.warn('Schedules not available in browser mode');
-      return [] as Schedule[];
-    },
-    get: async (_id: string): Promise<Schedule | null> => {
-      console.warn('Schedules not available in browser mode');
-      return null;
-    },
-    create: async (_input: CreateScheduleInput): Promise<Schedule> => {
-      throw new Error('Schedules not available in browser mode');
-    },
-    update: async (_id: string, _patch: UpdateSchedulePatch): Promise<Schedule> => {
-      throw new Error('Schedules not available in browser mode');
-    },
-    delete: async (_id: string): Promise<void> => {
-      throw new Error('Schedules not available in browser mode');
-    },
-    pause: async (_id: string): Promise<void> => {
-      throw new Error('Schedules not available in browser mode');
-    },
-    resume: async (_id: string): Promise<void> => {
-      throw new Error('Schedules not available in browser mode');
-    },
-    triggerNow: async (_id: string): Promise<ScheduleRun> => {
-      throw new Error('Schedules not available in browser mode');
-    },
-    getRuns: async (
-      _scheduleId: string,
-      _opts?: { limit?: number; offset?: number }
-    ): Promise<ScheduleRun[]> => {
-      console.warn('Schedules not available in browser mode');
-      return [] as ScheduleRun[];
-    },
-    getRunLogs: async (
-      _scheduleId: string,
-      _runId: string
-    ): Promise<{ stdout: string; stderr: string }> => {
-      console.warn('Schedules not available in browser mode');
-      return { stdout: '', stderr: '' };
-    },
-    onScheduleChange: (): (() => void) => {
-      return () => {};
     },
   };
 

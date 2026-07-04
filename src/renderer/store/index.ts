@@ -36,7 +36,6 @@ import { createNotificationSlice } from './slices/notificationSlice';
 import { createPaneSlice } from './slices/paneSlice';
 import { createProjectSlice } from './slices/projectSlice';
 import { createRepositorySlice } from './slices/repositorySlice';
-import { createScheduleSlice } from './slices/scheduleSlice';
 import { createSessionDetailSlice } from './slices/sessionDetailSlice';
 import { createSessionSlice } from './slices/sessionSlice';
 import { createSubagentSlice } from './slices/subagentSlice';
@@ -73,7 +72,6 @@ import type {
   CliProviderId,
   LeadContextUsage,
   OpenCodeRuntimeStatus,
-  ScheduleChangeEvent,
   TeamChangeEvent,
   TeamProvisioningProgress,
   ToolActivityEventPayload,
@@ -187,7 +185,6 @@ export const useStore = create<AppState>()((...args) => ({
   ...createUpdateSlice(...args),
   ...createChangeReviewSlice(...args),
   ...createCliInstallerSlice(...args),
-  ...createScheduleSlice(...args),
   ...createExtensionsSlice(...args),
 }));
 
@@ -243,7 +240,6 @@ export function initializeNotificationListeners(): () => void {
     await Promise.all([
       useStore.getState().fetchTeams(),
       useStore.getState().fetchNotifications(),
-      useStore.getState().fetchSchedules(),
     ]);
     if (disposed) {
       return;
@@ -2177,19 +2173,6 @@ export function initializeNotificationListeners(): () => void {
     api.teams.updateToolApprovalSettings?.(activeTeam, savedSettings).catch(() => {
       // Silently ignore — settings will use defaults until next update
     });
-  }
-
-  // Listen for schedule change events from main process
-  if (api.schedules?.onScheduleChange) {
-    const cleanup = api.schedules.onScheduleChange((_event: unknown, data: unknown) => {
-      const event = data as ScheduleChangeEvent;
-      if (event?.scheduleId) {
-        void useStore.getState().applyScheduleChange(event.scheduleId);
-      }
-    });
-    if (typeof cleanup === 'function') {
-      cleanupFns.push(cleanup);
-    }
   }
 
   // Listen for CLI installer progress events from main process

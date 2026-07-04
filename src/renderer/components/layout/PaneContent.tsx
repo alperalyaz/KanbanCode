@@ -34,11 +34,6 @@ const SessionReportTab = lazy(() =>
     default: module.SessionReportTab,
   }))
 );
-const SchedulesView = lazy(() =>
-  import('../schedules/SchedulesView').then((module) => ({
-    default: module.SchedulesView,
-  }))
-);
 const SettingsView = lazy(() =>
   import('../settings/SettingsView').then((module) => ({
     default: module.SettingsView,
@@ -183,8 +178,6 @@ const PaneTabSlot = ({ tab, isActive, isPaneFocused }: PaneTabSlotProps): React.
               <ExtensionStoreView />
             </TabUIProvider>
           )}
-          {tab.type === 'schedules' && <SchedulesView />}
-
         </Suspense>
       )}
     </div>

@@ -459,17 +459,6 @@ export function __setPathDecoderCopyDirectoryForTests(
   copyDirectoryForMigration = copyDirectory ?? copyDirectoryForMigrationSync;
 }
 
-/**
- * Get the schedules directory path (~/.claude/agent-teams-schedules).
- */
-export function getSchedulesBasePath(): string {
-  const basePath = getClaudeBasePath();
-  return migrateLegacyDirectoryPath(
-    path.join(basePath, 'agent-teams-schedules'),
-    path.join(basePath, 'claude-devtools-schedules')
-  );
-}
-
 function migrateLegacyDirectoryPath(currentPath: string, legacyPath: string): string {
   if (!directoryExists(legacyPath)) {
     return currentPath;

@@ -15,5 +15,4 @@ export * from './error';
 export * from './extensions';
 export * from './infrastructure';
 export * from './parsing';
-export * from './schedule';
 export * from './team';

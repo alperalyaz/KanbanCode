@@ -33,13 +33,6 @@ import type {
   TeamTaskChangeSummaryRequest,
 } from './review';
 import type {
-  CreateScheduleInput,
-  Schedule,
-  ScheduleChangeEvent,
-  ScheduleRun,
-  UpdateSchedulePatch,
-} from './schedule';
-import type {
   AddMemberRequest,
   AddTaskCommentRequest,
   AttachmentFileData,
@@ -618,27 +611,6 @@ export interface CrossTeamAPI {
 }
 
 // =============================================================================
-// Schedule API
-// =============================================================================
-
-export interface ScheduleAPI {
-  list: () => Promise<Schedule[]>;
-  get: (id: string) => Promise<Schedule | null>;
-  create: (input: CreateScheduleInput) => Promise<Schedule>;
-  update: (id: string, patch: UpdateSchedulePatch) => Promise<Schedule>;
-  delete: (id: string) => Promise<void>;
-  pause: (id: string) => Promise<void>;
-  resume: (id: string) => Promise<void>;
-  triggerNow: (id: string) => Promise<ScheduleRun>;
-  getRuns: (
-    scheduleId: string,
-    opts?: { limit?: number; offset?: number }
-  ) => Promise<ScheduleRun[]>;
-  getRunLogs: (scheduleId: string, runId: string) => Promise<{ stdout: string; stderr: string }>;
-  onScheduleChange: (callback: (event: unknown, data: ScheduleChangeEvent) => void) => () => void;
-}
-
-// =============================================================================
 // Review API
 // =============================================================================
 
@@ -907,8 +879,6 @@ export interface ElectronAPI extends RecentProjectsElectronApi, CodexAccountElec
   // Project file operations (editor-independent)
   project: ProjectAPI;
 
-  // Schedule API (cron-based task execution)
-  schedules: ScheduleAPI;
 
   // Extension Store — Plugin Catalog API (Electron-only, optional)
   plugins?: PluginCatalogAPI;

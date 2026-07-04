@@ -15,7 +15,6 @@ import { formatShortcut } from '@renderer/utils/stringUtils';
 import {
   Activity,
   Braces,
-  Calendar,
   FileText,
   MoreHorizontal,
   Puzzle,
@@ -59,7 +58,6 @@ export const MoreMenu = ({
     openCommandPalette,
     openExtensionsTab,
     openSessionReport,
-    openSchedulesTab,
     openSettingsTab,
     openTeamsTab,
   } = useStore(
@@ -67,7 +65,6 @@ export const MoreMenu = ({
       openCommandPalette: s.openCommandPalette,
       openExtensionsTab: s.openExtensionsTab,
       openSessionReport: s.openSessionReport,
-      openSchedulesTab: s.openSchedulesTab,
       openSettingsTab: s.openSettingsTab,
       openTeamsTab: s.openTeamsTab,
     }))
@@ -149,15 +146,6 @@ export const MoreMenu = ({
       shortcut: formatShortcut('K'),
       onClick: () => {
         openCommandPalette();
-        setIsOpen(false);
-      },
-    },
-    {
-      id: 'schedules',
-      label: t('layout.menu.schedules'),
-      icon: Calendar,
-      onClick: () => {
-        openSchedulesTab();
         setIsOpen(false);
       },
     },

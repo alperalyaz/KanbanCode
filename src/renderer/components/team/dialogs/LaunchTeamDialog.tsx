@@ -34,7 +34,6 @@ import {
 import { resolveMemberNameLocale } from '@renderer/components/team/members/memberNameSets';
 import { TeamRosterEditorSection } from '@renderer/components/team/members/TeamRosterEditorSection';
 import { Button } from '@renderer/components/ui/button';
-import { Combobox } from '@renderer/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -43,16 +42,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog';
-import { Input } from '@renderer/components/ui/input';
 import { Label } from '@renderer/components/ui/label';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
-import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useChipDraftPersistence } from '@renderer/hooks/useChipDraftPersistence';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { useFileListCacheWarmer } from '@renderer/hooks/useFileListCacheWarmer';
 import { useTaskSuggestions } from '@renderer/hooks/useTaskSuggestions';
 import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
-import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
 import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import {
@@ -64,7 +60,6 @@ import {
   normalizeCreateLaunchProviderForUi,
 } from '@renderer/utils/geminiUiFreeze';
 import { normalizePath } from '@renderer/utils/pathNormalize';
-import { nameColorSet } from '@renderer/utils/projectColor';
 import { resolveUiOwnedProviderBackendId } from '@renderer/utils/providerBackendIdentity';
 import { requestProviderRuntimeChecks } from '@renderer/utils/requestProviderRuntimeChecks';
 import { getAvailableTeamEffortValue } from '@renderer/utils/teamEffortOptions';
@@ -80,18 +75,13 @@ import { DEFAULT_PROVIDER_MODEL_SELECTION } from '@shared/utils/providerModelSel
 import { isTeamProviderId, normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
 import {
   AlertTriangle,
-  Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   ExternalLink,
   Info,
   Loader2,
   X,
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
-
-import { CronScheduleInput } from '../schedule/CronScheduleInput';
 
 import { AdvancedCliSection } from './AdvancedCliSection';
 import { AnthropicFastModeSelector } from './AnthropicFastModeSelector';
@@ -163,17 +153,13 @@ import type { MemberDraft } from '@renderer/components/team/members/membersEdito
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type {
   CliProviderId,
-  CreateScheduleInput,
   EffortLevel,
   ResolvedTeamMember,
-  Schedule,
-  ScheduleLaunchConfig,
   TeamCreateRequest,
   TeamFastMode,
   TeamLaunchRequest,
   TeamProviderId,
   TeamProvisioningModelCheckRequest,
-  UpdateSchedulePatch,
 } from '@shared/types';
 
 function alignProvisioningChecks(
@@ -226,20 +212,7 @@ interface LaunchDialogRelaunchMode extends LaunchDialogBase {
   onRelaunch: (request: TeamLaunchRequest, members: TeamCreateRequest['members']) => Promise<void>;
 }
 
-interface LaunchDialogScheduleMode {
-  mode: 'schedule';
-  open: boolean;
-  /** Team name — optional when creating from standalone schedules page */
-  teamName?: string;
-  onClose: () => void;
-  /** When provided → edit mode; null/undefined → create mode */
-  schedule?: Schedule | null;
-}
-
-export type LaunchTeamDialogProps =
-  | LaunchDialogLaunchMode
-  | LaunchDialogRelaunchMode
-  | LaunchDialogScheduleMode;
+export type LaunchTeamDialogProps = LaunchDialogLaunchMode | LaunchDialogRelaunchMode;
 
 const APP_TEAM_RUNTIME_DISALLOWED_TOOLS = 'TeamDelete,TodoWrite,TaskCreate,TaskUpdate';
 const ANTHROPIC_AGENT_SDK_CREDIT_ARTICLE_URL =
@@ -248,14 +221,6 @@ const ANTHROPIC_AGENT_SDK_CREDIT_ARTICLE_URL =
 // =============================================================================
 // Helpers
 // =============================================================================
-
-function getLocalTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return 'UTC';
-  }
-}
 
 function getStoredTeamProvider(): TeamProviderId {
   const stored = localStorage.getItem('team:lastSelectedProvider');
@@ -351,7 +316,6 @@ function buildWorktreePathByMemberName(
 
 export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Element => {
   const { open, onClose } = props;
-  const { isLight } = useTheme();
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
   const anthropicProviderFastModeDefault = useStore(
@@ -379,36 +343,17 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     codexAccount.loading &&
     Boolean(loadingCliStatus?.providers.some((provider) => provider.providerId === 'codex')) &&
     !codexAccount.snapshot;
-  const isSchedule = props.mode === 'schedule';
-  const schedule = isSchedule ? (props.schedule ?? null) : null;
-  const isEditing = isSchedule && !!schedule;
 
-  // Team name: always present for launch mode, may be absent in schedule mode (standalone page)
+  // Team name: always present for launch/relaunch mode
   const propsTeamName = props.teamName ?? '';
-  const [selectedTeamName, setSelectedTeamName] = useState('');
-  const { teamByName, openDashboard } = useStore(
+  const { openDashboard } = useStore(
     useShallow((s) => ({
-      teamByName: s.teamByName,
       openDashboard: s.openDashboard,
     }))
   );
   const openTeamTab = useStore((s) => s.openTeamTab);
-  const teamOptions = useMemo(
-    () =>
-      Object.values(teamByName)
-        .sort((a, b) => a.teamName.localeCompare(b.teamName))
-        .map((team) => ({
-          value: team.teamName,
-          label: team.displayName || team.teamName,
-          description: team.description || undefined,
-          meta: { color: team.color },
-        })),
-    [teamByName]
-  );
 
-  // Effective team name: from props if provided, otherwise from local selection
-  const effectiveTeamName = propsTeamName || selectedTeamName;
-  const needsTeamSelector = isSchedule && !propsTeamName;
+  const effectiveTeamName = propsTeamName;
 
   // ---------------------------------------------------------------------------
   // Shared form state
@@ -503,18 +448,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     () => localStorage.getItem(`team:lastCustomArgs:${effectiveTeamName}`) ?? ''
   );
 
-  // ---------------------------------------------------------------------------
-  // Schedule-only state
-  // ---------------------------------------------------------------------------
-
-  const [schedLabel, setSchedLabel] = useState('');
-  const [schedExpanded, setSchedExpanded] = useState(true);
-  const [cronExpression, setCronExpression] = useState('0 9 * * 1-5');
-  const [timezone, setTimezone] = useState(getLocalTimezone);
-  const [warmUpMinutes, setWarmUpMinutes] = useState(15);
-  const [maxTurns, setMaxTurns] = useState(50);
-  const [maxBudgetUsd, setMaxBudgetUsd] = useState('');
-  const [scheduleHydrationKey, setScheduleHydrationKey] = useState<string | null>(null);
   const [worktreePathByMemberName, setWorktreePathByMemberName] = useState<Record<string, string>>(
     {}
   );
@@ -536,8 +469,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     [effectiveMemberDrafts, selectedProviderId]
   );
   const hasSelectedAnthropicRuntime = isLaunchMode && selectedMemberProviders.includes('anthropic');
-  const effectiveAnthropicRuntimeLimitContext =
-    hasSelectedAnthropicRuntime && !isSchedule ? limitContext : false;
+  const effectiveAnthropicRuntimeLimitContext = hasSelectedAnthropicRuntime ? limitContext : false;
 
   const runtimeBackendSummaryByProvider = useMemo(() => {
     const entries: (readonly [TeamProviderId, string | null])[] = (
@@ -659,10 +591,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     [codexAccount]
   );
 
-  // Schedule store actions
-  const createSchedule = useStore((s) => s.createSchedule);
-  const updateSchedule = useStore((s) => s.updateSchedule);
-
   // ---------------------------------------------------------------------------
   // localStorage persistence wrappers
   // ---------------------------------------------------------------------------
@@ -720,7 +648,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   };
 
   // ---------------------------------------------------------------------------
-  // localStorage migration: schedule → team namespace (one-time)
+  // localStorage migration: legacy team model key → per-provider key (one-time)
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
@@ -732,17 +660,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       localStorage.setItem('team:lastSelectedModel:anthropic', legacyTeamModel);
     }
     localStorage.removeItem('team:lastSelectedModel');
-
-    for (const suffix of ['lastSelectedModel', 'lastSelectedEffort']) {
-      const schedKey = `schedule:${suffix}`;
-      const teamKey =
-        suffix === 'lastSelectedModel' ? 'team:lastSelectedModel:anthropic' : `team:${suffix}`;
-      const schedVal = localStorage.getItem(schedKey);
-      if (schedVal != null && localStorage.getItem(teamKey) == null) {
-        localStorage.setItem(teamKey, schedVal);
-      }
-      localStorage.removeItem(schedKey);
-    }
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -763,14 +680,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     setMembersDrafts([]);
     setSyncModelsWithLead(false);
     chipDraft.clearChipDraft();
-    // Schedule fields
-    setSelectedTeamName('');
-    setSchedLabel('');
-    setCronExpression('0 9 * * 1-5');
-    setTimezone(getLocalTimezone());
-    setWarmUpMinutes(15);
-    setMaxTurns(50);
-    setMaxBudgetUsd('');
   };
 
   const closeDialog = (): void => {
@@ -779,64 +688,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     }
     onClose();
   };
-
-  // Populate form in schedule edit mode
-  useEffect(() => {
-    if (!open || !isSchedule) return;
-
-    if (schedule) {
-      // Edit mode — populate from existing schedule
-      setSchedLabel(schedule.label ?? '');
-      setCronExpression(schedule.cronExpression);
-      setTimezone(schedule.timezone);
-      setWarmUpMinutes(schedule.warmUpMinutes);
-      setMaxTurns(schedule.maxTurns);
-      setMaxBudgetUsd(schedule.maxBudgetUsd != null ? String(schedule.maxBudgetUsd) : '');
-      promptDraft.setValue(schedule.launchConfig.prompt);
-      setCustomCwd(schedule.launchConfig.cwd);
-      setCwdMode('custom');
-      const scheduleProviderId = normalizeOneShotProviderForMode(schedule.launchConfig.providerId);
-      const scheduleSourceProviderId = normalizeOptionalTeamProviderId(
-        schedule.launchConfig.providerId
-      );
-      setSelectedProviderIdRaw(scheduleProviderId);
-      setSelectedModelRaw(
-        scheduleSourceProviderId !== 'gemini' &&
-          scheduleSourceProviderId !== 'opencode' &&
-          scheduleProviderId === normalizeOneShotProviderForMode(schedule.launchConfig.providerId)
-          ? (schedule.launchConfig.model ?? '')
-          : getStoredTeamModel('anthropic')
-      );
-      setSkipPermissionsRaw(schedule.launchConfig.skipPermissions !== false);
-      setSelectedEffortRaw(schedule.launchConfig.effort ?? '');
-      setSelectedFastModeRaw(schedule.launchConfig.fastMode ?? getStoredTeamFastMode());
-      setSavedLaunchProviderBackendId(schedule.launchConfig.providerBackendId ?? null);
-      setScheduleHydrationKey(`${schedule.id}:${schedule.updatedAt ?? ''}`);
-    } else {
-      // Create mode — reset to defaults
-      setSchedLabel('');
-      setCronExpression('0 9 * * 1-5');
-      setTimezone(getLocalTimezone());
-      setWarmUpMinutes(15);
-      setMaxTurns(50);
-      setMaxBudgetUsd('');
-      promptDraft.setValue('');
-      setCwdMode('project');
-      setSelectedProjectPath('');
-      setCustomCwd('');
-      const storedProviderId = normalizeOneShotProviderForMode(getStoredTeamProvider());
-      setSelectedProviderIdRaw(storedProviderId);
-      setSelectedModelRaw(getStoredTeamModel(storedProviderId));
-      setSelectedEffortRaw('');
-      setSelectedFastModeRaw(getStoredTeamFastMode());
-      setSavedLaunchProviderBackendId(null);
-      setScheduleHydrationKey(null);
-    }
-
-    setLocalError(null);
-    setIsSubmitting(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isSchedule, schedule?.id]);
 
   useEffect(() => {
     if (!open || !isLaunchMode) return;
@@ -1088,13 +939,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   );
 
   useEffect(() => {
-    if (isSchedule && schedule) {
-      const nextHydrationKey = `${schedule.id}:${schedule.updatedAt ?? ''}`;
-      if (scheduleHydrationKey !== nextHydrationKey) {
-        return;
-      }
-    }
-
     if (selectedProviderId !== 'anthropic' && selectedProviderId !== 'codex') {
       setAnthropicRuntimeNotice(null);
       return;
@@ -1177,9 +1021,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     selectedFastMode,
     selectedModel,
     selectedProviderId,
-    schedule,
-    scheduleHydrationKey,
-    isSchedule,
   ]);
 
   const selectedModelChecksByProvider = useMemo(() => {
@@ -1930,7 +1771,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   }, [conflictingTeam?.teamName, effectiveCwd]);
 
   // ---------------------------------------------------------------------------
-  // Mention suggestions (shared — from props in launch, from store in schedule)
+  // Mention suggestions
   // ---------------------------------------------------------------------------
 
   const { suggestions: taskSuggestions } = useTaskSuggestions(null);
@@ -2050,21 +1891,8 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       errors.push('Working directory is required');
     }
     if (worktreeGitBlockingMessage) errors.push(worktreeGitBlockingMessage);
-    if (isSchedule) {
-      if (!effectiveTeamName) errors.push('Team is required');
-      if (!promptDraft.value.trim()) errors.push('Prompt is required');
-      if (!cronExpression.trim()) errors.push('Cron expression is required');
-    }
     return errors;
-  }, [
-    effectiveCwd,
-    selectedProjectPathDeleted,
-    worktreeGitBlockingMessage,
-    isSchedule,
-    effectiveTeamName,
-    promptDraft.value,
-    cronExpression,
-  ]);
+  }, [effectiveCwd, selectedProjectPathDeleted, worktreeGitBlockingMessage]);
   const modelValidationError = useMemo(() => {
     if (isLaunchMode && selectedProviderId === 'opencode') {
       if (!selectedModel.trim()) {
@@ -2267,135 +2095,61 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
 
     void (async () => {
       try {
-        if (isLaunchMode) {
-          const nextMembers = buildMembersFromDrafts(effectiveMemberDrafts, {
-            inheritedProviderId: selectedProviderId,
-          });
-          const launchRequest: TeamLaunchRequest = {
-            teamName: effectiveTeamName,
-            cwd: effectiveCwd,
-            prompt: promptDraft.value.trim() || undefined,
-            providerId: selectedProviderId,
-            providerBackendId:
-              resolveUiOwnedProviderBackendId(
-                selectedProviderId,
-                runtimeProviderStatusById.get(selectedProviderId)
-              ) ??
-              selectedProviderBackendId ??
-              undefined,
-            model: computeEffectiveTeamModel(
-              selectedModel,
-              effectiveAnthropicRuntimeLimitContext,
-              selectedProviderId,
-              runtimeProviderStatusById.get(selectedProviderId)
-            ),
-            effort: (selectedEffortForCurrentSelection as EffortLevel) || undefined,
-            fastMode:
-              selectedProviderId === 'anthropic' || selectedProviderId === 'codex'
-                ? selectedFastMode
-                : undefined,
-            limitContext: effectiveAnthropicRuntimeLimitContext,
-            skipPermissions,
-            worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
-            extraCliArgs: customArgs.trim() || undefined,
-          };
-          if (isRelaunch) {
-            await props.onRelaunch(launchRequest, nextMembers);
-          } else {
-            await api.teams.replaceMembers(effectiveTeamName, {
-              members: nextMembers,
-            });
-            await props.onLaunch(launchRequest);
-          }
-          openTeamTab(effectiveTeamName, effectiveCwd || defaultProjectPath);
-          closeDialog();
-        } else {
-          // Schedule mode: create or update
-          const parsedBudget = maxBudgetUsd ? parseFloat(maxBudgetUsd) : undefined;
-          const scheduleProviderBackendId =
+        const nextMembers = buildMembersFromDrafts(effectiveMemberDrafts, {
+          inheritedProviderId: selectedProviderId,
+        });
+        const launchRequest: TeamLaunchRequest = {
+          teamName: effectiveTeamName,
+          cwd: effectiveCwd,
+          prompt: promptDraft.value.trim() || undefined,
+          providerId: selectedProviderId,
+          providerBackendId:
             resolveUiOwnedProviderBackendId(
               selectedProviderId,
               runtimeProviderStatusById.get(selectedProviderId)
             ) ??
             selectedProviderBackendId ??
-            undefined;
-          const scheduleModel = computeEffectiveTeamModel(
+            undefined,
+          model: computeEffectiveTeamModel(
             selectedModel,
-            false,
+            effectiveAnthropicRuntimeLimitContext,
             selectedProviderId,
             runtimeProviderStatusById.get(selectedProviderId)
-          );
-          const explicitScheduleEffort = selectedEffortForCurrentSelection
-            ? (selectedEffortForCurrentSelection as EffortLevel)
-            : undefined;
-          const scheduleEffort =
-            selectedProviderId === 'anthropic'
-              ? (explicitScheduleEffort ?? anthropicRuntimeSelection?.defaultEffort ?? undefined)
-              : explicitScheduleEffort;
-          const launchConfig: ScheduleLaunchConfig = {
-            cwd: effectiveCwd,
-            prompt: promptDraft.value.trim(),
-            providerId: selectedProviderId,
-            providerBackendId: scheduleProviderBackendId,
-            model: scheduleModel,
-            effort: scheduleEffort,
-            fastMode:
-              selectedProviderId === 'anthropic' || selectedProviderId === 'codex'
-                ? selectedFastMode
-                : undefined,
-            resolvedFastMode:
-              selectedProviderId === 'anthropic'
-                ? (anthropicFastModeResolution?.resolvedFastMode ?? false)
-                : selectedProviderId === 'codex'
-                  ? (codexFastModeResolution?.resolvedFastMode ?? false)
-                  : undefined,
-            skipPermissions,
-          };
-
-          if (isEditing && schedule) {
-            const patch: UpdateSchedulePatch = {
-              label: schedLabel.trim() || undefined,
-              cronExpression: cronExpression.trim(),
-              timezone,
-              warmUpMinutes,
-              maxTurns,
-              maxBudgetUsd: parsedBudget,
-              launchConfig,
-            };
-            await updateSchedule(schedule.id, patch);
-          } else {
-            const input: CreateScheduleInput = {
-              teamName: effectiveTeamName,
-              label: schedLabel.trim() || undefined,
-              cronExpression: cronExpression.trim(),
-              timezone,
-              warmUpMinutes,
-              maxTurns,
-              maxBudgetUsd: parsedBudget,
-              launchConfig,
-            };
-            await createSchedule(input);
-          }
-          closeDialog();
+          ),
+          effort: (selectedEffortForCurrentSelection as EffortLevel) || undefined,
+          fastMode:
+            selectedProviderId === 'anthropic' || selectedProviderId === 'codex'
+              ? selectedFastMode
+              : undefined,
+          limitContext: effectiveAnthropicRuntimeLimitContext,
+          skipPermissions,
+          worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
+          extraCliArgs: customArgs.trim() || undefined,
+        };
+        if (isRelaunch) {
+          await props.onRelaunch(launchRequest, nextMembers);
+        } else {
+          await api.teams.replaceMembers(effectiveTeamName, {
+            members: nextMembers,
+          });
+          await props.onLaunch(launchRequest);
         }
+        openTeamTab(effectiveTeamName, effectiveCwd || defaultProjectPath);
+        closeDialog();
       } catch (err) {
         const message =
           err instanceof Error
             ? err.message
-            : isSchedule
-              ? t('launch.errors.saveScheduleFailed')
-              : isRelaunch
-                ? t('launch.errors.relaunchFailed')
-                : t('launch.errors.launchFailed');
+            : isRelaunch
+              ? t('launch.errors.relaunchFailed')
+              : t('launch.errors.launchFailed');
         setLocalError(message);
-        if (isLaunchMode) {
-          console.error(
-            isRelaunch
-              ? 'Failed to relaunch team from dialog:'
-              : 'Failed to launch team from dialog:',
-            err
-          );
-        }
+        console.error(
+          isRelaunch
+            ? 'Failed to relaunch team from dialog:'
+            : 'Failed to launch team from dialog:',
+          err
+        );
       } finally {
         setIsSubmitting(false);
       }
@@ -2406,65 +2160,42 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   // Disabled state
   // ---------------------------------------------------------------------------
 
-  const isDisabled = isLaunchMode
-    ? isSubmitting ||
-      launchInFlight ||
-      validationErrors.length > 0 ||
-      !!modelValidationError ||
-      hasInvalidLaunchMemberNames ||
-      hasDuplicateLaunchMemberNames ||
-      teammateRuntimeCompatibility.blocksSubmission
-    : isSubmitting || validationErrors.length > 0 || !!modelValidationError;
+  const isDisabled =
+    isSubmitting ||
+    launchInFlight ||
+    validationErrors.length > 0 ||
+    !!modelValidationError ||
+    hasInvalidLaunchMemberNames ||
+    hasDuplicateLaunchMemberNames ||
+    teammateRuntimeCompatibility.blocksSubmission;
 
   // ---------------------------------------------------------------------------
   // Dynamic labels
   // ---------------------------------------------------------------------------
 
-  const dialogTitle = isLaunchMode
-    ? isRelaunch
-      ? t('launch.title.relaunch')
-      : t('launch.title.launch')
-    : isEditing
-      ? t('launch.title.editSchedule')
-      : t('launch.title.createSchedule');
+  const dialogTitle = isRelaunch ? t('launch.title.relaunch') : t('launch.title.launch');
 
-  const dialogDescription = isLaunchMode ? (
-    isRelaunch ? (
-      <>
-        {t('launch.description.relaunchPrefix')}{' '}
-        <span className="font-mono font-medium">{effectiveTeamName}</span>{' '}
-        {t('launch.description.relaunchSuffix')}
-      </>
-    ) : (
-      <>
-        {t('launch.description.launchPrefix')}{' '}
-        <span className="font-mono font-medium">{effectiveTeamName}</span>{' '}
-        {t('launch.description.launchSuffix')}
-      </>
-    )
-  ) : isEditing ? (
-    t('launch.description.editSchedule', { team: effectiveTeamName })
-  ) : effectiveTeamName ? (
-    t('launch.description.createScheduleForTeam', { team: effectiveTeamName })
+  const dialogDescription = isRelaunch ? (
+    <>
+      {t('launch.description.relaunchPrefix')}{' '}
+      <span className="font-mono font-medium">{effectiveTeamName}</span>{' '}
+      {t('launch.description.relaunchSuffix')}
+    </>
   ) : (
-    t('launch.description.createSchedule')
+    <>
+      {t('launch.description.launchPrefix')}{' '}
+      <span className="font-mono font-medium">{effectiveTeamName}</span>{' '}
+      {t('launch.description.launchSuffix')}
+    </>
   );
 
-  const submitLabel = isLaunchMode
-    ? isRelaunch
-      ? t('launch.actions.relaunchTeam')
-      : t('launch.actions.launchTeam')
-    : isEditing
-      ? t('launch.actions.saveChanges')
-      : t('launch.actions.createSchedule');
+  const submitLabel = isRelaunch
+    ? t('launch.actions.relaunchTeam')
+    : t('launch.actions.launchTeam');
 
-  const submittingLabel = isLaunchMode
-    ? isRelaunch
-      ? t('launch.actions.relaunching')
-      : t('launch.actions.launching')
-    : isEditing
-      ? t('launch.actions.saving')
-      : t('launch.actions.creating');
+  const submittingLabel = isRelaunch
+    ? t('launch.actions.relaunching')
+    : t('launch.actions.launching');
 
   // ---------------------------------------------------------------------------
   // Render
@@ -2479,9 +2210,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         }
       }}
     >
-      <DialogContent
-        className={isSchedule ? 'max-h-[90vh] max-w-[52rem] overflow-y-auto' : 'max-w-[52rem]'}
-      >
+      <DialogContent className="max-w-[52rem]">
         <DialogHeader>
           <DialogTitle className="text-sm">{dialogTitle}</DialogTitle>
           <DialogDescription className="text-xs">{dialogDescription}</DialogDescription>
@@ -2541,127 +2270,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
 
         <div className="space-y-4">
           {/* ═══════════════════════════════════════════════════════════════════
-              Schedule-only: Team selector (standalone mode)
-              ═══════════════════════════════════════════════════════════════════ */}
-          {needsTeamSelector ? (
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('launch.schedule.team')}</Label>
-              <Combobox
-                options={teamOptions}
-                value={selectedTeamName}
-                onValueChange={setSelectedTeamName}
-                placeholder={t('launch.schedule.selectTeam')}
-                searchPlaceholder={t('launch.schedule.searchTeams')}
-                emptyMessage={
-                  teamOptions.length === 0
-                    ? t('launch.schedule.noTeams')
-                    : t('launch.schedule.noMatches')
-                }
-                disabled={teamOptions.length === 0}
-                renderOption={(option, isSelected) => {
-                  const colorName = option.meta?.color as string | undefined;
-                  const colorSet = colorName
-                    ? getTeamColorSet(colorName)
-                    : nameColorSet(option.label);
-                  return (
-                    <>
-                      {isSelected ? (
-                        <Check className="mr-2 size-3.5 shrink-0 text-[var(--color-text)]" />
-                      ) : (
-                        <span
-                          className="mr-2 size-3.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: colorSet.text }}
-                        />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          {isSelected ? (
-                            <span
-                              className="size-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: colorSet.text }}
-                            />
-                          ) : null}
-                          <p className="truncate font-medium text-[var(--color-text)]">
-                            {option.label}
-                          </p>
-                        </div>
-                        {option.description ? (
-                          <p className="truncate text-[var(--color-text-muted)]">
-                            {option.description}
-                          </p>
-                        ) : null}
-                      </div>
-                    </>
-                  );
-                }}
-              />
-            </div>
-          ) : null}
-
-          {/* ═══════════════════════════════════════════════════════════════════
-              Schedule-only: Schedule configuration section
-              ═══════════════════════════════════════════════════════════════════ */}
-          {isSchedule ? (
-            <div
-              className="rounded-lg border border-[var(--color-border-emphasis)] shadow-sm"
-              style={{
-                backgroundColor: isLight
-                  ? 'color-mix(in srgb, var(--color-surface-overlay) 24%, white 76%)'
-                  : 'var(--color-surface-overlay)',
-              }}
-            >
-              <button
-                type="button"
-                className="flex w-full items-center gap-1.5 px-3 py-2 text-left"
-                onClick={() => setSchedExpanded((v) => !v)}
-              >
-                {schedExpanded ? (
-                  <ChevronDown className="size-3.5 shrink-0 text-[var(--color-text-muted)]" />
-                ) : (
-                  <ChevronRight className="size-3.5 shrink-0 text-[var(--color-text-muted)]" />
-                )}
-                <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-muted)]">
-                  {t('launch.schedule.title')}
-                </span>
-                {!schedExpanded && (schedLabel || cronExpression) ? (
-                  <span className="ml-auto truncate text-[11px] text-[var(--color-text-muted)] opacity-70">
-                    {schedLabel || cronExpression}
-                  </span>
-                ) : null}
-              </button>
-
-              {schedExpanded ? (
-                <div className="space-y-3 border-t border-[var(--color-border)] px-3 pb-3 pt-2">
-                  {/* Label */}
-                  <div className="space-y-1.5">
-                    <Label htmlFor="schedule-label" className="label-optional">
-                      {t('launch.schedule.labelOptional')}
-                    </Label>
-                    <Input
-                      id="schedule-label"
-                      className="h-8 text-xs"
-                      value={schedLabel}
-                      onChange={(e) => setSchedLabel(e.target.value)}
-                      placeholder={t('launch.schedule.labelPlaceholder')}
-                    />
-                  </div>
-
-                  {/* Cron + Timezone + Warmup */}
-                  <CronScheduleInput
-                    cronExpression={cronExpression}
-                    onCronExpressionChange={setCronExpression}
-                    timezone={timezone}
-                    onTimezoneChange={setTimezone}
-                    warmUpMinutes={warmUpMinutes}
-                    onWarmUpMinutesChange={setWarmUpMinutes}
-                  />
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {/* ═══════════════════════════════════════════════════════════════════
-              Shared: Working directory
+              Working directory
               ═══════════════════════════════════════════════════════════════════ */}
           <ProjectPathSelector
             cwdMode={cwdMode}
@@ -2677,11 +2286,9 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
           />
 
           {/* ═══════════════════════════════════════════════════════════════════
-              Launch: optional settings
-              Schedule: prompt + execution defaults
+              Optional settings
               ═══════════════════════════════════════════════════════════════════ */}
-          {isLaunchMode ? (
-            <OptionalSettingsSection
+          <OptionalSettingsSection
               title={
                 isRelaunch
                   ? t('launch.optionalSettings.relaunchTitle')
@@ -2901,174 +2508,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                 />
               </div>
             </OptionalSettingsSection>
-          ) : (
-            <>
-              <div className="space-y-1.5">
-                <Label htmlFor="dialog-prompt">{t('launch.prompt.label')}</Label>
-                <MentionableTextarea
-                  id="dialog-prompt"
-                  className="min-h-[100px] text-xs"
-                  minRows={4}
-                  maxRows={12}
-                  value={promptDraft.value}
-                  onValueChange={promptDraft.setValue}
-                  suggestions={mentionSuggestions}
-                  projectPath={effectiveCwd || null}
-                  chips={chipDraft.chips}
-                  onChipRemove={chipDraft.removeChip}
-                  onFileChipInsert={chipDraft.addChip}
-                  placeholder={t('launch.prompt.schedulePlaceholder')}
-                  footerRight={
-                    promptDraft.isSaved ? (
-                      <span className="text-[10px] text-[var(--color-text-muted)]">
-                        {t('launch.prompt.saved')}
-                      </span>
-                    ) : null
-                  }
-                />
-                <p className="text-[11px] text-[var(--color-text-muted)]">
-                  {t('launch.prompt.oneShotPrefix')} <code className="font-mono">claude -p</code>{' '}
-                  {t('launch.prompt.oneShotSuffix')}
-                </p>
-                {selectedProviderId === 'anthropic' ? (
-                  <div className="flex gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-100">
-                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                    <p>
-                      {t('launch.billing.prefix')} <code>claude -p</code>{' '}
-                      {t('launch.billing.suffix')}{' '}
-                      <a
-                        href={ANTHROPIC_AGENT_SDK_CREDIT_ARTICLE_URL}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:text-white"
-                      >
-                        {t('launch.billing.readArticle')}
-                        <ExternalLink className="size-3" />
-                      </a>
-                      .
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-
-              <div>
-                <TeamModelSelector
-                  providerId={selectedProviderId}
-                  onProviderChange={setSelectedProviderId}
-                  value={selectedModel}
-                  onValueChange={setSelectedModel}
-                  id="dialog-model"
-                  disableGeminiOption={isGeminiUiFrozen()}
-                  providerDisabledReasonById={{
-                    opencode: OPENCODE_ONE_SHOT_DISABLED_REASON,
-                  }}
-                  providerDisabledBadgeLabelById={{
-                    opencode: OPENCODE_ONE_SHOT_DISABLED_BADGE_LABEL,
-                  }}
-                />
-                <EffortLevelSelector
-                  value={selectedEffortForCurrentSelection}
-                  onValueChange={setSelectedEffort}
-                  id="dialog-effort"
-                  providerId={selectedProviderId}
-                  model={selectedModel}
-                  limitContext={effectiveAnthropicRuntimeLimitContext}
-                />
-                {selectedProviderId === 'anthropic' ? (
-                  <div className="mt-2">
-                    <AnthropicFastModeSelector
-                      value={selectedFastMode}
-                      onValueChange={setSelectedFastMode}
-                      providerFastModeDefault={anthropicProviderFastModeDefault}
-                      model={selectedModel}
-                      limitContext={effectiveAnthropicRuntimeLimitContext}
-                      id="dialog-fast-mode"
-                    />
-                    {anthropicRuntimeNotice ? (
-                      <div className="bg-amber-500/8 mt-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-                        {anthropicRuntimeNotice}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                {selectedProviderId === 'codex' ? (
-                  <div className="mt-2">
-                    <CodexFastModeSelector
-                      value={selectedFastMode}
-                      onValueChange={setSelectedFastMode}
-                      model={selectedModel}
-                      providerBackendId={
-                        resolveUiOwnedProviderBackendId(
-                          'codex',
-                          runtimeProviderStatusById.get('codex')
-                        ) ??
-                        migrateProviderBackendId(
-                          'codex',
-                          previousLaunchParams?.providerBackendId ?? savedLaunchProviderBackendId
-                        ) ??
-                        undefined
-                      }
-                      id="dialog-fast-mode"
-                    />
-                    {anthropicRuntimeNotice ? (
-                      <div className="bg-amber-500/8 mt-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-                        {anthropicRuntimeNotice}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                <SkipPermissionsCheckbox
-                  id="dialog-skip-permissions"
-                  checked={skipPermissions}
-                  onCheckedChange={setSkipPermissions}
-                />
-              </div>
-            </>
-          )}
-
-          {/* ═══════════════════════════════════════════════════════════════════
-              Schedule-only: Execution limits
-              ═══════════════════════════════════════════════════════════════════ */}
-          {isSchedule ? (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label
-                  htmlFor="schedule-max-turns"
-                  className="text-[11px] text-[var(--color-text-muted)]"
-                >
-                  {t('launch.schedule.maxTurns')}
-                </Label>
-                <Input
-                  id="schedule-max-turns"
-                  type="number"
-                  min={1}
-                  max={500}
-                  className="h-8 text-xs"
-                  value={maxTurns}
-                  onChange={(e) => setMaxTurns(Math.max(1, parseInt(e.target.value) || 50))}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label
-                  htmlFor="schedule-max-budget"
-                  className="text-[11px] text-[var(--color-text-muted)]"
-                >
-                  {t('launch.schedule.maxBudgetUsd')}
-                </Label>
-                <Input
-                  id="schedule-max-budget"
-                  type="number"
-                  min={0}
-                  step={0.5}
-                  className="h-8 text-xs"
-                  value={maxBudgetUsd}
-                  onChange={(e) => setMaxBudgetUsd(e.target.value)}
-                  placeholder={t('launch.schedule.noLimit')}
-                />
-              </div>
-            </div>
-          ) : null}
         </div>
 
         {/* Error display */}
@@ -3079,8 +2518,8 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
           </div>
         ) : null}
 
-        <DialogFooter className={isLaunchMode ? 'pt-4 sm:justify-between' : 'pt-4'}>
-          {/* Launch-only: CLI warm-up status */}
+        <DialogFooter className="pt-4 sm:justify-between">
+          {/* CLI warm-up status */}
           {isLaunchMode ? (
             <div className="min-w-0">
               <ProviderActivityStatusStrip

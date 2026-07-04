@@ -22,7 +22,6 @@ import {
   Activity,
   BarChart3,
   Bell,
-  Calendar,
   FileText,
   LayoutDashboard,
   Network,
@@ -61,7 +60,6 @@ const TAB_ICONS = {
   team: Users,
   report: Activity,
   extensions: Puzzle,
-  schedules: Calendar,
   usage: BarChart3,
 } as const;
 

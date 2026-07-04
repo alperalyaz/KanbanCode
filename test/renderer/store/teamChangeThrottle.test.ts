@@ -75,10 +75,6 @@ vi.mock('@renderer/api', () => ({
       getAllTasks: vi.fn(async () => []),
       list: vi.fn(async () => []),
     },
-    schedules: {
-      list: vi.fn(async () => []),
-      onScheduleChange: vi.fn(() => () => undefined),
-    },
   },
 }));
 
