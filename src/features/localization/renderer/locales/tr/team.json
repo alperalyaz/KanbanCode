@@ -129,7 +129,7 @@
     },
     "saved": "Kaydedildi",
     "solo": {
-      "description": "Yalnızca ekip lideri (ana süreç) başlatılacak - hiçbir takım arkadaşı oluşturulmayacak. Seçtiğiniz çalışma zamanında (Claude Code, Codex, OpenCode, Gemini) normal bir agent oturumu gibi çalışır, ancak planlama için görev panosuna erişim sağlar. Takım arkadaşı koordinasyon yükünden kaçınarak token tasarrufu yapar. Üyeleri daha sonra ekip ayarlarından ekleyebilirsiniz.",
+      "description": "Şu an yalnızca ekip lideri çalışacak — normal bir agent oturumu gibi, artı bir görev panosu. Takım arkadaşı koordinasyonunu atladığı için token tasarrufu sağlar. Ekibe dönüştürmek için aşağıdan üye ekle.",
       "label": "Tekli ekip"
     },
     "title": {

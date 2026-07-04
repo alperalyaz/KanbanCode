@@ -155,6 +155,8 @@ export interface MembersEditorSectionProps {
   >;
   disableAddMember?: boolean;
   addMemberLockReason?: string;
+  /** When true, renders the "Add member" button as a prominent full-width primary CTA. */
+  emphasizeAddMember?: boolean;
   showWorktreeIsolationControls?: boolean;
   teammateWorktreeDefault?: boolean;
   worktreeIsolationDisabledReason?: string | null;
@@ -200,6 +202,7 @@ export const MembersEditorSection = ({
   modelUnavailableReasonByProvider,
   disableAddMember = false,
   addMemberLockReason,
+  emphasizeAddMember = false,
   showWorktreeIsolationControls = false,
   teammateWorktreeDefault = false,
   worktreeIsolationDisabledReason,
@@ -463,11 +466,11 @@ export const MembersEditorSection = ({
       <div className="flex items-center justify-between">
         <Label>{t('members.editor.title')}</Label>
         {!hideContent && (
-          <div className="flex gap-2">
+          <div className={cn('flex gap-2', emphasizeAddMember && 'w-full')}>
             <Button
-              variant="outline"
+              variant={emphasizeAddMember ? 'default' : 'outline'}
               size="sm"
-              className="gap-1.5"
+              className={cn('gap-1.5', emphasizeAddMember && 'w-full justify-center')}
               onClick={addMember}
               disabled={disableAddMember}
               title={disableAddMember ? addMemberLockReason : undefined}

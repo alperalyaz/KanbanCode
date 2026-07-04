@@ -50,8 +50,6 @@ export interface UseCreateTeamDraftResult {
   setSelectedProjectPath: (v: string) => void;
   customCwd: string;
   setCustomCwd: (v: string) => void;
-  soloTeam: boolean;
-  setSoloTeam: (v: boolean) => void;
   launchTeam: boolean;
   setLaunchTeam: (v: boolean) => void;
   teamColor: string;
@@ -147,7 +145,6 @@ export function useCreateTeamDraft(
   const [cwdMode, setCwdModeState] = useState<'project' | 'custom'>('project');
   const [selectedProjectPath, setSelectedProjectPathState] = useState('');
   const [customCwd, setCustomCwdState] = useState('');
-  const [soloTeam, setSoloTeamState] = useState(false);
   const [launchTeam, setLaunchTeamState] = useState(true);
   const [teamColor, setTeamColorState] = useState('');
   const [isLoaded, setIsLoaded] = useState(false);
@@ -160,7 +157,6 @@ export function useCreateTeamDraft(
   const cwdModeRef = useRef<'project' | 'custom'>('project');
   const selectedProjectPathRef = useRef('');
   const customCwdRef = useRef('');
-  const soloTeamRef = useRef(false);
   const launchTeamRef = useRef(true);
   const teamColorRef = useRef('');
   const mountedRef = useRef(true);
@@ -187,7 +183,6 @@ export function useCreateTeamDraft(
       cwdMode: cwdModeRef.current,
       selectedProjectPath: selectedProjectPathRef.current,
       customCwd: customCwdRef.current,
-      soloTeam: soloTeamRef.current,
       launchTeam: launchTeamRef.current,
       teamColor: teamColorRef.current,
       updatedAt: Date.now(),
@@ -256,7 +251,6 @@ export function useCreateTeamDraft(
       cwdModeRef.current = snap.cwdMode;
       selectedProjectPathRef.current = snap.selectedProjectPath;
       customCwdRef.current = snap.customCwd;
-      soloTeamRef.current = snap.soloTeam;
       launchTeamRef.current = snap.launchTeam;
       teamColorRef.current = snap.teamColor;
 
@@ -267,7 +261,6 @@ export function useCreateTeamDraft(
       setCwdModeState(snap.cwdMode);
       setSelectedProjectPathState(snap.selectedProjectPath);
       setCustomCwdState(snap.customCwd);
-      setSoloTeamState(snap.soloTeam);
       setLaunchTeamState(snap.launchTeam);
       setTeamColorState(snap.teamColor);
     },
@@ -383,16 +376,6 @@ export function useCreateTeamDraft(
     [scheduleSave]
   );
 
-  const setSoloTeam = useCallback(
-    (v: boolean) => {
-      userTouchedRef.current = true;
-      soloTeamRef.current = v;
-      setSoloTeamState(v);
-      scheduleSave();
-    },
-    [scheduleSave]
-  );
-
   const setLaunchTeam = useCallback(
     (v: boolean) => {
       userTouchedRef.current = true;
@@ -433,7 +416,6 @@ export function useCreateTeamDraft(
     cwdModeRef.current = 'project';
     selectedProjectPathRef.current = '';
     customCwdRef.current = '';
-    soloTeamRef.current = false;
     launchTeamRef.current = true;
     teamColorRef.current = '';
 
@@ -444,7 +426,6 @@ export function useCreateTeamDraft(
     setCwdModeState('project');
     setSelectedProjectPathState('');
     setCustomCwdState('');
-    setSoloTeamState(false);
     setLaunchTeamState(true);
     setTeamColorState('');
 
@@ -466,8 +447,6 @@ export function useCreateTeamDraft(
     setSelectedProjectPath,
     customCwd,
     setCustomCwd,
-    soloTeam,
-    setSoloTeam,
     launchTeam,
     setLaunchTeam,
     teamColor,

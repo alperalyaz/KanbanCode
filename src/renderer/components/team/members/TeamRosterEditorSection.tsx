@@ -22,6 +22,7 @@ interface TeamRosterEditorSectionProps {
   teamSuggestions?: MentionSuggestion[];
   onWorkflowSuggestionsNeeded?: () => void;
   hideMembersContent?: boolean;
+  emphasizeAddMember?: boolean;
   existingMembers?: readonly { name: string; color?: string; removedAt?: number | string | null }[];
   defaultProviderId?: TeamProviderId;
   inheritedProviderId: TeamProviderId;
@@ -80,6 +81,7 @@ const TeamRosterEditorSectionImpl = ({
   teamSuggestions,
   onWorkflowSuggestionsNeeded,
   hideMembersContent = false,
+  emphasizeAddMember = false,
   existingMembers,
   defaultProviderId = 'anthropic',
   inheritedProviderId,
@@ -159,6 +161,7 @@ const TeamRosterEditorSectionImpl = ({
       teamSuggestions={teamSuggestions}
       onWorkflowSuggestionsNeeded={onWorkflowSuggestionsNeeded}
       hideContent={hideMembersContent}
+      emphasizeAddMember={emphasizeAddMember}
       existingMembers={existingMembers}
       defaultProviderId={defaultProviderId}
       inheritedProviderId={inheritedProviderId}

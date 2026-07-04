@@ -342,7 +342,6 @@ interface ValidationResult {
 }
 
 import {
-  getDefaultCreateTeamMemberConfigs,
   isLegacyDefaultCreateTeamMemberNames,
   remapLegacyDefaultCreateTeamMemberNames,
   remapThemedMemberNames,
@@ -558,8 +557,6 @@ export const CreateTeamDialog = ({
     setSelectedProjectPath,
     customCwd,
     setCustomCwd,
-    soloTeam,
-    setSoloTeam,
     launchTeam,
     setLaunchTeam,
     teamColor,
@@ -810,15 +807,21 @@ export const CreateTeamDialog = ({
     () => (syncModelsWithLead ? members.map(clearMemberModelOverrides) : members),
     [members, syncModelsWithLead]
   );
+  const activeTeammateCount = useMemo(
+    () =>
+      effectiveMemberDrafts.filter((m) => !m.removedAt && m.name.trim().length > 0).length,
+    [effectiveMemberDrafts]
+  );
+  const isSolo = activeTeammateCount === 0;
   const hasSelectedWorktreeIsolation =
-    !soloTeam &&
+    !isSolo &&
     effectiveMemberDrafts.some((member) => !member.removedAt && member.isolation === 'worktree');
   const worktreeGitReadiness = useWorktreeGitReadiness(
     effectiveCwd || null,
     open && canCreate && hasSelectedWorktreeIsolation
   );
   const worktreeIsolationDisabledReason =
-    !soloTeam && canCreate ? getWorktreeGitControlDisabledReason(worktreeGitReadiness) : null;
+    !isSolo && canCreate ? getWorktreeGitControlDisabledReason(worktreeGitReadiness) : null;
   const worktreeGitBlockingMessage = getWorktreeGitBlockingMessage(
     worktreeGitReadiness,
     hasSelectedWorktreeIsolation
@@ -830,7 +833,7 @@ export const CreateTeamDialog = ({
     if (!multimodelEnabled) {
       return ['anthropic'];
     }
-    if (soloTeam || syncModelsWithLead) {
+    if (isSolo || syncModelsWithLead) {
       return [selectedProviderId];
     }
     return Array.from(
@@ -841,7 +844,7 @@ export const CreateTeamDialog = ({
         ),
       ])
     );
-  }, [members, multimodelEnabled, selectedProviderId, soloTeam, syncModelsWithLead]);
+  }, [members, multimodelEnabled, selectedProviderId, isSolo, syncModelsWithLead]);
   const hasSelectedAnthropicRuntime = selectedMemberProviders.includes('anthropic');
   const effectiveAnthropicRuntimeLimitContext = hasSelectedAnthropicRuntime ? limitContext : false;
 
@@ -1552,29 +1555,9 @@ export const CreateTeamDialog = ({
           initialData.members.every((member) => member.isolation === 'worktree')
       );
       setSyncModelsWithLead(nextSyncModelsWithLead, { persistStoredPreference: false });
-      return;
     }
 
-    if (members.length > 0) {
-      return;
-    }
-
-    const nextDefaultMembers = getDefaultCreateTeamMemberConfigs(memberNameLocale).map((member) =>
-      createMemberDraft(
-        {
-          name: member.name,
-          roleSelection: member.roleSelection,
-          workflow:
-            member.workflowKind === 'reviewer' ? t('create.defaultWorkflows.reviewer') : undefined,
-        },
-        { memberNameLocale }
-      )
-    );
-    setMembers(
-      syncModelsWithLead
-        ? nextDefaultMembers
-        : applyStoredCreateTeamMemberRuntimePreferences(nextDefaultMembers)
-    );
+    // No default seeding: a new team starts with only the lead (empty roster).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialData is checked once on open/draftLoaded
   }, [memberNameLocale, open, draftLoaded, t]);
 
@@ -1726,7 +1709,7 @@ export const CreateTeamDialog = ({
 
   const mentionSuggestions = useMemo(
     () =>
-      soloTeam
+      isSolo
         ? [
             {
               id: 'team-lead',
@@ -1736,7 +1719,7 @@ export const CreateTeamDialog = ({
             },
           ]
         : buildMemberDraftSuggestions(members, memberColorMap),
-    [memberColorMap, members, soloTeam, t]
+    [memberColorMap, members, isSolo, t]
   );
 
   const effectiveModel = useMemo(
@@ -1760,7 +1743,7 @@ export const CreateTeamDialog = ({
         leadProviderId: selectedProviderId,
         leadProviderBackendId: selectedProviderBackendId,
         members: effectiveMemberDrafts,
-        soloTeam: soloTeam || !canCreate,
+        soloTeam: isSolo || !canCreate,
         extraCliArgs: launchTeam ? customArgs : undefined,
         tmuxStatus: tmuxRuntime.status,
         tmuxStatusLoading: tmuxRuntime.loading,
@@ -1773,7 +1756,7 @@ export const CreateTeamDialog = ({
       canCreate,
       selectedProviderBackendId,
       selectedProviderId,
-      soloTeam,
+      isSolo,
       tmuxRuntime.error,
       tmuxRuntime.loading,
       tmuxRuntime.status,
@@ -1946,11 +1929,9 @@ export const CreateTeamDialog = ({
       teamName: sanitizedTeamName,
       description: description.trim() || undefined,
       color: teamColor || undefined,
-      members: soloTeam
-        ? []
-        : buildMembersFromDrafts(effectiveMemberDrafts, {
-            inheritedProviderId: selectedProviderId,
-          }),
+      members: buildMembersFromDrafts(effectiveMemberDrafts, {
+        inheritedProviderId: selectedProviderId,
+      }),
       cwd: effectiveCwd,
       prompt: prompt.trim() || undefined,
       providerId: selectedProviderId,
@@ -1970,7 +1951,6 @@ export const CreateTeamDialog = ({
       sanitizedTeamName,
       description,
       teamColor,
-      soloTeam,
       effectiveMemberDrafts,
       effectiveCwd,
       prompt,
@@ -1995,9 +1975,7 @@ export const CreateTeamDialog = ({
       if (!selectedModel.trim()) {
         return t('create.validation.openCodeLeadModelRequired');
       }
-      const activeMemberCount = soloTeam
-        ? 0
-        : effectiveMemberDrafts.filter((member) => !member.removedAt && member.name.trim()).length;
+      const activeMemberCount = activeTeammateCount;
       if (activeMemberCount === 0) {
         return t('create.validation.openCodeTeammateRequired');
       }
@@ -2043,7 +2021,7 @@ export const CreateTeamDialog = ({
     runtimeProviderLoadingById,
     selectedModel,
     selectedProviderId,
-    soloTeam,
+    activeTeammateCount,
     t,
   ]);
   const leadModelIssueText = useMemo(() => {
@@ -2375,29 +2353,10 @@ export const CreateTeamDialog = ({
     });
   };
 
-  const rosterHeaderTop = useMemo(
-    () => (
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id="solo-team"
-          checked={soloTeam}
-          onCheckedChange={(checked) => setSoloTeam(checked === true)}
-        />
-        <Label
-          htmlFor="solo-team"
-          className="cursor-pointer text-xs font-normal text-text-secondary"
-        >
-          {t('create.solo.label')}
-        </Label>
-      </div>
-    ),
-    [setSoloTeam, soloTeam, t]
-  );
-
   const rosterHeaderBottom = useMemo(
     () =>
       showRosterTeammateRuntimeCompatibility ||
-      soloTeam ||
+      isSolo ||
       (canCreate && hasSelectedWorktreeIsolation) ? (
         <div className="space-y-2">
           {showRosterTeammateRuntimeCompatibility ? (
@@ -2409,7 +2368,7 @@ export const CreateTeamDialog = ({
               }}
             />
           ) : null}
-          {soloTeam ? (
+          {isSolo ? (
             <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2">
               <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
               <p className="text-[11px] leading-relaxed text-sky-300">
@@ -2428,7 +2387,7 @@ export const CreateTeamDialog = ({
       onClose,
       openDashboard,
       showRosterTeammateRuntimeCompatibility,
-      soloTeam,
+      isSolo,
       teammateRuntimeCompatibility,
       t,
       worktreeGitReadiness,
@@ -2564,7 +2523,8 @@ export const CreateTeamDialog = ({
                   lockProviderModel={syncModelsWithLead}
                   forceInheritedModelSettings={syncModelsWithLead}
                   modelLockReason={t('create.memberModelLockReason')}
-                  hideMembersContent={soloTeam}
+                  hideMembersContent={false}
+                  emphasizeAddMember={activeTeammateCount === 0}
                   providerId={selectedProviderId}
                   model={selectedModel}
                   effort={(selectedEffortForCurrentSelection as EffortLevel) || undefined}
@@ -2576,7 +2536,7 @@ export const CreateTeamDialog = ({
                   onLimitContextChange={setLimitContext}
                   syncModelsWithTeammates={syncModelsWithLead}
                   onSyncModelsWithTeammatesChange={handleSyncModelsWithLeadChange}
-                  showWorktreeIsolationControls={!soloTeam}
+                  showWorktreeIsolationControls={activeTeammateCount > 0}
                   teammateWorktreeDefault={teammateWorktreeDefault}
                   worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
                   onTeammateWorktreeDefaultChange={setTeammateWorktreeDefault}
@@ -2593,7 +2553,6 @@ export const CreateTeamDialog = ({
                   modelUnavailableReasonByProvider={
                     shortLivedModelIssueReasons.modelUnavailableReasonByProvider
                   }
-                  headerTop={rosterHeaderTop}
                   headerBottom={rosterHeaderBottom}
                   memberListClassName="max-h-[min(52vh,520px)] overflow-y-auto xl:max-h-none xl:overflow-visible"
                 />
@@ -2711,7 +2670,7 @@ export const CreateTeamDialog = ({
                             maxRows={12}
                             value={prompt}
                             onValueChange={promptDraft.setValue}
-                            suggestions={soloTeam ? [] : mentionSuggestions}
+                            suggestions={isSolo ? [] : mentionSuggestions}
                             teamSuggestions={teamMentionSuggestions}
                             taskSuggestions={taskSuggestions}
                             projectPath={effectiveCwd || null}

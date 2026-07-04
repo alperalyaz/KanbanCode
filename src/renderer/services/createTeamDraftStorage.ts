@@ -55,7 +55,6 @@ export interface CreateTeamDraftSnapshot {
   cwdMode: 'project' | 'custom';
   selectedProjectPath: string;
   customCwd: string;
-  soloTeam: boolean;
   launchTeam: boolean;
   teamColor: string;
   updatedAt: number;
@@ -115,7 +114,6 @@ function isValidSnapshot(data: unknown): data is CreateTeamDraftSnapshot {
     (obj.cwdMode === 'project' || obj.cwdMode === 'custom') &&
     typeof obj.selectedProjectPath === 'string' &&
     typeof obj.customCwd === 'string' &&
-    typeof obj.soloTeam === 'boolean' &&
     typeof obj.launchTeam === 'boolean' &&
     typeof obj.teamColor === 'string' &&
     typeof obj.updatedAt === 'number'
@@ -201,7 +199,6 @@ function emptySnapshot(): CreateTeamDraftSnapshot {
     cwdMode: 'project',
     selectedProjectPath: '',
     customCwd: '',
-    soloTeam: false,
     launchTeam: true,
     teamColor: '',
     updatedAt: Date.now(),

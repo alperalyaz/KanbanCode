@@ -37,6 +37,27 @@ Core to keep: team creation + agent process management + kanban board + messagin
 
 ## Status log
 
+- **2026-07-04 (cloud session)** — **Create-team UX simplification + modal Escape fix (owner requests).**
+  (1) Removed the "solo team" ("Tekli ekip") concept entirely. The runtime already
+  treats an empty members array as solo (`isSolo = members.length === 0` in
+  `TeamProvisioningService`/`TeamProvisioningPromptBuilders`) — there was never a
+  runtime `soloTeam` flag — so the checkbox + persisted flag were redundant
+  over-design. New teams now start with **only the lead** (removed the 4-member
+  default seeding); the "Add member" button is a prominent full-width primary CTA
+  while the roster is empty. `soloTeam` state/serialization dropped from
+  `useCreateTeamDraft` + `createTeamDraftStorage` snapshot (older snapshots with a
+  stray key deserialize fine); the dialog derives `isSolo`/`activeTeammateCount`
+  from the drafts instead. Empty-state banner keeps the solo value prop
+  (lead-only + token savings, reworded `create.solo.description` en+tr;
+  `create.solo.label` left unused). New `emphasizeAddMember` prop threaded through
+  `TeamRosterEditorSection` → `MembersEditorSection`. (2) Escape now always dismisses
+  modals: the `dismissOnOutsideInteraction={false}` flag was suppressing both
+  outside-click AND Escape; decoupled so Escape falls back to default Radix close
+  (repeated Escape peels back stacked modals to the dashboard), outside-click stays
+  disabled for the big create form. Verified: typecheck green; 56 targeted tests
+  pass (useCreateTeamDraft, MembersEditorSection, MemberDraftRow, EditTeamDialog,
+  memberNameSets); no new eslint errors (2 pre-existing import-sort errors on HEAD).
+
 - **2026-07-03 (cloud session)** — **Dynamic model support (owner request: "no app update for new LLMs").**
   (1) Runtime pricing refresh: new `PricingRefreshService` (main) fetches the public LiteLLM
   pricing JSON at most once per day, filters to claude/codex/gpt/gemini families, caches it
