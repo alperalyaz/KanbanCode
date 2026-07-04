@@ -207,6 +207,16 @@ async function flushLazyImports(): Promise<void> {
   });
 }
 
+// The dashboard provider banner starts collapsed by default. Tests that assert
+// on expanded per-provider card content must expand it first.
+async function expandProviderBanner(host: HTMLElement): Promise<void> {
+  const expandHeader = host.querySelector<HTMLElement>('[aria-label="Expand provider details"]');
+  await act(async () => {
+    expandHeader?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushLazyImports();
+  });
+}
+
 function createInstalledCliStatus(
   overrides?: Partial<Record<string, unknown>>
 ): Record<string, unknown> {
@@ -570,15 +580,17 @@ describe('CLI status visibility during completed install state', () => {
     expect(terminalModalProps?.onExit).toBeUndefined();
 
     storeState.invalidateCliStatus.mockClear();
-    vi.mocked(requestProviderRuntimeChecks).mockClear();
+    storeState.bootstrapCliStatus.mockClear();
 
     await act(async () => {
       terminalModalProps?.onClose?.();
       await flushLazyImports();
     });
 
+    // Closing the runtime login modal now refreshes auth status via
+    // invalidate + bootstrap (it previously forced a provider runtime check).
     expect(storeState.invalidateCliStatus).toHaveBeenCalledTimes(1);
-    expect(requestProviderRuntimeChecks).toHaveBeenCalledWith({ force: true });
+    expect(storeState.bootstrapCliStatus).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       root.unmount();
@@ -640,6 +652,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(host.textContent).toContain('Checking providers...');
     expect(host.textContent).toContain('Checking...');
     expect(host.textContent).not.toContain('Providers: 0/3 connected');
@@ -694,6 +708,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('Anthropic');
     expect(host.textContent).toContain('Connected via');
@@ -781,6 +797,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('OpenCode');
     expect(host.textContent).toContain('Providers: 3/3 connected');
@@ -871,6 +889,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(host.textContent).toContain('Providers: 3/3 connected');
     expect(host.textContent).toContain('ChatGPT account ready');
     expect(host.textContent).toContain('Loading models...');
@@ -920,6 +940,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('OpenCode (200+ models)');
     expect(host.textContent).toContain('Install');
@@ -980,6 +1002,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('Codex');
     expect(host.textContent).toContain('Install');
@@ -1054,6 +1078,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(host.textContent).toContain('Downloading 42%');
     const progressButton = Array.from(host.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === 'Downloading 42%'
@@ -1114,6 +1140,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(host.textContent).toContain('Connected via opencode managed');
     expect(host.textContent).not.toContain('Retry install');
     const retryButton = Array.from(host.querySelectorAll('button')).find(
@@ -1166,6 +1194,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     const providerFreeBadge = host.querySelector('[title*="Big Pickle"]');
     expect(providerFreeBadge?.textContent).toBe('Free models');
@@ -1261,6 +1291,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(host.textContent).toContain('Free models');
     expect(host.textContent).toContain('1 configured local');
     expect(host.textContent).toContain('1 verified');
@@ -1318,6 +1350,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('Loading models...');
     expect(host.textContent).not.toContain('big-pickle');
@@ -1410,6 +1444,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('big-pickle');
     expect(host.textContent).toContain('GPT-5.4');
@@ -1537,6 +1573,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(providerRuntimeSettingsDialogProps).toBeNull();
 
     const manageButton = Array.from(host.querySelectorAll('button')).find(
@@ -1630,6 +1668,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(host.textContent).toContain('Checking...');
     expect(host.textContent).not.toContain('Connect Anthropic');
 
@@ -1682,6 +1722,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await flushLazyImports();
     });
+
+    await expandProviderBanner(host);
 
     const connectButton = Array.from(host.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Connect Anthropic')
@@ -1756,6 +1798,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('5h left');
     expect(host.textContent).toContain('Weekly left');
@@ -2594,6 +2638,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(host.textContent).toContain('5.4');
     expect(host.textContent).toContain('5.1-codex-max');
     expect(host.textContent).not.toContain('5.2-codex');
@@ -2635,6 +2681,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('Ready');
     expect(host.textContent).toContain('Current runtime: Codex native');
@@ -2753,6 +2801,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(host.textContent).toContain('Providers: 1/1 connected');
     expect(host.textContent).toContain('ChatGPT account ready');
     expect(host.textContent).not.toContain(
@@ -2832,6 +2882,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('5h left');
     expect(host.textContent).toContain('Weekly left');
@@ -3002,6 +3054,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(host.textContent).toContain('Providers: 1/3 connected');
     expect(host.textContent).toContain('5h left');
     expect(host.textContent).toContain('1w left');
@@ -3053,6 +3107,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('Checking...');
     expect(host.textContent).not.toContain(
@@ -3130,6 +3186,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('Checking...');
     expect(host.textContent).not.toContain(
@@ -3226,6 +3284,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain('Codex CLI reports no active ChatGPT login');
     expect(host.textContent).toContain('Selected auth: ChatGPT account');
@@ -3331,6 +3391,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     expect(host.textContent).toContain(
       'Codex has a locally selected ChatGPT account, but the current session needs reconnect.'
@@ -3441,6 +3503,8 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
+    await expandProviderBanner(host);
+
     expect(host.textContent).toContain(
       'Detected from OPENAI_API_KEY - Auto will use this until ChatGPT is connected'
     );
@@ -3514,6 +3578,8 @@ describe('CLI status visibility during completed install state', () => {
       root.render(React.createElement(CliStatusBanner));
       await Promise.resolve();
     });
+
+    await expandProviderBanner(host);
 
     const refreshButton = host.querySelector('[title="Re-check Codex"]');
     expect(refreshButton).not.toBeNull();
