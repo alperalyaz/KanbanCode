@@ -300,12 +300,6 @@ interface TeamDetailViewProps {
   isPaneFocused?: boolean;
 }
 
-// Safety net for the lead-orchestration gap: if a task is assigned to a teammate
-// but sits pending (not picked up) past this window, auto-nudge the LEAD once so
-// it re-triggers the teammate — the human should not have to poke the lead.
-const STALE_ASSIGNED_TASK_NUDGE_MS = 90_000;
-const STALE_ASSIGNED_TASK_NUDGE_CHECK_MS = 20_000;
-
 // Teams auto-launched this app session. Ensures the open-a-team auto-start fires
 // at most once per team per session, so it never loops and never fights a manual
 // stop (once stopped, we've already spent the single auto-launch).
@@ -1935,44 +1929,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     }).catch(() => undefined);
   }, [isThisTabActive, data, isTeamProvisioning, teamName, launchParams, launchTeam]);
 
-  // Auto-nudge the lead when a teammate-assigned task sits pending too long, so
-  // the human never has to manually poke the lead about an idle teammate.
-  const nudgedStaleTaskIdsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!data?.isAlive) return;
-    const tasks = data.tasks;
-    const leadName = membersWithLiveBranches.find((m) => isLeadMember(m))?.name;
-    if (!leadName) return;
-    const checkStaleAssignedTasks = (): void => {
-      const now = Date.now();
-      for (const task of tasks) {
-        if (task.status !== 'pending') continue;
-        const owner = task.owner?.trim();
-        if (!owner || isLeadMember({ name: owner })) continue;
-        if (nudgedStaleTaskIdsRef.current.has(task.id)) continue;
-        const stampedAt = task.updatedAt ? Date.parse(task.updatedAt) : NaN;
-        if (!Number.isFinite(stampedAt) || now - stampedAt < STALE_ASSIGNED_TASK_NUDGE_MS) {
-          continue;
-        }
-        nudgedStaleTaskIdsRef.current.add(task.id);
-        void useStore
-          .getState()
-          .sendTeamMessage(teamName, {
-            member: leadName,
-            text: t('detail.staleTaskNudge.text', {
-              taskId: task.displayId,
-              subject: task.subject,
-              owner,
-            }),
-            summary: t('detail.staleTaskNudge.summary'),
-          })
-          .catch(() => undefined);
-      }
-    };
-    checkStaleAssignedTasks();
-    const interval = setInterval(checkStaleAssignedTasks, STALE_ASSIGNED_TASK_NUDGE_CHECK_MS);
-    return () => clearInterval(interval);
-  }, [data?.isAlive, data?.tasks, membersWithLiveBranches, teamName, t]);
 
   useEffect(() => {
     if (taskDetailDialogPreloadScheduledRef.current) {
