@@ -25,6 +25,8 @@ import { useTeamMessagesExpanded } from '@renderer/hooks/useTeamMessagesExpanded
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStore } from '@renderer/store';
 import { selectTeamMessages } from '@renderer/store/slices/teamSlice';
+import { getSanitizedInboxMessageText } from '@renderer/utils/bootstrapPromptSanitizer';
+import { displayMemberName } from '@renderer/utils/memberHelpers';
 import { shouldClearPendingReplyForOpenCodeRuntimeDelivery } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
@@ -37,6 +39,7 @@ import {
 } from '@shared/utils/teamAutomationMessages';
 import {
   CheckCheck,
+  ClipboardCopy,
   ChevronsDownUp,
   ChevronsUpDown,
   Dock,
@@ -870,6 +873,22 @@ export const MessagesPanel = memo(function MessagesPanel({
     markAllRead(keys);
   }, [filteredMessages, readSet, markAllRead]);
 
+  // Copy the whole visible conversation as plain text so the user can paste it
+  // elsewhere (there was no way to export the message stream before).
+  const handleCopyConversation = useCallback(() => {
+    const lines = activityTimelineMessages.map((m) => {
+      const time = new Date(m.timestamp).toLocaleString();
+      const from = displayMemberName(m.from ?? '');
+      const to = m.to ? ` → ${displayMemberName(m.to)}` : '';
+      const text = getSanitizedInboxMessageText(m).replace(/[ \t]+\n/g, '\n').trim();
+      return `[${time}] ${from}${to}:\n${text}`;
+    });
+    const payload = lines.join('\n\n');
+    void navigator.clipboard.writeText(payload).catch((error: unknown) => {
+      console.error('[MessagesPanel] copy conversation failed', error);
+    });
+  }, [activityTimelineMessages]);
+
   // Auto-clear pending replies when a member actually responds
   useEffect(() => {
     if (!hasTrackedPendingReplies) return;
@@ -1103,6 +1122,10 @@ export const MessagesPanel = memo(function MessagesPanel({
           <TooltipContent side="top">{t('messages.panelMode')}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end" side="top" className="w-48">
+          <DropdownMenuItem onSelect={handleCopyConversation}>
+            <ClipboardCopy size={14} className="shrink-0" />
+            <span>{t('messages.actions.copyConversation')}</span>
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={moveToInline}>
             <PanelBottom size={14} className="shrink-0" />
             <span>{t('messages.actions.moveToInline')}</span>
@@ -1384,6 +1407,10 @@ export const MessagesPanel = memo(function MessagesPanel({
                       : t('messages.actions.searchMessages')}
                   </span>
                 </DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleCopyConversation}>
+                  <ClipboardCopy size={14} className="shrink-0" />
+                  <span>{t('messages.actions.copyConversation')}</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={moveToInline}>
                   <PanelLeftClose size={14} className="shrink-0" />
                   <span>{t('messages.actions.moveToInline')}</span>
@@ -1562,6 +1589,10 @@ export const MessagesPanel = memo(function MessagesPanel({
                             ? t('messages.actions.hideSearch')
                             : t('messages.actions.searchMessages')}
                         </span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={handleCopyConversation}>
+                        <ClipboardCopy size={14} className="shrink-0" />
+                        <span>{t('messages.actions.copyConversation')}</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={toggleBottomSheetExpansion}>
                         {isBottomSheetCollapsed ? (
