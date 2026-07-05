@@ -326,6 +326,10 @@
       "task": "Task",
       "usage": "Usage"
     },
+    "staleTaskNudge": {
+      "text": "#{{taskId}} ({{subject}}) was assigned to {{owner}} but still hasn't started. Please start the task and re-trigger {{owner}}.",
+      "summary": "Assigned task not started"
+    },
     "deleteTeam": {
       "description": "Delete team \"{{team}}\"? This action is irreversible. All team data and tasks will be deleted.",
       "title": "Delete team"

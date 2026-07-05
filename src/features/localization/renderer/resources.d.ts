@@ -3324,6 +3324,10 @@ export default interface Resources {
         "team": "Team"
       },
       "solo": "Solo",
+      "staleTaskNudge": {
+        "summary": "Assigned task not started",
+        "text": "#{{taskId}} ({{subject}}) was assigned to {{owner}} but still hasn't started. Please start the task and re-trigger {{owner}}."
+      },
       "status": {
         "active": "Active",
         "launching": "Launching...",

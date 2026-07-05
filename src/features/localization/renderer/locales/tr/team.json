@@ -326,6 +326,10 @@
       "task": "Görev",
       "usage": "Kullanım"
     },
+    "staleTaskNudge": {
+      "text": "#{{taskId}} ({{subject}}) {{owner}} üyesine atandı ama hâlâ başlamadı. Lütfen görevi başlat ve {{owner}} üyesini tekrar tetikle.",
+      "summary": "Atanan görev başlamadı"
+    },
     "deleteTeam": {
       "description": "\"{{team}}\" ekibi silinsin mi? Bu işlem geri alınamaz. Tüm ekip verileri ve görevler silinecek.",
       "title": "Ekibi sil"
