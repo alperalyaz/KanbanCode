@@ -38,9 +38,13 @@ import type {
  * untouched — this transform is display-only.
  */
 export function displayMemberName(name: string): string {
-  return name === 'team-lead' || name === 'lead'
-    ? appI18n.t('team:members.leadModel.leadShort')
-    : name;
+  if (name === 'team-lead' || name === 'lead') {
+    return appI18n.t('team:members.leadModel.leadShort');
+  }
+  if (name === 'user') {
+    return appI18n.t('team:members.leadModel.userLabel');
+  }
+  return name;
 }
 
 function hashStringToIndex(str: string): number {

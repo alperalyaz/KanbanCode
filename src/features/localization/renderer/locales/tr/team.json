@@ -1669,6 +1669,7 @@
       "defaultModel": "Varsayılan",
       "providerModelAria": "{{provider}} sağlayıcısı, {{model}}",
       "leadShort": "Lider",
+      "userLabel": "İnsan Kullanıcı",
       "teamLead": "Ekip Lideri",
       "syncWithTeammates": "Modeli takım arkadaşlarıyla senkronize et",
       "anthropicTeamWide": "Anthropic ekip geneli",

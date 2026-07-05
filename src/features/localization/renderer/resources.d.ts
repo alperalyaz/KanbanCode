@@ -3853,7 +3853,8 @@ export default interface Resources {
         "providerModelAria": "{{provider}} provider, {{model}}",
         "runtimeInheritance": "Lead runtime applies to teammates unless they set their own provider or model.",
         "syncWithTeammates": "Sync model with teammates",
-        "teamLead": "Team Lead"
+        "teamLead": "Team Lead",
+        "userLabel": "Human user"
       },
       "list": {
         "loading": "Loading team members",
