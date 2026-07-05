@@ -292,10 +292,27 @@ const MessagesTimelineSection = memo(function MessagesTimelineSection({
   onExpandItem,
   onExpandContent,
   viewport,
+  bottomAnchored,
 }: MessagesTimelineSectionProps): React.JSX.Element {
   const { t } = useAppTranslation('team');
+  const loadOlderButton = hasMore ? (
+    <div className="flex justify-center py-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-xs text-text-muted"
+        aria-busy={loadingOlderMessages}
+        disabled={loadingOlderMessages}
+        onClick={onLoadOlderMessages}
+      >
+        {t('messages.actions.loadOlder')}
+      </Button>
+    </div>
+  ) : null;
   return (
     <>
+      {/* In chat order, "load older" belongs at the top (above the oldest message). */}
+      {bottomAnchored ? loadOlderButton : null}
       <ActivityTimeline
         messages={messages}
         loading={loading}
@@ -323,21 +340,9 @@ const MessagesTimelineSection = memo(function MessagesTimelineSection({
         onExpandItem={onExpandItem}
         onExpandContent={onExpandContent}
         viewport={viewport}
+        bottomAnchored={bottomAnchored}
       />
-      {hasMore && (
-        <div className="flex justify-center py-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-text-muted"
-            aria-busy={loadingOlderMessages}
-            disabled={loadingOlderMessages}
-            onClick={onLoadOlderMessages}
-          >
-            {t('messages.actions.loadOlder')}
-          </Button>
-        </div>
-      )}
+      {bottomAnchored ? null : loadOlderButton}
       <MessageExpandDialog
         expandedItem={expandedItem}
         open={expandedItemKey !== null}
@@ -643,13 +648,6 @@ export const MessagesPanel = memo(function MessagesPanel({
   ]);
 
   useLayoutEffect(() => {
-    if (position !== 'sidebar') return;
-    const el = sidebarScrollRef.current;
-    if (!el) return;
-    el.scrollTop = messagesScrollTop;
-  }, [position, messagesScrollTop]);
-
-  useLayoutEffect(() => {
     if (position !== 'bottom-sheet' || typeof ResizeObserver === 'undefined') return;
 
     const mountPointElement = mountPoint instanceof HTMLElement ? mountPoint : null;
@@ -710,6 +708,33 @@ export const MessagesPanel = memo(function MessagesPanel({
       searchQuery: messagesSearchQuery,
     });
   }, [effectiveMessages, leadNames, messagesFilter, messagesSearchQuery, timeWindow]);
+
+  // Chat-order auto-scroll for the sidebar: jump to the newest message (bottom)
+  // when opening a team, and follow new messages while the user is near the
+  // bottom. If they scrolled up to read history, don't yank them down.
+  const chatInitialBottomTeamRef = useRef<string | null>(null);
+  const chatPrevMessageCountRef = useRef(0);
+  useLayoutEffect(() => {
+    if (position !== 'sidebar') return;
+    const el = sidebarScrollRef.current;
+    if (!el) return;
+    const count = activityTimelineMessages.length;
+    const prevCount = chatPrevMessageCountRef.current;
+    chatPrevMessageCountRef.current = count;
+
+    if (chatInitialBottomTeamRef.current !== teamName && count > 0) {
+      chatInitialBottomTeamRef.current = teamName;
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    if (count > prevCount) {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distanceFromBottom < 160) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+  }, [position, teamName, activityTimelineMessages.length]);
+
   const firstTimelineMessage = activityTimelineMessages[0];
   const hasVisibleCurrentLeadThought =
     firstTimelineMessage != null &&
@@ -1239,6 +1264,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       onExpandItem={handleExpandItem}
       onExpandContent={handleExpandContent}
       viewport={activityTimelineViewport}
+      bottomAnchored={position === 'sidebar'}
       hasMore={hasMore}
       loadingOlderMessages={loadingOlderMessages}
       onLoadOlderMessages={handleLoadOlderMessagesClick}
@@ -1433,18 +1459,21 @@ export const MessagesPanel = memo(function MessagesPanel({
             {renderSearchAndFilterControls()}
           </div>
         )}
-        {/* Pinned composer — stays visible while the message stream scrolls below */}
-        <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-3 pb-2 pt-2">
-          {renderDefaultComposerSection()}
+        {/* Pinned status (in-progress work) above the chat stream */}
+        <div className="max-h-[38%] shrink-0 overflow-y-auto px-3 pt-2">
+          {renderSidebarStatusSection()}
         </div>
-        {/* Scrollable content */}
+        {/* Chat stream: oldest at top, newest at the bottom, scrolls up for history */}
         <div
           ref={sidebarScrollRef}
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-14 pr-3 pt-2"
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-3 pr-3 pt-2"
           onScroll={handleSidebarScroll}
         >
-          <div className="pl-3">{renderSidebarStatusSection()}</div>
           {renderTimelineSection()}
+        </div>
+        {/* Composer pinned at the bottom, chat-style */}
+        <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-3 pb-2 pt-2">
+          {renderDefaultComposerSection()}
         </div>
       </div>
     );

@@ -141,6 +141,13 @@ interface ActivityTimelineProps {
    * page viewport.
    */
   viewport?: TimelineViewport;
+  /**
+   * Chat-natural ordering: render newest at the BOTTOM (oldest at top) so the
+   * stream reads like a normal chat. Forces the non-virtualized direct render
+   * path (the virtualizer's absolute positioning is incompatible with the
+   * `flex-col-reverse` used to flip the newest-first row list).
+   */
+  bottomAnchored?: boolean;
 }
 
 const VIEWPORT_THRESHOLD = 0.15;
@@ -471,6 +478,7 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
   onExpandContent,
   loading = false,
   viewport,
+  bottomAnchored = false,
 }: ActivityTimelineProps): React.JSX.Element {
   const { t } = useAppTranslation('team');
   const observerRoot = viewport?.observerRoot ?? viewport?.scrollElementRef;
@@ -692,6 +700,7 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
   // the threshold the direct render path is both simpler and faster, so we
   // keep it for short lists.
   const shouldVirtualize =
+    !bottomAnchored &&
     viewport?.virtualizationEnabled === true &&
     viewport.scrollElementRef != null &&
     renderRows.length >= (viewport.virtualizationRowThreshold ?? VIRTUALIZATION_ROW_THRESHOLD);
@@ -919,7 +928,10 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
   }
 
   return (
-    <div ref={rootRef} className="space-y-1">
+    <div
+      ref={rootRef}
+      className={bottomAnchored ? 'flex flex-col-reverse space-y-1 space-y-reverse' : 'space-y-1'}
+    >
       {shouldVirtualize ? (
         <div
           style={{
