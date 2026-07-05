@@ -255,12 +255,13 @@ export const MessageComposer = ({
   const targetDisplayName = selectedTarget?.displayName ?? selectedTeam;
   const crossTeamHintText = isCrossTeam ? t('messageComposer.crossTeam.hint') : undefined;
 
-  // Members load async with team data; keep recipient stable if valid, otherwise default to lead/first.
+  // Everything flows through the lead: force the recipient to the lead and
+  // reset any stale non-lead recipient (e.g. a persisted draft target).
   useEffect(() => {
-    if (recipient && members.some((m) => m.name === recipient)) {
+    const lead = members.find((m) => isLeadMember(m));
+    if (lead && recipient === lead.name) {
       return;
     }
-    const lead = members.find((m) => isLeadMember(m));
     const next = lead?.name ?? members[0]?.name ?? '';
     if (next && next !== recipient) {
       queueMicrotask(() => setRecipient(next));
@@ -1171,9 +1172,15 @@ export const MessageComposer = ({
                     {/* eslint-disable-next-line sonarjs/function-return-type -- IIFE rendering mixed elements/null */}
                     {(() => {
                       const query = recipientSearch.toLowerCase().trim();
+                      // Everything flows through the lead: the human may only
+                      // message the team lead, never a teammate directly (that
+                      // would bypass the lead's orchestration). Fall back to the
+                      // full roster only if no lead is resolvable.
+                      const leadOnly = members.filter((m) => isLeadMember(m));
+                      const recipientPool = leadOnly.length > 0 ? leadOnly : members;
                       const filtered = query
-                        ? members.filter((m) => m.name.toLowerCase().includes(query))
-                        : members;
+                        ? recipientPool.filter((m) => m.name.toLowerCase().includes(query))
+                        : recipientPool;
                       if (filtered.length === 0) {
                         return (
                           <div className="px-2 py-3 text-center text-xs text-[var(--color-text-muted)]">
