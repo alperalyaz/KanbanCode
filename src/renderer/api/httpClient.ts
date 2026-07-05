@@ -882,6 +882,9 @@ export class HttpAPIClient implements ElectronAPI {
     stop: async (): Promise<void> => {
       throw new Error('Team stop is not available in browser mode');
     },
+    stopAll: async (): Promise<void> => {
+      throw new Error('Team stopAll is not available in browser mode');
+    },
     createConfig: async (): Promise<void> => {
       throw new Error('Team config creation is not available in browser mode');
     },

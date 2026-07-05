@@ -86,6 +86,7 @@ import {
   TEAM_START_TASK,
   TEAM_START_TASK_BY_USER,
   TEAM_STOP,
+  TEAM_STOP_ALL,
   TEAM_TOOL_APPROVAL_READ_FILE,
   TEAM_TOOL_APPROVAL_RESPOND,
   TEAM_TOOL_APPROVAL_SETTINGS,
@@ -805,6 +806,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_PROCESS_ALIVE, handleProcessAlive);
   ipcMain.handle(TEAM_ALIVE_LIST, handleAliveList);
   ipcMain.handle(TEAM_STOP, handleStopTeam);
+  ipcMain.handle(TEAM_STOP_ALL, handleStopAllTeams);
   ipcMain.handle(TEAM_CREATE_CONFIG, handleCreateConfig);
   ipcMain.handle(TEAM_GET_MEMBER_LOGS, handleGetMemberLogs);
   ipcMain.handle(TEAM_GET_LOGS_FOR_TASK, handleGetLogsForTask);
@@ -894,6 +896,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_PROCESS_ALIVE);
   ipcMain.removeHandler(TEAM_ALIVE_LIST);
   ipcMain.removeHandler(TEAM_STOP);
+  ipcMain.removeHandler(TEAM_STOP_ALL);
   ipcMain.removeHandler(TEAM_CREATE_CONFIG);
   ipcMain.removeHandler(TEAM_GET_MEMBER_LOGS);
   ipcMain.removeHandler(TEAM_GET_LOGS_FOR_TASK);
@@ -4439,6 +4442,13 @@ async function handleStopTeam(
     addMainBreadcrumb('team', 'stop', { teamName: validated.value! });
     getAutoResumeService().cancelPendingAutoResume(validated.value!);
     await getTeamProvisioningService().stopTeam(validated.value!);
+  });
+}
+
+async function handleStopAllTeams(_event: IpcMainInvokeEvent): Promise<IpcResult<void>> {
+  return wrapTeamHandler('stopAll', async () => {
+    addMainBreadcrumb('team', 'stopAll', {});
+    await getTeamProvisioningService().stopAllTeams();
   });
 }
 

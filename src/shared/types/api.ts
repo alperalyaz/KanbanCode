@@ -458,6 +458,7 @@ export interface TeamsAPI {
   processAlive: (teamName: string) => Promise<boolean>;
   aliveList: () => Promise<string[]>;
   stop: (teamName: string) => Promise<void>;
+  stopAll: () => Promise<void>;
   createConfig: (request: TeamCreateConfigRequest) => Promise<void>;
   getMemberLogs: (teamName: string, memberName: string) => Promise<MemberLogSummary[]>;
   getLogsForTask: (

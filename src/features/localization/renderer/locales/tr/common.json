@@ -745,6 +745,9 @@
     "restartNow": "Şimdi yeniden başlat"
   },
   "layout": {
+    "safeStopAll": "Tüm ekipleri güvenli durdur",
+    "safeStopAllTooltip": "Kapatmadan önce çalışan tüm ekipleri ve süreçleri güvenli şekilde durdurur",
+    "safeStopAllInProgress": "Ekipler durduruluyor...",
     "expandSidebar": "Kenar çubuğunu genişlet",
     "collapseSidebarShortcut": "Kenar çubuğunu daralt ({{shortcut}})",
     "sidebarView": "Kenar çubuğu görünümü",

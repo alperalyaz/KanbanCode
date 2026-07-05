@@ -153,6 +153,7 @@ import {
   TEAM_START_TASK,
   TEAM_START_TASK_BY_USER,
   TEAM_STOP,
+  TEAM_STOP_ALL,
   TEAM_TOOL_APPROVAL_EVENT,
   TEAM_TOOL_APPROVAL_READ_FILE,
   TEAM_TOOL_APPROVAL_RESPOND,
@@ -967,6 +968,9 @@ const electronAPI: ElectronAPI = {
     },
     stop: async (teamName: string) => {
       return invokeIpcWithResult<void>(TEAM_STOP, teamName);
+    },
+    stopAll: async () => {
+      return invokeIpcWithResult<void>(TEAM_STOP_ALL);
     },
     createConfig: async (request: TeamCreateConfigRequest) => {
       return invokeIpcWithResult<void>(TEAM_CREATE_CONFIG, request);

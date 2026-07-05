@@ -281,6 +281,9 @@ export default interface Resources {
       "refreshSession": "Refresh session",
       "refreshSessionWithShortcut": "Refresh Session ({{shortcut}})",
       "resizeSidebar": "Resize sidebar",
+      "safeStopAll": "Safely stop all teams",
+      "safeStopAllInProgress": "Stopping teams...",
+      "safeStopAllTooltip": "Gracefully stops every running team and process before you close the app",
       "sections": {
         "claudeLogs": "Logs",
         "kanban": "Kanban",

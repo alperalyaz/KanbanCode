@@ -311,6 +311,8 @@ export const TEAM_RESTORE_TASK = 'team:restoreTask';
 /** Get list of teams with live CLI processes */
 export const TEAM_ALIVE_LIST = 'team:aliveList';
 export const TEAM_STOP = 'team:stop';
+/** Gracefully stop every running team (user-triggered safe stop) */
+export const TEAM_STOP_ALL = 'team:stopAll';
 
 /** Create team config without provisioning CLI */
 export const TEAM_CREATE_CONFIG = 'team:createConfig';

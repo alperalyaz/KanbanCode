@@ -4,12 +4,13 @@
  * Reads focused pane data from root store selectors (auto-synced via syncRootState).
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
+import { api } from '@renderer/api';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
-import { Bell, PanelRight } from 'lucide-react';
+import { Bell, PanelRight, PowerOff } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { MoreMenu } from './MoreMenu';
@@ -24,6 +25,7 @@ export const TabBarActions = (): React.JSX.Element => {
     tabSessionData,
     sidebarCollapsed,
     toggleSidebar,
+    leadActivityByTeam,
   } = useStore(
     useShallow((s) => ({
       unreadCount: s.unreadCount,
@@ -33,12 +35,32 @@ export const TabBarActions = (): React.JSX.Element => {
       tabSessionData: s.tabSessionData,
       sidebarCollapsed: s.sidebarCollapsed,
       toggleSidebar: s.toggleSidebar,
+      leadActivityByTeam: s.leadActivityByTeam,
     }))
   );
 
   // Hover states for buttons
   const [notificationsHover, setNotificationsHover] = useState(false);
   const [expandHover, setExpandHover] = useState(false);
+  const [safeStopHover, setSafeStopHover] = useState(false);
+  const [stoppingAll, setStoppingAll] = useState(false);
+
+  // Any team that is not offline is considered running and worth a safe stop.
+  const hasRunningTeams = useMemo(
+    () => Object.values(leadActivityByTeam).some((state) => state && state !== 'offline'),
+    [leadActivityByTeam]
+  );
+
+  const handleSafeStopAll = useCallback(async (): Promise<void> => {
+    setStoppingAll(true);
+    try {
+      await api.teams.stopAll();
+    } catch (error) {
+      console.error('[TabBarActions] Safe stop all failed', error);
+    } finally {
+      setStoppingAll(false);
+    }
+  }, []);
 
   // Derive active tab and session detail for MoreMenu
   const activeTab = useMemo(
@@ -54,6 +76,31 @@ export const TabBarActions = (): React.JSX.Element => {
       className="ml-2 flex shrink-0 items-center gap-1"
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
+      {/* Safe stop — gracefully stop all running teams before closing */}
+      {(hasRunningTeams || stoppingAll) && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => void handleSafeStopAll()}
+              onMouseEnter={() => setSafeStopHover(true)}
+              onMouseLeave={() => setSafeStopHover(false)}
+              disabled={stoppingAll}
+              className="relative rounded-md p-2 transition-colors disabled:opacity-60"
+              style={{
+                color: safeStopHover ? '#f87171' : 'var(--color-text-muted)',
+                backgroundColor: safeStopHover ? 'rgba(248,113,113,0.12)' : 'transparent',
+              }}
+              aria-label={t('layout.safeStopAll')}
+            >
+              <PowerOff className={`size-4 ${stoppingAll ? 'animate-pulse' : ''}`} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {stoppingAll ? t('layout.safeStopAllInProgress') : t('layout.safeStopAllTooltip')}
+          </TooltipContent>
+        </Tooltip>
+      )}
+
       {/* Notifications bell icon */}
       <Tooltip>
         <TooltipTrigger asChild>

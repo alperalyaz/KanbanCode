@@ -745,6 +745,9 @@
     "restartNow": "Restart now"
   },
   "layout": {
+    "safeStopAll": "Safely stop all teams",
+    "safeStopAllTooltip": "Gracefully stops every running team and process before you close the app",
+    "safeStopAllInProgress": "Stopping teams...",
     "expandSidebar": "Expand sidebar",
     "collapseSidebarShortcut": "Collapse sidebar ({{shortcut}})",
     "sidebarView": "Sidebar view",
