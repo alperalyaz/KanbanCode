@@ -17,6 +17,10 @@ export interface TeamProvisioningPanelProps {
   defaultLogsOpen?: boolean;
 }
 
+// After launch completes, keep the success banner up briefly so the user can
+// see it finished, then auto-dismiss it instead of forcing a manual close.
+const PROVISIONING_AUTO_DISMISS_DELAY_MS = 3500;
+
 function formatOpenCodeSecondaryRetryResult(
   result: RetryFailedOpenCodeSecondaryLanesResult
 ): string {
@@ -64,6 +68,27 @@ export const TeamProvisioningPanel = memo(function TeamProvisioningPanel({
     setOpenCodeRetryMessage(null);
     setOpenCodeRetryError(null);
   }, [runInstanceKey]);
+
+  const isReady = presentation?.isReady ?? false;
+  const hasPresentation = presentation != null;
+
+  // Auto-dismiss the success banner shortly after launch completes so the user
+  // doesn't have to click X every time.
+  useEffect(() => {
+    if (!dismissible || !isReady) {
+      return;
+    }
+    const timer = setTimeout(() => setDismissed(true), PROVISIONING_AUTO_DISMISS_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [dismissible, isReady]);
+
+  // If the team leaves the completed stage (e.g. a new member is added and
+  // provisioning restarts), bring the banner back even if it was dismissed.
+  useEffect(() => {
+    if (hasPresentation && !isReady) {
+      setDismissed(false);
+    }
+  }, [hasPresentation, isReady]);
 
   if (!presentation || dismissed) {
     return null;
