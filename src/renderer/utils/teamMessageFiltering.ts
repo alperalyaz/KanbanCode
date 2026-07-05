@@ -186,6 +186,13 @@ export function filterTeamMessages(
     includePassiveIdlePeerSummariesWhenNoiseHidden?: boolean;
     includeAutomationEvents?: boolean;
     includeMemberWorkSyncNudges?: boolean;
+    /**
+     * When true, only the lead (or the user themselves) may address the human
+     * user. Teammate→user direct messages are hidden so the human deals
+     * exclusively with the lead — a teammate messaging the user directly is
+     * like an employee knocking on the CEO's door over their manager's head.
+     */
+    restrictUserInboundToLead?: boolean;
     leadNames?: Iterable<string>;
     timeWindow?: { start: number; end: number } | null;
     filter: TeamMessagesFilter;
@@ -196,6 +203,7 @@ export function filterTeamMessages(
     includePassiveIdlePeerSummariesWhenNoiseHidden = false,
     includeAutomationEvents = false,
     includeMemberWorkSyncNudges = false,
+    restrictUserInboundToLead = false,
     leadNames: rawLeadNames,
     timeWindow,
     filter,
@@ -218,6 +226,14 @@ export function filterTeamMessages(
       data.isInternalControlEnvelope
     ) {
       continue;
+    }
+
+    if (restrictUserInboundToLead && data.normalizedTo === 'user') {
+      const fromUser = data.normalizedFrom === 'user';
+      const fromLead = isLeadParticipant(message.from, leadNames);
+      if (!fromUser && !fromLead) {
+        continue;
+      }
     }
 
     if (timeWindow) {

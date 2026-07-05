@@ -535,6 +535,7 @@ After member_briefing succeeds:
 ${indentMultiline(buildMemberReviewFlowReminder(), '  ')}
 - Beyond task-completion pings, direct messages to your team lead are only for urgent attention, no-task situations, or when the lead explicitly asked for a direct reply.
 - If a task-scoped update is already recorded in a task comment, do NOT send a duplicate SendMessage to the lead with the same content unless you need urgent non-task attention. When skipping a message, stay silent — never output meta-commentary about skipped or already-delivered messages.
+- NEVER SendMessage the human user directly (do not use to="user"). The human deals ONLY with the team lead. Anything the user needs to know — results, questions, blockers — you report to the lead "${leadName}", and the lead decides what to relay to the human. Going straight to the user over the lead's head is like an employee knocking on the CEO's door instead of telling their manager. The only correct recipient for your messages is the lead (or another teammate for coordination), never the user.
 ${buildTeammateAgentBlockReminder()}
 ${actionModeProtocol}`;
 }

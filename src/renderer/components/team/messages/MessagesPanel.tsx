@@ -689,6 +689,7 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   const filteredMessages = useMemo(() => {
     return filterTeamMessages(effectiveMessages, {
+      restrictUserInboundToLead: true,
       leadNames,
       timeWindow,
       filter: messagesFilter,
@@ -699,6 +700,7 @@ export const MessagesPanel = memo(function MessagesPanel({
   const activityTimelineMessages = useMemo(() => {
     return filterTeamMessages(effectiveMessages, {
       includeAutomationEvents: true,
+      restrictUserInboundToLead: true,
       leadNames,
       timeWindow,
       filter: messagesFilter,
