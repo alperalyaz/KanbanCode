@@ -18,5 +18,13 @@ export function getConfiguredAgentLanguageName(): string {
 
 export function getAgentLanguageInstruction(): string {
   const languageName = getConfiguredAgentLanguageName();
-  return `IMPORTANT: Communicate in ${languageName}. All messages, summaries, and task descriptions MUST be in ${languageName}.`;
+  return (
+    `LANGUAGE POLICY (STRICT, applies to every turn): You MUST write ALL prose in ${languageName} — ` +
+    `every message to the user, every message to teammates or the lead, every status update, ` +
+    `summary, task subject, and task description. This includes technical explanations, plans, ` +
+    `and review notes: do NOT switch to English for technical or code-related content. ` +
+    `Only literal code, identifiers, file paths, and tool/command names keep their original form; ` +
+    `the surrounding prose stays in ${languageName}. If you catch yourself writing in another ` +
+    `language, restate it in ${languageName}.`
+  );
 }
