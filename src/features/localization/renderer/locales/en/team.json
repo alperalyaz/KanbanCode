@@ -1755,6 +1755,10 @@
       "assembling": "Members joining",
       "finalizing": "Finalizing"
     },
+    "stall": {
+      "waiting": "Waiting for model response for {{elapsed}} - logs can be delayed, this is still OK",
+      "waitingUnusual": "Still waiting for model response for {{elapsed}} - this is unusual"
+    },
     "providerStatus": {
       "status": {
         "checking": "checking...",

@@ -80,6 +80,36 @@ function translateProvisioning(
   });
 }
 
+const STALL_WAITING_PATTERN =
+  /^Waiting for model response for (.+) - logs can be delayed, this is still OK$/;
+const STALL_WAITING_UNUSUAL_PATTERN =
+  /^Still waiting for model response for (.+) - this is unusual$/;
+
+/**
+ * The provisioning watchdog emits English stall messages from the main process
+ * (they double as log lines). Translate the known patterns for display while
+ * preserving the dynamic elapsed value.
+ */
+function localizeProvisioningProgressMessage(message: string, t: unknown): string {
+  if (!message || !t) {
+    return message;
+  }
+
+  const waiting = STALL_WAITING_PATTERN.exec(message);
+  if (waiting) {
+    return translateProvisioning(t, 'provisioning.stall.waiting', message, { elapsed: waiting[1] });
+  }
+
+  const unusual = STALL_WAITING_UNUSUAL_PATTERN.exec(message);
+  if (unusual) {
+    return translateProvisioning(t, 'provisioning.stall.waitingUnusual', message, {
+      elapsed: unusual[1],
+    });
+  }
+
+  return message;
+}
+
 function parseStatusUpdatedAtMs(value: string | undefined): number | null {
   if (!value) {
     return null;
@@ -906,7 +936,7 @@ export function isProvisioningProgressActive(
 }
 
 export function buildTeamProvisioningPresentation({
-  progress,
+  progress: rawProgress,
   members,
   memberSpawnStatuses,
   memberSpawnSnapshot,
@@ -925,6 +955,9 @@ export function buildTeamProvisioningPresentation({
   memberRuntimeEntries?: TeamAgentRuntimeEntryCollection;
   t?: unknown;
 }): TeamProvisioningPresentation | null {
+  const progress: TeamProvisioningProgress | null | undefined = rawProgress
+    ? { ...rawProgress, message: localizeProvisioningProgressMessage(rawProgress.message, t) }
+    : rawProgress;
   if (!progress) {
     return null;
   }

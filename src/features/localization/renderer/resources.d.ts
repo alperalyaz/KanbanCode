@@ -3849,7 +3849,7 @@ export default interface Resources {
         "anthropicContextLimit": "The 200K context limit is team-wide for Anthropic runtimes in this launch, including custom Anthropic teammates.",
         "anthropicTeamWide": "Anthropic team-wide",
         "defaultModel": "Default",
-        "leadShort": "lead",
+        "leadShort": "Lead",
         "providerModelAria": "{{provider}} provider, {{model}}",
         "runtimeInheritance": "Lead runtime applies to teammates unless they set their own provider or model.",
         "syncWithTeammates": "Sync model with teammates",
@@ -4496,6 +4496,10 @@ export default interface Resources {
           "pending": "waiting",
           "ready": "OK"
         }
+      },
+      "stall": {
+        "waiting": "Waiting for model response for {{elapsed}} - logs can be delayed, this is still OK",
+        "waitingUnusual": "Still waiting for model response for {{elapsed}} - this is unusual"
       },
       "steps": {
         "assembling": "Members joining",

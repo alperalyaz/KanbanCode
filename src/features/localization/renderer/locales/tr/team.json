@@ -1754,6 +1754,10 @@
       "assembling": "Üyeler katılıyor",
       "finalizing": "Tamamlanıyor"
     },
+    "stall": {
+      "waiting": "Model yanıtı bekleniyor ({{elapsed}}) - günlükler gecikebilir, bu normal",
+      "waitingUnusual": "Model yanıtı hâlâ bekleniyor ({{elapsed}}) - bu sıra dışı"
+    },
     "providerStatus": {
       "status": {
         "checking": "kontrol ediliyor...",
