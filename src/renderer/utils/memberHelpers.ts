@@ -47,6 +47,50 @@ export function displayMemberName(name: string): string {
   return name;
 }
 
+/**
+ * ASCII slug of a member name: lowercase, non-alphanumeric runs collapsed to a
+ * single hyphen. Some runtimes/agents write recipient handles this way, which
+ * mangles non-ASCII names (e.g. "Köroğlu" → "k-ro-lu"). Used to match a
+ * possibly-slugified name back to a roster member.
+ */
+function slugifyMemberName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Resolves a possibly-mangled participant name to its canonical roster name.
+ * Matches exactly first, then by ASCII slug so a slugified handle like
+ * "k-ro-lu" is recovered as the real member name "Köroğlu". Returns the input
+ * unchanged when no roster member matches (e.g. lead aliases, "user").
+ */
+export function resolveCanonicalMemberName(
+  name: string,
+  members: readonly Pick<ResolvedTeamMember, 'name'>[]
+): string {
+  if (!name || members.length === 0) {
+    return name;
+  }
+  for (const member of members) {
+    if (member.name === name) {
+      return name;
+    }
+  }
+  const slug = slugifyMemberName(name);
+  if (!slug) {
+    return name;
+  }
+  for (const member of members) {
+    if (slugifyMemberName(member.name) === slug) {
+      return member.name;
+    }
+  }
+  return name;
+}
+
 function hashStringToIndex(str: string): number {
   let hash = 5381;
   for (let i = 0; i < str.length; i++) {

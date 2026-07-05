@@ -13,6 +13,7 @@ import {
   agentAvatarUrl,
   buildMemberAvatarMap,
   displayMemberName,
+  resolveCanonicalMemberName,
 } from '@renderer/utils/memberHelpers';
 
 import { MemberHoverCard } from './members/MemberHoverCard';
@@ -160,7 +161,19 @@ const MemberBadgeWithResolvedAvatar = memo((props: MemberBadgeContentProps): Rea
       : EMPTY_TEAM_MEMBERS
   );
   const avatarMap = useMemo(() => getCachedMemberAvatarMap(teamMembers), [teamMembers]);
-  return <MemberBadgeResolvedContent {...props} resolvedAvatarUrl={avatarMap.get(props.name)} />;
+  // Recover the canonical roster name when a slugified handle (e.g. "k-ro-lu")
+  // slipped into a message recipient/sender, so Turkish names render correctly.
+  const canonicalName = useMemo(
+    () => resolveCanonicalMemberName(props.name, teamMembers),
+    [props.name, teamMembers]
+  );
+  return (
+    <MemberBadgeResolvedContent
+      {...props}
+      name={canonicalName}
+      resolvedAvatarUrl={avatarMap.get(canonicalName) ?? avatarMap.get(props.name)}
+    />
+  );
 });
 
 MemberBadgeWithResolvedAvatar.displayName = 'MemberBadgeWithResolvedAvatar';
