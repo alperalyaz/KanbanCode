@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppTranslation } from '@features/localization/renderer';
 // import { MemberWorkSyncStatusPanel } from '@features/member-work-sync/renderer';
 import { Button } from '@renderer/components/ui/button';
-import { Dialog, DialogContent, DialogFooter, DialogHeader } from '@renderer/components/ui/dialog';
+import { Sheet, SheetContent, SheetFooter } from '@renderer/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs';
 import { useMemberStats } from '@renderer/hooks/useMemberStats';
 import { useStore } from '@renderer/store';
@@ -293,10 +293,15 @@ export const MemberDetailDialog = ({
   if (!member) return null;
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="min-w-0 sm:max-w-4xl">
-        <div className="flex items-start gap-4">
-          <DialogHeader className="shrink-0">
+    <Sheet open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <SheetContent
+        widthClassName="w-[600px] max-w-[94vw]"
+        className="min-w-0"
+        dismissOnOutsideInteraction={false}
+      >
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 pt-10">
+          <div className="flex items-start gap-4">
+            <div className="min-w-0 shrink-0 text-left">
             <MemberDetailHeader
               member={
                 member.currentTaskId && !displayableCurrentTask
@@ -329,7 +334,7 @@ export const MemberDetailDialog = ({
               }
               updatingRole={updatingRole}
             />
-          </DialogHeader>
+          </div>
 
           <MemberDetailStats
             totalTasks={memberTasks.length}
@@ -415,8 +420,9 @@ export const MemberDetailDialog = ({
             />
           </TabsContent>
         </Tabs>
+        </div>
 
-        <DialogFooter>
+        <SheetFooter>
           {restartError ? (
             <div className="mr-auto text-xs text-red-400">{restartError}</div>
           ) : effectiveLaunchErrorMessage ? (
@@ -506,8 +512,8 @@ export const MemberDetailDialog = ({
               )}
             </>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 };

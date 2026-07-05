@@ -30,14 +30,14 @@ vi.mock('@renderer/components/ui/button', () => ({
     ),
 }));
 
-vi.mock('@renderer/components/ui/dialog', () => ({
-  Dialog: ({ children }: { children: React.ReactNode }) =>
+vi.mock('@renderer/components/ui/sheet', () => ({
+  Sheet: ({ children }: { children: React.ReactNode }) =>
     React.createElement('div', null, children),
-  DialogContent: ({ children }: { children: React.ReactNode }) =>
+  SheetContent: ({ children }: { children: React.ReactNode }) =>
     React.createElement('div', null, children),
-  DialogFooter: ({ children }: { children: React.ReactNode }) =>
+  SheetFooter: ({ children }: { children: React.ReactNode }) =>
     React.createElement('div', null, children),
-  DialogHeader: ({ children }: { children: React.ReactNode }) =>
+  SheetHeader: ({ children }: { children: React.ReactNode }) =>
     React.createElement('div', null, children),
 }));
 

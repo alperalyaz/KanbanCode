@@ -31,12 +31,16 @@ import type {
 
 /**
  * UI display name for a team member.
- * "team-lead" → localized lead label ("Lider" / "Lead"); everything else
- * passes through unchanged. Data layer (store, IPC, backend) must keep the
- * original name untouched — this transform is display-only.
+ * The lead is referred to internally by two aliases — the canonical
+ * "team-lead" and the inbox/runtime alias "lead" — so both map to the
+ * localized lead label ("Lider" / "Lead"). Everything else passes through
+ * unchanged. Data layer (store, IPC, backend) must keep the original name
+ * untouched — this transform is display-only.
  */
 export function displayMemberName(name: string): string {
-  return name === 'team-lead' ? appI18n.t('team:members.leadModel.leadShort') : name;
+  return name === 'team-lead' || name === 'lead'
+    ? appI18n.t('team:members.leadModel.leadShort')
+    : name;
 }
 
 function hashStringToIndex(str: string): number {
