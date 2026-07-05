@@ -1287,6 +1287,11 @@ function applyDistinctProvisioningMemberColors<
 }
 const FS_MONITOR_POLL_MS = 2000;
 const TASK_WAIT_FALLBACK_MS = 15_000;
+// Delay before auto-retrying a teammate that hit a transient (auto-clearable)
+// spawn failure during launch. Long enough for the just-completed launch to
+// settle (bootstrap lock released, runtime evidence flushed) so the retry does
+// not race the finalize path.
+const TRANSIENT_TEAMMATE_AUTO_RETRY_DELAY_MS = 4_000;
 const STALL_CHECK_INTERVAL_MS = 10_000;
 const STALL_WARNING_THRESHOLD_MS = 20_000;
 const APP_TEAM_RUNTIME_DISALLOWED_TOOLS =
@@ -2146,6 +2151,12 @@ interface ProvisioningRun {
   memberSpawnToolUseIds: Map<string, string>;
   /** Explicit restart requests awaiting teammate rejoin or failure. */
   pendingMemberRestarts: Map<string, PendingMemberRestartContext>;
+  /**
+   * Members we have already auto-retried once after a transient launch spawn
+   * failure. Bounds the automatic recovery so a genuinely broken member is not
+   * retried in a loop.
+   */
+  autoRetriedTransientMembers?: Set<string>;
   /** Per-member latest processed lead-inbox bootstrap signal cursor for the current live run. */
   memberSpawnLeadInboxCursorByMember: Map<string, MemberSpawnInboxCursor>;
   /** Highest accepted deterministic bootstrap event sequence for this run. */
@@ -16521,6 +16532,66 @@ export class TeamProvisioningService {
     return this.runMemberLifecycleOperation(teamName, memberName, 'manual_restart', () =>
       this.restartMemberUnlocked(teamName, memberName)
     );
+  }
+
+  /**
+   * After a launch settles, automatically retry teammates that failed with a
+   * transient (auto-clearable) reason and never reached a live runtime — the
+   * same recovery a user gets by clicking restart, but done once, automatically.
+   *
+   * Bounded to a single automatic attempt per member per run so a genuinely
+   * broken teammate is not retried in a loop. Reuses the proven public
+   * restartMember entry point (own locking + guards) rather than new spawn code,
+   * and re-verifies eligibility at fire time so a member that recovered on its
+   * own is left untouched.
+   */
+  private scheduleTransientTeammateAutoRetries(run: ProvisioningRun): void {
+    if (!run.isLaunch || run.cancelRequested || run.processKilled) {
+      return;
+    }
+    const alreadyRetried = (run.autoRetriedTransientMembers ??= new Set<string>());
+    for (const memberName of run.expectedMembers) {
+      if (alreadyRetried.has(memberName)) {
+        continue;
+      }
+      if (!this.isNeverSpawnedRestartCandidate(run, memberName)) {
+        continue;
+      }
+      if (
+        this.isMemberLifecycleOperationActive(run.teamName, memberName) ||
+        run.pendingMemberRestarts.has(memberName)
+      ) {
+        continue;
+      }
+      alreadyRetried.add(memberName);
+      const timer = setTimeout(() => {
+        const liveRun = this.runs.get(run.runId);
+        if (!liveRun || liveRun.processKilled || liveRun.cancelRequested) {
+          return;
+        }
+        // Re-verify: the member may have come alive on its own during the delay.
+        if (!this.isNeverSpawnedRestartCandidate(liveRun, memberName)) {
+          return;
+        }
+        if (
+          this.isMemberLifecycleOperationActive(run.teamName, memberName) ||
+          liveRun.pendingMemberRestarts.has(memberName)
+        ) {
+          return;
+        }
+        logger.info(
+          `[${run.teamName}] Auto-retrying transient teammate spawn failure for "${memberName}"`
+        );
+        void this.restartMember(run.teamName, memberName).catch((error: unknown) => {
+          logger.warn(
+            `[${run.teamName}] Auto-retry restart failed for "${memberName}": ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        });
+      }, TRANSIENT_TEAMMATE_AUTO_RETRY_DELAY_MS);
+      (timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
+    }
   }
 
   /**
@@ -33505,6 +33576,7 @@ export class TeamProvisioningService {
           );
         });
       }
+      this.scheduleTransientTeammateAutoRetries(run);
       return true;
     }
 
