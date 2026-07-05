@@ -306,6 +306,11 @@ interface TeamDetailViewProps {
 const STALE_ASSIGNED_TASK_NUDGE_MS = 90_000;
 const STALE_ASSIGNED_TASK_NUDGE_CHECK_MS = 20_000;
 
+// Teams auto-launched this app session. Ensures the open-a-team auto-start fires
+// at most once per team per session, so it never loops and never fights a manual
+// stop (once stopped, we've already spent the single auto-launch).
+const autoLaunchedTeamsThisSession = new Set<string>();
+
 interface CreateTaskDialogState {
   open: boolean;
   defaultSubject: string;
@@ -1900,6 +1905,35 @@ export const TeamDetailView = memo(function TeamDetailView({
     if (!kanbanSearchQuery) return filteredTasks;
     return filterKanbanTasks(filteredTasks, kanbanSearchQuery);
   }, [filteredTasks, kanbanSearchQuery]);
+
+  // Auto-start an offline team the moment its tab is opened — the user should not
+  // have to click "Start". Guarded to fire at most once per team per session, only
+  // for the active tab (never background teams), and never while already alive or
+  // provisioning; a manual stop is respected because the single auto-launch is
+  // already spent.
+  useEffect(() => {
+    if (!isThisTabActive || !data || data.isAlive || isTeamProvisioning) {
+      return;
+    }
+    if (autoLaunchedTeamsThisSession.has(teamName)) {
+      return;
+    }
+    const cwd = data.config.projectPath;
+    if (!cwd) {
+      return;
+    }
+    autoLaunchedTeamsThisSession.add(teamName);
+    void launchTeam({
+      teamName,
+      cwd,
+      providerId: launchParams?.providerId,
+      providerBackendId: launchParams?.providerBackendId as TeamLaunchRequest['providerBackendId'],
+      model: launchParams?.model,
+      effort: launchParams?.effort,
+      fastMode: launchParams?.fastMode,
+      limitContext: launchParams?.limitContext,
+    }).catch(() => undefined);
+  }, [isThisTabActive, data, isTeamProvisioning, teamName, launchParams, launchTeam]);
 
   // Auto-nudge the lead when a teammate-assigned task sits pending too long, so
   // the human never has to manually poke the lead about an idle teammate.
