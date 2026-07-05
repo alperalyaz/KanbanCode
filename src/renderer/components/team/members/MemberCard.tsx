@@ -612,14 +612,25 @@ const MemberQuickActions = memo(function MemberQuickActions({
 }: MemberQuickActionsProps): React.JSX.Element {
   const { t } = useAppTranslation('team');
 
+  // Everything flows through the lead: per-teammate "message" and "assign task"
+  // quick actions are only rendered when a handler is explicitly provided.
+  // The human addresses the lead via the composer instead of poking teammates.
+  if (!onSendMessage && !onAssignTask) {
+    return <></>;
+  }
+
   return (
     <div className="flex shrink-0 items-center gap-0.5">
-      <MemberActionButton label={t('members.actions.sendMessage')} onClick={onSendMessage}>
-        <MessageSquare size={13} />
-      </MemberActionButton>
-      <MemberActionButton label={t('members.actions.assignTask')} onClick={onAssignTask}>
-        <Plus size={13} />
-      </MemberActionButton>
+      {onSendMessage ? (
+        <MemberActionButton label={t('members.actions.sendMessage')} onClick={onSendMessage}>
+          <MessageSquare size={13} />
+        </MemberActionButton>
+      ) : null}
+      {onAssignTask ? (
+        <MemberActionButton label={t('members.actions.assignTask')} onClick={onAssignTask}>
+          <Plus size={13} />
+        </MemberActionButton>
+      ) : null}
     </div>
   );
 });

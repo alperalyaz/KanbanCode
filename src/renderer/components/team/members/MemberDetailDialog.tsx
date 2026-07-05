@@ -115,8 +115,8 @@ interface MemberDetailDialogProps {
   runtimeRunId?: string | null;
   launchParams?: TeamLaunchParams;
   onClose: () => void;
-  onSendMessage: () => void;
-  onAssignTask: () => void;
+  onSendMessage?: () => void;
+  onAssignTask?: () => void;
   onTaskClick: (task: TeamTaskWithKanban) => void;
   onRemoveMember?: () => void;
   onRestartMember?: (memberName: string) => Promise<void> | void;
@@ -491,14 +491,18 @@ export const MemberDetailDialog = ({
                   {restartButtonLabel}
                 </Button>
               )}
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={onSendMessage}>
-                <MessageSquare size={14} />
-                {t('members.detail.sendMessage')}
-              </Button>
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={onAssignTask}>
-                <ListPlus size={14} />
-                {t('members.detail.assignTask')}
-              </Button>
+              {onSendMessage ? (
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={onSendMessage}>
+                  <MessageSquare size={14} />
+                  {t('members.detail.sendMessage')}
+                </Button>
+              ) : null}
+              {onAssignTask ? (
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={onAssignTask}>
+                  <ListPlus size={14} />
+                  {t('members.detail.assignTask')}
+                </Button>
+              ) : null}
               {onRemoveMember && !isLeadMember(member) && (
                 <Button
                   variant="outline"

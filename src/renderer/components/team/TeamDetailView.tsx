@@ -2959,8 +2959,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                       isTeamProvisioning={isTeamProvisioning}
                       launchParams={launchParams}
                       onMemberClick={handleSelectMember}
-                      onSendMessage={handleSendMessageToMember}
-                      onAssignTask={handleAssignTaskToMember}
                       onOpenTask={handleOpenTaskById}
                       onRestartMember={handleRestartMember}
                       onSkipMemberForLaunch={handleSkipMemberForLaunch}
@@ -2995,20 +2993,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                 badge={filteredTasks.length}
                 defaultOpen
                 forceOpen={isKanbanSearchActive}
-                action={
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 gap-1 px-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openCreateTaskDialog();
-                    }}
-                  >
-                    <Plus size={12} />
-                    {t('detail.actions.task')}
-                  </Button>
-                }
               >
                 <TeamKanbanBoardBridge
                   tasks={kanbanDisplayTasks}
@@ -3040,7 +3024,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                   onColumnOrderChange={handleColumnOrderChange}
                   onScrollToTask={handleScrollToTask}
                   onTaskClick={openTaskDetailDialog}
-                  onAddTask={handleAddTask}
                   onDeleteTask={handleDeleteTask}
                   deletedTaskCount={deletedTasks.length}
                   onOpenTrash={handleOpenTrash}
@@ -3128,20 +3111,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                 isTeamProvisioning={isTeamProvisioning}
                 launchParams={launchParams}
                 onClose={closeSelectedMemberDialog}
-                onSendMessage={() => {
-                  const name = selectedMember?.name ?? '';
-                  closeSelectedMemberDialog();
-                  setSendDialogRecipient(name || undefined);
-                  setSendDialogDefaultText(undefined);
-                  setSendDialogDefaultChip(undefined);
-                  setReplyQuote(undefined);
-                  setSendDialogOpen(true);
-                }}
-                onAssignTask={() => {
-                  const name = selectedMember?.name ?? '';
-                  closeSelectedMemberDialog();
-                  openCreateTaskDialog('', '', name);
-                }}
                 onRestartMember={handleRestartMember}
                 onTaskClick={(task) => {
                   closeSelectedMemberDialog();
