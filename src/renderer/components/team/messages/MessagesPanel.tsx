@@ -1406,16 +1406,17 @@ export const MessagesPanel = memo(function MessagesPanel({
             {renderSearchAndFilterControls()}
           </div>
         )}
+        {/* Pinned composer — stays visible while the message stream scrolls below */}
+        <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-3 pb-2 pt-2">
+          {renderDefaultComposerSection()}
+        </div>
         {/* Scrollable content */}
         <div
           ref={sidebarScrollRef}
           className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-14 pr-3 pt-2"
           onScroll={handleSidebarScroll}
         >
-          <div className="pl-3">
-            {renderDefaultComposerSection()}
-            {renderSidebarStatusSection()}
-          </div>
+          <div className="pl-3">{renderSidebarStatusSection()}</div>
           {renderTimelineSection()}
         </div>
       </div>
