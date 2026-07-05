@@ -33,7 +33,6 @@ import {
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
-import { TeamTabSectionNav } from './TeamTabSectionNav';
 
 import type { Tab } from '@renderer/types/tabs';
 
@@ -170,8 +169,6 @@ export const SortableTab = ({
     [setNodeRef, setRef, tab.id]
   );
 
-  const isTeamTab = tab.type === 'team' && tab.teamName;
-
   return (
     <div
       ref={handleRef}
@@ -212,19 +209,6 @@ export const SortableTab = ({
       >
         {displayLabel}
       </span>
-      {isTeamTab && (
-        <TeamTabSectionNav
-          teamName={tab.teamName!}
-          onActivate={() => {
-            setIsHovered(false);
-            onTabClick(tab.id, {
-              metaKey: false,
-              ctrlKey: false,
-              shiftKey: false,
-            } as React.MouseEvent);
-          }}
-        />
-      )}
       <Tooltip>
         <TooltipTrigger asChild>
           <button
