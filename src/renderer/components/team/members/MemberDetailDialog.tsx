@@ -18,10 +18,7 @@ import {
   hasMemberLaunchDiagnosticsDetails,
   hasMemberLaunchDiagnosticsError,
 } from '@renderer/utils/memberLaunchDiagnostics';
-import {
-  getRuntimeMemorySourceLabel,
-  resolveMemberRuntimeSummary,
-} from '@renderer/utils/memberRuntimeSummary';
+import { resolveMemberRuntimeSummary } from '@renderer/utils/memberRuntimeSummary';
 import { isDisplayableCurrentTask } from '@renderer/utils/teamTaskDisplayState';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import {
@@ -215,7 +212,6 @@ export const MemberDetailDialog = ({
         : undefined,
     [launchParams, member, runtimeEntry, spawnEntry]
   );
-  const memorySourceLabel = getRuntimeMemorySourceLabel(runtimeEntry);
   const openCodeRelaunchActionable = member
     ? isOpenCodeRelaunchActionable({ member, spawnEntry, runtimeEntry })
     : false;
@@ -299,7 +295,7 @@ export const MemberDetailDialog = ({
         className="min-w-0"
         dismissOnOutsideInteraction={false}
       >
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 pt-10">
+        <div className="shrink-0 space-y-4 p-4 pt-10">
           <div className="flex items-start gap-4">
             <div className="min-w-0 shrink-0 text-left">
             <MemberDetailHeader
@@ -347,13 +343,14 @@ export const MemberDetailDialog = ({
             onTabChange={setActiveTab}
           />
         </div>
+        </div>
 
         <Tabs
           value={activeTab}
           onValueChange={(v) => setActiveTab(v as MemberDetailTab)}
-          className="min-w-0 overflow-hidden"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-2"
         >
-          <TabsList className="w-full">
+          <TabsList className="w-full shrink-0">
             <TabsTrigger value="tasks" className="flex-1 gap-1.5">
               Tasks
               {memberTasks.length > 0 && (
@@ -379,6 +376,7 @@ export const MemberDetailDialog = ({
               Logs
             </TabsTrigger>
           </TabsList>
+          <div className="min-h-0 flex-1 overflow-y-auto pt-2">
           <TabsContent value="tasks">
             <div className="space-y-3">
               {/*
@@ -419,8 +417,8 @@ export const MemberDetailDialog = ({
               enabled={open && activeTab === 'logs'}
             />
           </TabsContent>
+          </div>
         </Tabs>
-        </div>
 
         <SheetFooter>
           {restartError ? (
@@ -443,11 +441,6 @@ export const MemberDetailDialog = ({
               <span className="min-w-0 truncate" title={effectiveLaunchInfoMessage}>
                 {effectiveLaunchInfoMessage}
               </span>
-            </div>
-          ) : runtimeEntry?.pid ? (
-            <div className="mr-auto text-xs text-[var(--color-text-muted)]">
-              {t('members.detail.pid', { pid: runtimeEntry.pid })}
-              {memorySourceLabel ? ` · ${memorySourceLabel}` : ''}
             </div>
           ) : (
             <div className="mr-auto" />
