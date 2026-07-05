@@ -179,7 +179,7 @@ export const MemberDetailHeader = ({
               />
             ) : (
               <>
-                <span>{role || 'No role'}</span>
+                <span>{role || t('members.detail.noRole')}</span>
                 {canEditRole && (
                   <button
                     type="button"

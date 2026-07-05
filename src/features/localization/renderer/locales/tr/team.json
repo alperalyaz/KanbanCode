@@ -1641,7 +1641,18 @@
       "failedToRestartMember": "Üye yeniden başlatılamadı",
       "sendMessage": "Mesaj Gönder",
       "assignTask": "Görev Ata",
-      "remove": "Kaldır"
+      "remove": "Kaldır",
+      "noRole": "Rol yok",
+      "statTasks": "Görev",
+      "statCompleted": "Tamamlanan",
+      "statActivity": "Etkinlik",
+      "statTokens": "Token",
+      "statInProgress": "devam eden: {{count}}",
+      "statUpdated": "{{time}} güncellendi",
+      "tabTasks": "Görevler",
+      "tabActivity": "Etkinlik",
+      "tabStats": "İstatistik",
+      "tabLogs": "Günlükler"
     },
     "list": {
       "loading": "Ekip üyeleri yükleniyor",

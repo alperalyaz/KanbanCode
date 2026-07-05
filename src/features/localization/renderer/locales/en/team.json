@@ -1642,7 +1642,18 @@
       "failedToRestartMember": "Failed to restart member",
       "sendMessage": "Send Message",
       "assignTask": "Assign Task",
-      "remove": "Remove"
+      "remove": "Remove",
+      "noRole": "No role",
+      "statTasks": "Tasks",
+      "statCompleted": "Completed",
+      "statActivity": "Activity",
+      "statTokens": "Tokens",
+      "statInProgress": "in progress: {{count}}",
+      "statUpdated": "updated {{time}}",
+      "tabTasks": "Tasks",
+      "tabActivity": "Activity",
+      "tabStats": "Stats",
+      "tabLogs": "Logs"
     },
     "list": {
       "loading": "Loading team members",

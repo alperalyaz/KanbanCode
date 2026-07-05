@@ -352,7 +352,7 @@ export const MemberDetailDialog = ({
         >
           <TabsList className="w-full shrink-0">
             <TabsTrigger value="tasks" className="flex-1 gap-1.5">
-              Tasks
+              {t('members.detail.tabTasks')}
               {memberTasks.length > 0 && (
                 <span className="rounded-full bg-[var(--color-surface)] px-1.5 text-[10px]">
                   {memberTasks.length}
@@ -360,7 +360,7 @@ export const MemberDetailDialog = ({
               )}
             </TabsTrigger>
             <TabsTrigger value="activity" className="flex-1 gap-1.5">
-              Activity
+              {t('members.detail.tabActivity')}
               {memberActivityCount > 0 && (
                 <span className="rounded-full bg-[var(--color-surface)] px-1.5 text-[10px]">
                   {memberActivityCount}
@@ -369,11 +369,11 @@ export const MemberDetailDialog = ({
             </TabsTrigger>
             <TabsTrigger value="stats" className="flex-1 gap-1.5">
               <BarChart3 size={12} />
-              Stats
+              {t('members.detail.tabStats')}
             </TabsTrigger>
             <TabsTrigger value="logs" className="flex-1 gap-1.5">
               <FileText size={12} />
-              Logs
+              {t('members.detail.tabLogs')}
             </TabsTrigger>
           </TabsList>
           <div className="min-h-0 flex-1 overflow-y-auto pt-2">

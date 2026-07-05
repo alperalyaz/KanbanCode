@@ -9,7 +9,6 @@ const storeMock = vi.hoisted(() => ({
     sidebarCollapsed: false,
     toggleSidebar: vi.fn(),
   },
-  sessionsModuleLoads: 0,
 }));
 
 vi.mock('@renderer/store', () => ({
@@ -19,14 +18,6 @@ vi.mock('@renderer/store', () => ({
 vi.mock('../sidebar/GlobalTaskList', () => ({
   GlobalTaskList: () => React.createElement('div', { 'data-testid': 'tasks-panel' }, 'Tasks panel'),
 }));
-
-vi.mock('../sidebar/DateGroupedSessions', () => {
-  storeMock.sessionsModuleLoads += 1;
-  return {
-    DateGroupedSessions: () =>
-      React.createElement('div', { 'data-testid': 'sessions-panel' }, 'Sessions panel'),
-  };
-});
 
 /* eslint-enable @typescript-eslint/naming-convention -- Re-enable after component mocks. */
 
@@ -57,22 +48,11 @@ const renderSidebar = async (root: Root): Promise<void> => {
   });
 };
 
-function findButtonByText(host: HTMLElement, text: string): HTMLButtonElement {
-  const button = Array.from(host.querySelectorAll('button')).find(
-    (candidate) => candidate.textContent?.trim() === text
-  );
-  if (!(button instanceof HTMLButtonElement)) {
-    throw new Error(`Button not found: ${text}`);
-  }
-  return button;
-}
-
 describe('Sidebar', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeMock.state.sidebarCollapsed = false;
     storeMock.state.toggleSidebar.mockClear();
-    storeMock.sessionsModuleLoads = 0;
   });
 
   afterEach(async () => {
@@ -86,35 +66,14 @@ describe('Sidebar', () => {
     vi.unstubAllGlobals();
   });
 
-  it('does not mount the sessions panel before the sessions tab is opened', async () => {
+  it('renders the task list and no longer exposes a sessions panel', async () => {
     const { host, root } = createHarness();
 
     await renderSidebar(root);
 
     expect(host.querySelector('[data-testid="tasks-panel"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="sessions-panel"]')).toBeNull();
-    expect(storeMock.sessionsModuleLoads).toBe(0);
-  });
-
-  it('mounts the sessions panel on first activation and keeps it mounted when hidden', async () => {
-    const { host, root } = createHarness();
-    await renderSidebar(root);
-
-    await act(async () => {
-      findButtonByText(host, 'Sessions').click();
-      await flushReact();
-    });
-
-    const sessionsPanel = host.querySelector('[data-testid="sessions-panel"]');
-    expect(sessionsPanel).not.toBeNull();
-    expect(sessionsPanel?.closest<HTMLElement>('[role="tabpanel"]')?.hidden).toBe(false);
-
-    await act(async () => {
-      findButtonByText(host, 'Tasks').click();
-      await flushReact();
-    });
-
-    expect(host.querySelector('[data-testid="sessions-panel"]')).toBe(sessionsPanel);
-    expect(sessionsPanel?.closest<HTMLElement>('[role="tabpanel"]')?.hidden).toBe(true);
+    // The Tasks/Sessions tablist was removed; the sidebar now shows a single view.
+    expect(host.querySelector('[role="tablist"]')).toBeNull();
   });
 });
