@@ -1205,11 +1205,55 @@ export class NotificationManager extends EventEmitter {
   }
 
   /**
-   * Adds a team notification. Storage is unconditional; native toast respects
+   * Decides whether a team event should be stored in the in-app notification
+   * list at all. Systemic-critical and user-facing events are always stored;
+   * routine teammate chatter is stored only when its per-type toggle is on.
+   */
+  private shouldStoreTeamNotification(teamEventType: TeamNotificationPayload['teamEventType']): boolean {
+    const notifications = this.configManager.getConfig().notifications;
+    switch (teamEventType) {
+      case 'lead_inbox':
+        return notifications.notifyOnLeadInbox;
+      case 'task_status_change':
+        return notifications.notifyOnStatusChange;
+      case 'task_comment':
+        return notifications.notifyOnTaskComments;
+      case 'task_created':
+        return notifications.notifyOnTaskCreated;
+      case 'all_tasks_completed':
+        return notifications.notifyOnAllTasksCompleted;
+      case 'cross_team_message':
+        return notifications.notifyOnCrossTeamMessage;
+      case 'team_launched':
+        return notifications.notifyOnTeamLaunched;
+      // Always store: user_inbox (lead→user), task_clarification (question to
+      // user), rate_limit / api_error (systemic critical), task_blocked,
+      // task_review_requested, team_launch_incomplete (actionable/critical).
+      default:
+        return true;
+    }
+  }
+
+  /**
+   * Adds a team notification. Storage respects the lead-centric criticality
+   * policy (see shouldStoreTeamNotification); native toast additionally respects
    * enabled/snoozed, suppressToast flag, and 5s dedupeKey-based throttle.
    * Skips repo/regex filters (not applicable to team events).
    */
   async addTeamNotification(payload: TeamNotificationPayload): Promise<StoredNotification | null> {
+    // Lead-centric notification policy: the in-app list should surface only
+    // things the human actually cares about — the lead's messages to the user,
+    // questions/clarifications, and systemic-critical events. Routine teammate
+    // chatter (member→lead inbox, task status changes, comments, task creation,
+    // all-done, cross-team) is stored ONLY when the user explicitly enabled its
+    // toggle; by default those are suppressed entirely (not just their toast).
+    if (!this.shouldStoreTeamNotification(payload.teamEventType)) {
+      logger.debug(
+        `[team-notification] skipped (policy): type=${payload.teamEventType} key=${payload.dedupeKey}`
+      );
+      return null;
+    }
+
     const error = buildDetectedErrorFromTeam(payload);
     const stored = await this.storeNotification(error);
     if (!stored) {
