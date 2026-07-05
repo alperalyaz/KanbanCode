@@ -10,7 +10,7 @@ import { useAppTranslation } from '@features/localization/renderer';
 import { api } from '@renderer/api';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
-import { Bell, PanelRight, PowerOff } from 'lucide-react';
+import { Bell, PowerOff } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { MoreMenu } from './MoreMenu';
@@ -23,8 +23,6 @@ export const TabBarActions = (): React.JSX.Element => {
     activeTabId,
     openTabs,
     tabSessionData,
-    sidebarCollapsed,
-    toggleSidebar,
     leadActivityByTeam,
   } = useStore(
     useShallow((s) => ({
@@ -33,15 +31,12 @@ export const TabBarActions = (): React.JSX.Element => {
       activeTabId: s.activeTabId,
       openTabs: s.openTabs,
       tabSessionData: s.tabSessionData,
-      sidebarCollapsed: s.sidebarCollapsed,
-      toggleSidebar: s.toggleSidebar,
       leadActivityByTeam: s.leadActivityByTeam,
     }))
   );
 
   // Hover states for buttons
   const [notificationsHover, setNotificationsHover] = useState(false);
-  const [expandHover, setExpandHover] = useState(false);
   const [safeStopHover, setSafeStopHover] = useState(false);
   const [stoppingAll, setStoppingAll] = useState(false);
 
@@ -132,28 +127,6 @@ export const TabBarActions = (): React.JSX.Element => {
         activeTabSessionDetail={activeTabSessionDetail}
         activeTabId={activeTabId}
       />
-
-      {/* Expand sidebar — rightmost, only when collapsed */}
-      {sidebarCollapsed && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={toggleSidebar}
-              onMouseEnter={() => setExpandHover(true)}
-              onMouseLeave={() => setExpandHover(false)}
-              className="mr-1 rounded-md p-2 transition-colors"
-              style={{
-                color: expandHover ? 'var(--color-text)' : 'var(--color-text-muted)',
-                backgroundColor: expandHover ? 'var(--color-surface-raised)' : 'transparent',
-              }}
-              aria-label={t('layout.expandSidebar')}
-            >
-              <PanelRight className="size-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t('layout.expandSidebar')}</TooltipContent>
-        </Tooltip>
-      )}
     </div>
   );
 };

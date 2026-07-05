@@ -37,7 +37,6 @@ import { CommandPalette } from '../search/CommandPalette';
 import { CustomTitleBar } from './CustomTitleBar';
 import { GlobalTaskDetailDialogSlot } from './GlobalTaskDetailDialogSlot';
 import { PaneContainer } from './PaneContainer';
-import { Sidebar } from './Sidebar';
 import { DragOverlayTab } from './SortableTab';
 import { TabBarRow } from './TabBarRow';
 
@@ -174,9 +173,6 @@ export const TabbedLayout = (): React.JSX.Element => {
           >
             <PaneContainer />
           </div>
-
-          {/* Sidebar - Task list / Sessions (right side) */}
-          <Sidebar />
         </div>
 
         {/* Drag overlay - semi-transparent ghost of the dragged tab */}
