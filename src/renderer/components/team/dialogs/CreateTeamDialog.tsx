@@ -2681,10 +2681,14 @@ export const CreateTeamDialog = ({
                   </div>
                 </OptionalSettingsSection>
               </div>
-
-              {selectedProvidersPreflightPanel}
             </div>
           </div>
+
+          {selectedProvidersPreflightPanel ? (
+            <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+              {selectedProvidersPreflightPanel}
+            </div>
+          ) : null}
         </div>
 
         {activeError ? (
