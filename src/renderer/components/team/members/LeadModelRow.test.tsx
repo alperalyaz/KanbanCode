@@ -164,7 +164,8 @@ describe('LeadModelRow', () => {
     const stripe = host.querySelector('[aria-hidden="true"]');
     const expectedBorder = getTeamColorSet(resolveTeamLeadColorName()).border;
 
-    expect(host.textContent).toContain('lead');
+    // displayMemberName maps the "team-lead" alias to the localized short label ("Lead").
+    expect(host.textContent).toContain('Lead');
     expect(host.textContent).toContain('Team Lead');
     expect(stripe?.getAttribute('style')).toContain(expectedBorder);
 

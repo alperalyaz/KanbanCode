@@ -917,7 +917,7 @@ describe('CLI status visibility during completed install state', () => {
           },
           backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
           modelCatalog: null,
-          modelCatalogRefreshState: 'idle',
+          modelCatalogRefreshState: 'loading',
           runtimeCapabilities: {
             modelCatalog: {
               dynamic: true,
@@ -1383,7 +1383,7 @@ describe('CLI status visibility during completed install state', () => {
           },
           backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
           modelCatalog: null,
-          modelCatalogRefreshState: 'idle',
+          modelCatalogRefreshState: 'loading',
           runtimeCapabilities: {
             modelCatalog: {
               dynamic: true,
