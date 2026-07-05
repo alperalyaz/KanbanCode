@@ -23,7 +23,6 @@ import { stripMarkdown } from '@main/utils/textFormatting';
 import { APP_NAME } from '@shared/constants';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { getMemberColorByName, MEMBER_COLOR_HUE } from '@shared/constants/memberColors';
-
 import { createLogger } from '@shared/utils/logger';
 import { nativeImage, Notification as ElectronNotification } from 'electron';
 import { EventEmitter } from 'events';

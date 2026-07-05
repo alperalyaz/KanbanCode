@@ -39,9 +39,9 @@ import {
 } from '@shared/utils/teamAutomationMessages';
 import {
   CheckCheck,
-  ClipboardCopy,
   ChevronsDownUp,
   ChevronsUpDown,
+  ClipboardCopy,
   Dock,
   MessageSquare,
   MoreHorizontal,
@@ -1466,13 +1466,13 @@ export const MessagesPanel = memo(function MessagesPanel({
         {/* Chat stream: oldest at top, newest at the bottom, scrolls up for history */}
         <div
           ref={sidebarScrollRef}
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-3 pr-3 pt-2"
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pt-2"
           onScroll={handleSidebarScroll}
         >
           {renderTimelineSection()}
         </div>
         {/* Composer pinned at the bottom, chat-style */}
-        <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-3 pb-2 pt-2">
+        <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-3 py-2">
           {renderDefaultComposerSection()}
         </div>
       </div>
