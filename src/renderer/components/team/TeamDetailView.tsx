@@ -133,7 +133,6 @@ import {
   getTeamPendingRepliesState,
   setTeamPendingRepliesState,
 } from './sidebar/teamSidebarUiState';
-import { ClaudeLogsSection } from './ClaudeLogsSection';
 import { CollapsibleTeamSection } from './CollapsibleTeamSection';
 import { deriveLeadLoadButtonLabel } from './lead-load-guards';
 import { LeadSessionDetailGate } from './LeadSessionDetailGate';
@@ -144,7 +143,6 @@ import { TeamChangesSection } from './TeamChangesSection';
 import { TeamLoadingSkeleton } from './TeamLoadingSkeleton';
 import { TeamProvisioningBanner } from './TeamProvisioningBanner';
 import { loadTeamSessionMetadata } from './teamSessionFetchGuards';
-import { TeamSessionsSection } from './TeamSessionsSection';
 import { useTeamAgentRuntimeWatcher } from './useTeamAgentRuntimeWatcher';
 
 import type { UsageLike } from './context-metric-alias';
@@ -1447,8 +1445,6 @@ export const TeamDetailView = memo(function TeamDetailView({
 
   // Session loading and filtering state
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [kanbanFilter, setKanbanFilter] = useState<KanbanFilterState>({
     sessionId: null,
     selectedOwners: new Set(),
@@ -1498,10 +1494,8 @@ export const TeamDetailView = memo(function TeamDetailView({
     launchParams,
     messagesPanelMode,
     messagesPanelWidth,
-    sidebarLogsHeight,
     setMessagesPanelMode,
     setMessagesPanelWidth,
-    setSidebarLogsHeight,
     summaryKnownTeammateCount,
     teamSummaryColor,
     teamSummaryDisplayName,
@@ -1553,10 +1547,8 @@ export const TeamDetailView = memo(function TeamDetailView({
       launchParams: teamName ? s.launchParamsByTeam[teamName] : undefined,
       messagesPanelMode: s.messagesPanelMode,
       messagesPanelWidth: s.messagesPanelWidth,
-      sidebarLogsHeight: s.sidebarLogsHeight,
       setMessagesPanelMode: s.setMessagesPanelMode,
       setMessagesPanelWidth: s.setMessagesPanelWidth,
-      setSidebarLogsHeight: s.setSidebarLogsHeight,
     }))
   );
 
@@ -1580,14 +1572,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       maxWidth: 600,
       side: 'left',
     });
-  const { isResizing: isLogsPanelResizing, handleProps: logsPanelHandleProps } = useResizablePanel({
-    height: sidebarLogsHeight,
-    onHeightChange: setSidebarLogsHeight,
-    minHeight: 120,
-    maxHeight: 520,
-    side: 'top',
-  });
-
   const changeMessagesPanelMode = useCallback(
     (mode: TeamMessagesPanelMode) => {
       setMessagesPanelMode(mode);
@@ -1721,8 +1705,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     if (!isThisTabActive || !projectId) return;
 
     let cancelled = false;
-    setSessionsLoading(true);
-    setSessionsError(null);
 
     void (async () => {
       try {
@@ -1733,14 +1715,8 @@ export const TeamDetailView = memo(function TeamDetailView({
         if (!cancelled) {
           setSessions(result);
         }
-      } catch (e) {
-        if (!cancelled) {
-          setSessionsError(e instanceof Error ? e.message : 'Failed to load sessions');
-        }
-      } finally {
-        if (!cancelled) {
-          setSessionsLoading(false);
-        }
+      } catch {
+        // Session metadata is only used to scope kanban filtering; ignore load errors.
       }
     })();
 
@@ -2756,13 +2732,9 @@ export const TeamDetailView = memo(function TeamDetailView({
               isFocused={isPaneFocused}
             >
               <TeamSidebarRailBridge
-                teamName={teamName}
                 messagesPanelProps={sharedMessagesPanelProps}
                 isResizing={isMessagesPanelResizing}
                 onResizeMouseDown={messagesPanelHandleProps.onMouseDown}
-                logsHeight={sidebarLogsHeight}
-                isLogsResizing={isLogsPanelResizing}
-                onLogsResizeMouseDown={logsPanelHandleProps.onMouseDown}
               />
             </TeamSidebarPortalSource>
           </TeamSidebarHost>
@@ -3005,23 +2977,6 @@ export const TeamDetailView = memo(function TeamDetailView({
               </div>
 
               <CollapsibleTeamSection
-                sectionId="sessions"
-                title={t('sessions.title')}
-                icon={<History size={14} />}
-                defaultOpen={false}
-              >
-                <TeamSessionsSection
-                  sessions={teamSessions}
-                  sessionsLoading={sessionsLoading}
-                  sessionsError={sessionsError}
-                  leadSessionId={data.config.leadSessionId}
-                  selectedSessionId={kanbanFilter.sessionId}
-                  onSelectSession={(id) => setKanbanFilter((prev) => ({ ...prev, sessionId: id }))}
-                  projectPath={data.config.projectPath}
-                />
-              </CollapsibleTeamSection>
-
-              <CollapsibleTeamSection
                 sectionId="kanban"
                 title={t('kanban.title')}
                 icon={<Columns3 size={14} />}
@@ -3100,8 +3055,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                   />
                 </CollapsibleTeamSection>
               )}
-
-              {messagesPanelMode !== 'sidebar' && <ClaudeLogsSection teamName={teamName} />}
 
               {messagesPanelMode === 'inline' && (
                 <TeamMessagesPanelBridge position="inline" {...sharedMessagesPanelProps} />
