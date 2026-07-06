@@ -1,13 +1,11 @@
-import { memo, useEffect, useMemo, useReducer } from 'react';
+import { memo, useMemo } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { OngoingIndicator } from '@renderer/components/common/OngoingIndicator';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
-import { UnreadCommentsBadge } from '@renderer/components/team/UnreadCommentsBadge';
 import { Button } from '@renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useTheme } from '@renderer/hooks/useTheme';
-import { useUnreadCommentCount } from '@renderer/hooks/useUnreadCommentCount';
 import { REVIEW_STATE_DISPLAY } from '@renderer/utils/memberHelpers';
 import {
   buildTaskChangeRequestOptions,
@@ -28,7 +26,6 @@ import {
 import type {
   KanbanColumnId,
   KanbanTaskState,
-  TaskComment,
   TeamTask,
   TeamTaskWithKanban,
 } from '@shared/types';
@@ -61,19 +58,6 @@ interface DependencyBadgeProps {
   onScrollToTask?: (taskId: string) => void;
 }
 
-interface CommentPulseState {
-  taskKey: string;
-  commentCount: number;
-  commentIds: Set<string>;
-  pulseKey: number;
-}
-
-interface CommentPulseSyncAction {
-  taskKey: string;
-  comments: readonly TaskComment[];
-}
-
-const EMPTY_TASK_COMMENTS: readonly TaskComment[] = [];
 const taskCardSignatureCache = new WeakMap<TeamTaskWithKanban, string>();
 
 function getTaskCardSignature(task: TeamTaskWithKanban): string {
@@ -135,51 +119,6 @@ function areTaskMapDependenciesEqual(
     }
   }
   return true;
-}
-
-function createCommentPulseState(
-  taskKey: string,
-  comments: readonly TaskComment[],
-  pulseKey = 0
-): CommentPulseState {
-  return {
-    taskKey,
-    commentCount: comments.length,
-    commentIds: new Set(comments.map((comment) => comment.id)),
-    pulseKey,
-  };
-}
-
-function hasSameCommentIds(state: CommentPulseState, comments: readonly TaskComment[]): boolean {
-  return (
-    comments.length === state.commentCount &&
-    comments.every((comment) => state.commentIds.has(comment.id))
-  );
-}
-
-function syncCommentPulseState(
-  state: CommentPulseState,
-  action: CommentPulseSyncAction
-): CommentPulseState {
-  if (state.taskKey !== action.taskKey) {
-    return createCommentPulseState(action.taskKey, action.comments);
-  }
-
-  const hasNewIncomingComment =
-    action.comments.length > state.commentCount &&
-    action.comments.some(
-      (comment) => !state.commentIds.has(comment.id) && comment.author !== 'user'
-    );
-
-  if (!hasNewIncomingComment && hasSameCommentIds(state, action.comments)) {
-    return state;
-  }
-
-  return createCommentPulseState(
-    action.taskKey,
-    action.comments,
-    hasNewIncomingComment ? state.pulseKey + 1 : state.pulseKey
-  );
 }
 
 const DependencyBadge = ({
@@ -263,60 +202,49 @@ const TaskActionIconButton = ({
 
 interface TaskMetaActionsProps {
   taskId: string;
-  unreadCount: number;
-  commentCount: number;
-  pulseKey: number;
-  canOpenChanges: boolean;
   changesNeedAttention: boolean;
   onViewChanges?: (taskId: string) => void;
 }
 
+// Comment-count badge removed: it added a whole row per card for information the
+// user gets by opening the task anyway. Only the (conditional) changes button
+// remains here.
 const TaskMetaActions = memo(function TaskMetaActions({
   taskId,
-  unreadCount,
-  commentCount,
-  pulseKey,
-  canOpenChanges,
   changesNeedAttention,
   onViewChanges,
-}: TaskMetaActionsProps): React.JSX.Element {
+}: TaskMetaActionsProps): React.JSX.Element | null {
   const { t } = useAppTranslation('team');
 
+  if (!onViewChanges) {
+    return null;
+  }
+
   return (
-    <>
-      {canOpenChanges && onViewChanges ? (
-        <TaskActionIconButton
-          label={
-            changesNeedAttention
-              ? t('kanban.taskCard.changesNeedAttention')
-              : t('kanban.taskCard.changes')
-          }
-          icon={<FileCode className="size-2.5" />}
-          variant="ghost"
-          className={
-            changesNeedAttention
-              ? 'text-amber-400 hover:bg-amber-500/10 hover:text-amber-300'
-              : 'text-sky-400 hover:bg-sky-500/10 hover:text-sky-300'
-          }
-          onClick={(e) => {
-            e.stopPropagation();
-            onViewChanges(taskId);
-          }}
-        />
-      ) : null}
-      <UnreadCommentsBadge
-        unreadCount={unreadCount}
-        totalCount={commentCount}
-        pulseKey={pulseKey}
-      />
-    </>
+    <TaskActionIconButton
+      label={
+        changesNeedAttention
+          ? t('kanban.taskCard.changesNeedAttention')
+          : t('kanban.taskCard.changes')
+      }
+      icon={<FileCode className="size-2.5" />}
+      variant="ghost"
+      className={
+        changesNeedAttention
+          ? 'text-amber-400 hover:bg-amber-500/10 hover:text-amber-300'
+          : 'text-sky-400 hover:bg-sky-500/10 hover:text-sky-300'
+      }
+      onClick={(e) => {
+        e.stopPropagation();
+        onViewChanges(taskId);
+      }}
+    />
   );
 });
 
 export const KanbanTaskCard = memo(
   function KanbanTaskCard({
     task,
-    teamName,
     columnId,
     compact,
     taskMap,
@@ -327,17 +255,6 @@ export const KanbanTaskCard = memo(
   }: KanbanTaskCardProps): React.JSX.Element {
     const { t } = useAppTranslation('team');
     const { isLight } = useTheme();
-    const unreadCount = useUnreadCommentCount(teamName, task.id, task.comments);
-    const commentPulseTaskKey = `${teamName}/${task.id}`;
-    const comments = task.comments ?? EMPTY_TASK_COMMENTS;
-    const commentCount = comments.length;
-    const [commentPulse, syncCommentPulse] = useReducer(
-      syncCommentPulseState,
-      { taskKey: commentPulseTaskKey, comments },
-      ({ taskKey, comments: initialComments }) => createCommentPulseState(taskKey, initialComments)
-    );
-    const visibleCommentPulseKey =
-      commentPulse.taskKey === commentPulseTaskKey ? commentPulse.pulseKey : 0;
     const blockedByIds = task.blockedBy?.filter((id) => id.length > 0) ?? [];
     const blocksIds = task.blocks?.filter((id) => id.length > 0) ?? [];
     const hasBlockedBy = blockedByIds.length > 0;
@@ -355,10 +272,6 @@ export const KanbanTaskCard = memo(
       canDisplay &&
       (task.changePresence === 'has_changes' || task.changePresence === 'needs_attention');
     const changesNeedAttention = task.changePresence === 'needs_attention';
-
-    useEffect(() => {
-      syncCommentPulse({ taskKey: commentPulseTaskKey, comments });
-    }, [commentCount, commentPulseTaskKey, comments]);
 
     return (
       <div
@@ -451,19 +364,17 @@ export const KanbanTaskCard = memo(
           </div>
         ) : null}
 
-        <div className="flex items-center justify-end gap-2">
-          <div className="flex shrink-0 flex-nowrap items-center gap-1.5">
-            <TaskMetaActions
-              taskId={task.id}
-              unreadCount={unreadCount}
-              commentCount={commentCount}
-              pulseKey={visibleCommentPulseKey}
-              canOpenChanges={canOpenChanges}
-              changesNeedAttention={changesNeedAttention}
-              onViewChanges={onViewChanges}
-            />
+        {canOpenChanges ? (
+          <div className="flex items-center justify-end gap-2">
+            <div className="flex shrink-0 flex-nowrap items-center gap-1.5">
+              <TaskMetaActions
+                taskId={task.id}
+                changesNeedAttention={changesNeedAttention}
+                onViewChanges={onViewChanges}
+              />
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     );
   },
