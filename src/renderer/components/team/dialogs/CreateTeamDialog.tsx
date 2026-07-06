@@ -2431,7 +2431,10 @@ export const CreateTeamDialog = ({
                   forceInheritedModelSettings={syncModelsWithLead}
                   modelLockReason={t('create.memberModelLockReason')}
                   hideMembersContent={false}
-                  emphasizeAddMember={activeTeammateCount === 0}
+                  // Keep the "Add member" button a stable, compact button on the
+                  // right of the Members label — it must NOT balloon to a
+                  // full-width CTA when empty and then shrink after the first add.
+                  emphasizeAddMember={false}
                   providerId={selectedProviderId}
                   model={selectedModel}
                   effort={(selectedEffortForCurrentSelection as EffortLevel) || undefined}
