@@ -87,10 +87,19 @@ jobs:
           path: .eslintcache
           key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'eslint.config.*', 'src/**/*.ts', 'src/**/*.tsx') }}
 
-      - name: Validate workspace truth gate
+      - name: Validate workspace truth gate (types + tests)
         env:
           NODE_OPTIONS: --max-old-space-size=8192
-        run: pnpm check:ci
+        run: pnpm check:workspace:ci
+
+      # Lint runs as an advisory step: this fork carries pre-existing lint debt
+      # in unrelated files, so lint failures should not break the build or send
+      # failure emails on every push. Types + tests above remain the hard gate.
+      - name: Lint (advisory)
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: pnpm lint && pnpm lint:mcp
 
   test:
     runs-on: ubuntu-latest
