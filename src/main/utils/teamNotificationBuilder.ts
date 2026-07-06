@@ -70,6 +70,7 @@ const TEAM_NOTIFICATION_CONFIG: Record<TeamEventType, TeamNotificationConfig> = 
   task_review_requested: { triggerName: 'Review Requested', triggerColor: 'orange' },
   task_blocked: { triggerName: 'Task Blocked', triggerColor: 'red' },
   task_created: { triggerName: 'Task Created', triggerColor: 'green' },
+  task_done: { triggerName: 'Task Done', triggerColor: 'green' },
   all_tasks_completed: { triggerName: 'All Done', triggerColor: 'green' },
   cross_team_message: { triggerName: 'Cross-Team', triggerColor: 'cyan' },
   team_launched: { triggerName: 'Team Launched', triggerColor: 'green' },

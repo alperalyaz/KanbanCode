@@ -30,6 +30,7 @@ export type TeamEventType =
   | 'task_review_requested'
   | 'task_blocked'
   | 'task_created'
+  | 'task_done'
   | 'all_tasks_completed'
   | 'cross_team_message'
   | 'team_launched'

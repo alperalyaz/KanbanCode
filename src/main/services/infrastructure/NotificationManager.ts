@@ -212,6 +212,8 @@ function getTeamNotificationAction(
     }
     case 'task_status_change':
       return taskRef ? `changed ${taskRef}` : 'changed task status';
+    case 'task_done':
+      return taskRef ? `finished ${taskRef}` : 'finished a task';
     case 'task_created':
       return taskRef ? `created ${taskRef}` : 'created a task';
     case 'all_tasks_completed':
@@ -1209,27 +1211,14 @@ export class NotificationManager extends EventEmitter {
    * routine teammate chatter is stored only when its per-type toggle is on.
    */
   private shouldStoreTeamNotification(teamEventType: TeamNotificationPayload['teamEventType']): boolean {
-    switch (teamEventType) {
-      // Lead-centric policy: routine coordination chatter NEVER creates a
-      // notification. The human only interacts with the lead, so member→lead
-      // inbox traffic, task status/comment/creation churn, all-done pings,
-      // cross-team relays, and launch confirmations are pure noise here.
-      // Suppressed unconditionally (ignoring config toggles) so a stale
-      // persisted "on" value can't reintroduce the flood.
-      case 'lead_inbox':
-      case 'task_status_change':
-      case 'task_comment':
-      case 'task_created':
-      case 'all_tasks_completed':
-      case 'cross_team_message':
-      case 'team_launched':
-        return false;
-      // Always store: user_inbox (lead→user), task_clarification (lead asks the
-      // user), rate_limit / api_error (systemic critical), task_blocked,
-      // task_review_requested, team_launch_incomplete (actionable/critical).
-      default:
-        return true;
-    }
+    // Done-only policy (per user request): the ONLY event that surfaces a
+    // notification is a task landing in Done. Everything else — lead→user
+    // chatter, clarifications, status churn, comments, blocks, reviews,
+    // rate-limit/API errors, launch pings, cross-team relays — is suppressed,
+    // ignoring config toggles so a stale persisted "on" value can't reintroduce
+    // the flood. (Critical system errors are intentionally silenced too; flip
+    // this back if the user wants them.)
+    return teamEventType === 'task_done';
   }
 
   /**

@@ -21,6 +21,7 @@ const notifiedCommentKeys = new Set<string>();
 const notifiedCreatedTaskKeys = new Set<string>();
 const notifiedAllCompletedTeams = new Set<string>();
 const notifiedBlockedTaskKeys = new Set<string>();
+const notifiedDoneTaskKeys = new Set<string>();
 
 let isFirstFetchAllTasks = true;
 
@@ -46,6 +47,7 @@ export function resetGlobalTaskNotificationTrackerForTests(): void {
   notifiedCreatedTaskKeys.clear();
   notifiedAllCompletedTeams.clear();
   notifiedBlockedTaskKeys.clear();
+  notifiedDoneTaskKeys.clear();
   isFirstFetchAllTasks = true;
 }
 
@@ -69,6 +71,9 @@ export function processGlobalTaskNotifications(params: ProcessGlobalTaskNotifica
   detectClarificationNotifications(oldTaskIndexes, newTasks, notifyOnClarifications);
   detectBlockedTaskNotifications(oldTaskIndexes, newTasks, notifyOnClarifications);
   detectStatusChangeNotifications(oldTaskIndexes, newTasks, appConfig, teamByName);
+  // Notify whenever a task lands in Done — for ALL teams, not just solo. This is the
+  // only notification the user wants; the main-process policy suppresses everything else.
+  detectTaskDoneNotifications(oldTaskIndexes, newTasks);
 
   const notificationsEnabled = appConfig?.notifications?.enabled ?? true;
   const notifyOnTaskComments = appConfig?.notifications?.notifyOnTaskComments ?? true;
@@ -105,6 +110,9 @@ function seedGlobalTaskNotificationState(tasks: readonly GlobalTask[]): void {
     }
     if (getTeamTaskWorkflowColumn(task) === 'review') {
       notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:review`);
+    }
+    if (isTeamTaskFinalForCompletionNotification(task)) {
+      notifiedDoneTaskKeys.add(`${task.teamName}:${task.id}`);
     }
     for (const comment of task.comments ?? []) {
       notifiedCommentKeys.add(`${task.teamName}:${task.id}:${comment.id}`);
@@ -305,6 +313,43 @@ function showStatusChangeNotification(
     },
     suppressToast,
   });
+}
+
+function detectTaskDoneNotifications(
+  oldTaskIndexes: TaskNotificationIndexes,
+  newTasks: GlobalTask[]
+): void {
+  for (const task of newTasks) {
+    const oldTask = oldTaskIndexes.firstOldTaskByKey.get(getTaskNotificationKey(task));
+    if (!oldTask) continue;
+    // "Landed in Done" = the task just transitioned INTO its terminal/done state
+    // (approved, or completed with no pending review).
+    const becameDone =
+      isTeamTaskFinalForCompletionNotification(task) &&
+      !isTeamTaskFinalForCompletionNotification(oldTask);
+    if (!becameDone) continue;
+
+    const key = getTaskNotificationKey(task);
+    if (notifiedDoneTaskKeys.has(key)) continue;
+    notifiedDoneTaskKeys.add(key);
+
+    showTeamNotification({
+      teamName: task.teamName,
+      teamDisplayName: task.teamDisplayName,
+      from: task.owner ?? 'system',
+      to: 'user',
+      summary: `Task ${formatTaskDisplayLabel(task)} done`,
+      body: task.subject,
+      teamEventType: 'task_done',
+      dedupeKey: `done:${task.teamName}:${task.id}`,
+      target: {
+        kind: 'task',
+        teamName: task.teamName,
+        taskId: task.id,
+        focus: 'status',
+      },
+    });
+  }
 }
 
 function detectTaskCommentNotifications(
