@@ -39,7 +39,7 @@ import {
   inferTeamProviderIdFromModel,
   normalizeOptionalTeamProviderId,
 } from '@shared/utils/teamProvider';
-import { AlertCircle, Check, Mic, Paperclip, Send } from 'lucide-react';
+import { AlertCircle, Check, Paperclip, Send } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import type { ActionMode } from '@renderer/components/team/messages/ActionModeSelector';
@@ -1034,20 +1034,8 @@ export const MessageComposer = ({
             <div className="flex items-center gap-2">
               {cornerActionPrefix}
               {/* NOTE: ContextRing disabled — usage formula is inaccurate */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex shrink-0 items-center rounded-full p-1.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-secondary)]"
-                    onClick={() => void window.electronAPI.openExternal('https://voicetext.site')}
-                  >
-                    <Mic size={14} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {t('messageComposer.actions.voiceToText')}
-                </TooltipContent>
-              </Tooltip>
+              {/* Voice-to-text button removed: it only opened an external
+                  third-party site, not a real integrated feature. */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex">
