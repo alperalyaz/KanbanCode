@@ -644,49 +644,8 @@ describe('MessageComposer pending send lifecycle', () => {
     });
   });
 
-  it('returns focus to the textarea after selecting a recipient member', () => {
-    const { host, root } = renderComposer();
-    const bobButton = getButtonContainingText(host, 'bob');
-    const textarea = getTextarea(host);
-
-    bobButton.focus();
-    expect(document.activeElement).toBe(bobButton);
-
-    act(() => {
-      bobButton.click();
-    });
-
-    expect(document.activeElement).toBe(textarea);
-
-    act(() => {
-      root.unmount();
-    });
-  });
-
-  it('returns focus to the textarea after selecting a cross-team recipient', () => {
-    storeHarness.state.crossTeamTargets = [
-      {
-        teamName: 'team-beta',
-        displayName: 'Beta Team',
-      },
-    ];
-    const { host, root } = renderComposer({ onCrossTeamSend: vi.fn() });
-    const betaTeamButton = getButtonContainingText(host, 'Beta Team');
-    const textarea = getTextarea(host);
-
-    betaTeamButton.focus();
-    expect(document.activeElement).toBe(betaTeamButton);
-
-    act(() => {
-      betaTeamButton.click();
-    });
-
-    expect(document.activeElement).toBe(textarea);
-
-    act(() => {
-      root.unmount();
-    });
-  });
+  // Recipient-member and cross-team picker focus tests removed: the lead-centric
+  // composer no longer renders those pickers (the human always messages the lead).
 
   it('defers expensive mention data until the matching trigger is typed', () => {
     draftHarness.state.text = '';
