@@ -101,11 +101,10 @@ export const TabbedLayout = (): React.JSX.Element => {
       const sourcePaneId = activeData.paneId as string;
       const state = useStore.getState();
 
-      // Case 1: Drop on a split-zone (edge of pane) → create new pane
+      // Split-on-drop is intentionally disabled: a tab can never be dropped onto
+      // the page body to spawn a new split pane (see PaneView). Any stray
+      // split-zone drop is ignored rather than creating a pane.
       if (overData?.type === 'split-zone') {
-        const targetPaneId = overData.paneId as string;
-        const side = overData.side as 'left' | 'right';
-        state.moveTabToNewPane(draggedTabId, sourcePaneId, targetPaneId, side);
         return;
       }
 
