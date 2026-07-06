@@ -23,6 +23,7 @@ export const MemberPresenceDot = memo(
         )}
         style={syncedPulseStyle}
         aria-label={label}
+        title={label}
       />
     );
   }
