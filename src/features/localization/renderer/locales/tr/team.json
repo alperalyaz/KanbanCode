@@ -1775,8 +1775,8 @@
       "finalizing": "Tamamlanıyor"
     },
     "stall": {
-      "waiting": "Model yanıtı bekleniyor ({{elapsed}}) - günlükler gecikebilir, bu normal",
-      "waitingUnusual": "Model yanıtı hâlâ bekleniyor ({{elapsed}}) - bu sıra dışı"
+      "waiting": "Model yanıtı bekleniyor ({{elapsed}})…",
+      "waitingUnusual": "Model yanıtı hâlâ bekleniyor ({{elapsed}}) — beklenenden uzun sürüyor"
     },
     "providerStatus": {
       "status": {
