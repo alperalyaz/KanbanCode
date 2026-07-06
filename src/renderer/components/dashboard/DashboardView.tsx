@@ -173,29 +173,29 @@ export const DashboardView = (): React.JSX.Element => {
         aria-hidden="true"
       />
 
-      <div className="relative w-full px-6 py-14 sm:px-8 lg:px-12 lg:py-20 xl:px-16 2xl:px-20">
-        <div className="mb-10 space-y-3">
+      <div className="relative w-full px-6 py-8 sm:px-8 lg:px-12 lg:py-10 xl:px-16 2xl:px-20">
+        <div className="mb-6 space-y-3 empty:mb-0 empty:hidden">
           <WebPreviewBanner />
           <WindowsAdministratorBanner />
           <CliStatusBanner />
           <TmuxStatusBanner />
         </div>
 
-        <header className="mb-12 lg:mb-14">
-          <p className="mb-3 text-sm font-medium tracking-wide text-indigo-300/80">{APP_NAME}</p>
-          <h1 className="text-3xl font-semibold tracking-tight text-text sm:text-4xl lg:text-[2.75rem] lg:leading-tight xl:text-5xl">
+        <header className="mb-8">
+          <p className="mb-2 text-sm font-medium tracking-wide text-indigo-300/80">{APP_NAME}</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-text sm:text-4xl lg:text-[2.5rem] lg:leading-tight">
             {t('hero.title')}
           </h1>
-          <p className="mt-4 max-w-4xl text-base leading-relaxed text-text-secondary sm:text-lg xl:text-xl">
+          <p className="mt-3 max-w-3xl text-base leading-relaxed text-text-secondary lg:text-lg">
             {t('hero.subtitle')}
           </p>
         </header>
 
         <div
-          className={`mb-14 grid gap-4 ${
+          className={`mb-10 grid gap-4 ${
             showProjectSearch
               ? 'lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] lg:items-start xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'
-              : 'max-w-md'
+              : 'max-w-2xl'
           }`}
         >
           <button
