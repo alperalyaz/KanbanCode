@@ -355,7 +355,6 @@ export const MessageComposer = ({
   const attachmentInputAccept = getAttachmentInputAcceptForMember(selectedMember);
   const hasTeammates = members.length > 1;
   const canDelegate = hasTeammates && (isCrossTeam || isLeadRecipient);
-  const shouldAutoDelegate = isLeadRecipient && canDelegate;
 
   const { actionMode, setActionMode, isLoaded: draftLoaded } = draft;
 
@@ -392,40 +391,15 @@ export const MessageComposer = ({
     }
   }, [actionMode, focusComposerTextarea]);
 
-  // Auto-select delegate when lead recipient is chosen by the user.
-  // Wait until draft is restored from IndexedDB (draftLoaded) before running,
-  // so we don't overwrite the persisted actionMode during initialization.
-  // After draft loads, only auto-switch on subsequent recipient changes.
-  const isInitializedRef = useRef(false);
-  const prevShouldAutoDelegateRef = useRef(shouldAutoDelegate);
+  // "Do" is the default: the lead auto-does what it can and delegates the rest,
+  // so we no longer force delegate-mode when messaging the lead. Delegate is now
+  // an explicit opt-in; if it becomes unavailable, fall back to the default.
   useEffect(() => {
     if (!draftLoaded) return;
-
     if (!canDelegate && actionMode === 'delegate') {
       setActionMode('do');
-      return;
     }
-
-    // On first run after load, just record the baseline — don't overwrite
-    if (!isInitializedRef.current) {
-      isInitializedRef.current = true;
-      prevShouldAutoDelegateRef.current = shouldAutoDelegate;
-      if (shouldAutoDelegate && actionMode === 'do') {
-        setActionMode('delegate');
-      }
-      return;
-    }
-
-    // Only react when delegate availability actually changes
-    if (shouldAutoDelegate === prevShouldAutoDelegateRef.current) return;
-    prevShouldAutoDelegateRef.current = shouldAutoDelegate;
-
-    if (shouldAutoDelegate) {
-      setActionMode('delegate');
-    } else if (actionMode === 'delegate') {
-      setActionMode('do');
-    }
-  }, [actionMode, canDelegate, draftLoaded, setActionMode, shouldAutoDelegate]);
+  }, [actionMode, canDelegate, draftLoaded, setActionMode]);
   // NOTE: lead context ring disabled — usage formula is inaccurate
   // const isLeadAgentRecipient = selectedMember?.agentType === 'team-lead';
   // const leadContext = useStore((s) =>

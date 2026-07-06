@@ -18,6 +18,11 @@ interface ActionModeSelectorProps {
   disabled?: boolean;
 }
 
+// "Do" is intentionally NOT a selectable chip. It is the silent default: the
+// lead automatically does what it can (small ops directly) and delegates the
+// rest. "Ask" (read-only) and "Delegate" (force full delegation) remain as
+// explicit opt-in overrides — when neither is active, the composer is in the
+// default auto/do mode.
 const MODE_CONFIG: {
   mode: ActionMode;
   label: string;
@@ -25,13 +30,6 @@ const MODE_CONFIG: {
   activeClass: string;
   tooltipClass: string;
 }[] = [
-  {
-    mode: 'do',
-    label: 'Do',
-    tooltip: 'Full execution mode - can change code/state, run commands, or delegate',
-    activeClass: 'bg-rose-500/80 text-white',
-    tooltipClass: 'bg-rose-500/80 border-rose-600 text-white',
-  },
   {
     mode: 'ask',
     label: 'Ask',
