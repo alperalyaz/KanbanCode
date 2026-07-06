@@ -1480,7 +1480,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
   // Messages panel UI state
   messagesPanelMode: loadPersistedMessagesPanelMode(),
-  messagesPanelWidth: 340,
+  // Default the chat column to half the screen (chat | team+kanban 50/50).
+  // Falls back to a sane pixel width when window sizing is unavailable (tests/SSR).
+  messagesPanelWidth:
+    typeof window !== 'undefined' && window.innerWidth > 0
+      ? Math.round(window.innerWidth * 0.5)
+      : 640,
   sidebarLogsHeight: 213,
   setMessagesPanelMode: (mode: TeamMessagesPanelMode) => {
     savePersistedMessagesPanelMode(mode);

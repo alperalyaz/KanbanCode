@@ -1286,7 +1286,12 @@ export const TeamDetailView = memo(function TeamDetailView({
       width: messagesPanelWidth,
       onWidthChange: setMessagesPanelWidth,
       minWidth: 280,
-      maxWidth: 600,
+      // Allow the chat column to grow up to ~99% of the window (options are
+      // re-read every render, so this tracks window size after interaction).
+      maxWidth:
+        typeof window !== 'undefined' && window.innerWidth > 0
+          ? Math.round(window.innerWidth * 0.99)
+          : 1600,
       side: 'left',
     });
   const changeMessagesPanelMode = useCallback(
