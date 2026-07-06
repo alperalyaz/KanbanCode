@@ -1,9 +1,8 @@
 import { APP_NAME } from '@shared/constants/brand';
-import {
-  FALLBACK_APP_LOCALE,
-  resolveAppLocale,
-  type ResolvedAppLocale,
-} from '@features/localization';
+// NOTE: `resolveAppLocale` import removed while the startup locale is hard-locked
+// to English below. Re-add it from '@features/localization' when restoring the
+// commented-out resolution logic in resolveStartupLocale().
+import { FALLBACK_APP_LOCALE, type ResolvedAppLocale } from '@features/localization';
 
 export const STARTUP_LOCALE_CACHE_KEY = 'agent-teams-locale-cache';
 export const STARTUP_LOCALE_PREFERENCE_CACHE_KEY = 'agent-teams-locale-preference-cache';
@@ -135,22 +134,28 @@ export interface StartupLocaleResolutionInput {
   readonly cachedPreference?: string | null;
 }
 
-export function resolveStartupLocale(input: StartupLocaleResolutionInput = {}): ResolvedAppLocale {
-  const cached = input.cachedLocale?.trim();
-  if (cached === 'tr' || cached === 'en') {
-    return cached;
-  }
+export function resolveStartupLocale(_input: StartupLocaleResolutionInput = {}): ResolvedAppLocale {
+  // TEMPORARY: the whole app UI is locked to English while i18n coverage is
+  // incomplete (see LocalizationProvider). The startup splash resolves its
+  // locale on a separate path, so without this it could still show a stale
+  // cached/system 'tr' during the intro. Lock it to English too for consistency.
+  // To restore config/cache/OS-based resolution later, delete this early return
+  // and re-enable the logic below (kept intentionally for easy revert).
+  return FALLBACK_APP_LOCALE;
 
-  const cachedPreference = input.cachedPreference?.trim();
-  if (cachedPreference === 'tr' || cachedPreference === 'en') {
-    return cachedPreference;
-  }
-
-  return resolveAppLocale({
-    preference: cachedPreference ?? input.preference,
-    systemLocale: input.systemLocale,
-    fallbackLocale: FALLBACK_APP_LOCALE,
-  });
+  // const cached = _input.cachedLocale?.trim();
+  // if (cached === 'tr' || cached === 'en') {
+  //   return cached;
+  // }
+  // const cachedPreference = _input.cachedPreference?.trim();
+  // if (cachedPreference === 'tr' || cachedPreference === 'en') {
+  //   return cachedPreference;
+  // }
+  // return resolveAppLocale({
+  //   preference: cachedPreference ?? _input.preference,
+  //   systemLocale: _input.systemLocale,
+  //   fallbackLocale: FALLBACK_APP_LOCALE,
+  // });
 }
 
 export function persistStartupLocaleCaches(
