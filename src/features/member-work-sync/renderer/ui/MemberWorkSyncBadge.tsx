@@ -17,10 +17,10 @@ type MemberWorkSyncBadgeProps = Readonly<{
 
 const toneClassName: Record<MemberWorkSyncStatusViewModel['tone'], string> = {
   neutral: 'border-[var(--color-border)] text-[var(--color-text-muted)]',
-  success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
-  working: 'border-sky-500/25 bg-sky-500/10 text-sky-300',
-  attention: 'border-amber-500/25 bg-amber-500/10 text-amber-200',
-  blocked: 'border-red-500/25 bg-red-500/10 text-red-300',
+  success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  working: 'border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  attention: 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-200',
+  blocked: 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300',
 };
 
 export function MemberWorkSyncBadge({

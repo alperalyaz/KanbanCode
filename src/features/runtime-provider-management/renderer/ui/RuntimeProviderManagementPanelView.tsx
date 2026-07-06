@@ -271,19 +271,19 @@ function directoryEntryMatchesQuery(
 
 function directorySetupKindClassName(provider: RuntimeProviderDirectoryEntryDto): string {
   if (provider.metadata.configuredAuthless) {
-    return 'border-cyan-400/35 bg-cyan-400/10 text-cyan-100';
+    return 'border-cyan-400/35 bg-cyan-400/10 text-cyan-700 dark:text-cyan-100';
   }
   switch (provider.setupKind) {
     case 'connected':
       return 'border-emerald-300/70 bg-emerald-600 text-emerald-50';
     case 'connect-api-key':
     case 'available-readonly':
-      return 'border-sky-400/30 bg-sky-400/10 text-sky-200';
+      return 'border-sky-400/30 bg-sky-400/10 text-sky-700 dark:text-sky-200';
     case 'configure-manually':
     case 'requires-environment':
       return 'border-white/10 bg-white/[0.04] text-[var(--color-text-muted)]';
     case 'unsupported':
-      return 'border-red-400/25 bg-red-400/10 text-red-200';
+      return 'border-red-400/25 bg-red-400/10 text-red-700 dark:text-red-200';
   }
 }
 
@@ -309,11 +309,11 @@ function stateClassName(provider: RuntimeProviderConnectionDto): string {
     case 'connected':
       return 'border-emerald-400/35 bg-emerald-400/10';
     case 'available':
-      return 'border-sky-400/25 bg-sky-400/10 text-sky-200';
+      return 'border-sky-400/25 bg-sky-400/10 text-sky-700 dark:text-sky-200';
     case 'error':
-      return 'border-red-400/25 bg-red-400/10 text-red-200';
+      return 'border-red-400/25 bg-red-400/10 text-red-700 dark:text-red-200';
     case 'ignored':
-      return 'border-zinc-400/25 bg-zinc-400/10 text-zinc-300';
+      return 'border-zinc-400/25 bg-zinc-400/10 text-zinc-600 dark:text-zinc-300';
     case 'not-connected':
       return 'border-white/10 bg-white/[0.04] text-[var(--color-text-muted)]';
   }
@@ -1464,16 +1464,16 @@ function ModelBadges({
         <Badge
           className={
             modelRecommendation.level === 'recommended'
-              ? 'bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-200'
+              ? 'bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-700 dark:text-emerald-200'
               : modelRecommendation.level === 'recommended-with-limits'
-                ? 'bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-200'
+                ? 'bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-700 dark:text-amber-200'
                 : modelRecommendation.level === 'tested'
-                  ? 'bg-sky-400/15 px-1.5 py-0 text-[10px] text-sky-200'
+                  ? 'bg-sky-400/15 px-1.5 py-0 text-[10px] text-sky-700 dark:text-sky-200'
                   : modelRecommendation.level === 'tested-with-limits'
-                    ? 'bg-cyan-400/15 px-1.5 py-0 text-[10px] text-cyan-200'
+                    ? 'bg-cyan-400/15 px-1.5 py-0 text-[10px] text-cyan-700 dark:text-cyan-200'
                     : modelRecommendation.level === 'unavailable-in-opencode'
-                      ? 'bg-slate-400/15 px-1.5 py-0 text-[10px] text-slate-200'
-                      : 'bg-red-400/15 px-1.5 py-0 text-[10px] text-red-200'
+                      ? 'bg-slate-400/15 px-1.5 py-0 text-[10px] text-slate-600 dark:text-slate-200'
+                      : 'bg-red-400/15 px-1.5 py-0 text-[10px] text-red-700 dark:text-red-200'
           }
           title={modelRecommendation.reason}
         >
@@ -1490,53 +1490,53 @@ function ModelBadges({
         </Badge>
       ) : null}
       {usedForNewTeams ? (
-        <Badge className="bg-sky-400/15 px-1.5 py-0 text-[10px] text-sky-100">
+        <Badge className="bg-sky-400/15 px-1.5 py-0 text-[10px] text-sky-700 dark:text-sky-100">
           <Star className="mr-1 size-3" />
           {t('runtimeProvider.badges.usedInTeamPicker')}
         </Badge>
       ) : null}
       {freeModel ? (
-        <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-200">
+        <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-700 dark:text-emerald-200">
           {t('runtimeProvider.badges.free')}
         </Badge>
       ) : null}
       {localRoute ? (
         <>
-          <Badge className="bg-cyan-400/15 px-1.5 py-0 text-[10px] text-cyan-200">
+          <Badge className="bg-cyan-400/15 px-1.5 py-0 text-[10px] text-cyan-700 dark:text-cyan-200">
             {t('runtimeProvider.badges.local')}
           </Badge>
-          <Badge className="bg-sky-400/15 px-1.5 py-0 text-[10px] text-sky-200">
+          <Badge className="bg-sky-400/15 px-1.5 py-0 text-[10px] text-sky-700 dark:text-sky-200">
             {t('runtimeProvider.badges.knownRoute')}
           </Badge>
         </>
       ) : null}
       {connectedRoute ? (
-        <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-100">
+        <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-700 dark:text-emerald-100">
           {t('runtimeProvider.badges.connected')}
         </Badge>
       ) : null}
       {verified ? (
-        <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-100">
+        <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-700 dark:text-emerald-100">
           {t('runtimeProvider.badges.verified')}
         </Badge>
       ) : null}
       {needsTest && !verified ? (
-        <Badge className="bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-200">
+        <Badge className="bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-700 dark:text-amber-200">
           {t('runtimeProvider.badges.needsTest')}
         </Badge>
       ) : null}
       {failed ? (
-        <Badge className="bg-red-400/15 px-1.5 py-0 text-[10px] text-red-200">
+        <Badge className="bg-red-400/15 px-1.5 py-0 text-[10px] text-red-700 dark:text-red-200">
           {t('runtimeProvider.badges.failed')}
         </Badge>
       ) : null}
       {unknown ? (
-        <Badge className="bg-slate-400/15 px-1.5 py-0 text-[10px] text-slate-200">
+        <Badge className="bg-slate-400/15 px-1.5 py-0 text-[10px] text-slate-600 dark:text-slate-200">
           {t('runtimeProvider.badges.unknown')}
         </Badge>
       ) : null}
       {model.default ? (
-        <Badge className="bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-200">
+        <Badge className="bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-700 dark:text-amber-200">
           {t('runtimeProvider.badges.default')}
         </Badge>
       ) : null}
