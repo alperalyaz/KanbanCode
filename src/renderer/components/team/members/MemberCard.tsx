@@ -5,7 +5,6 @@ import { Badge } from '@renderer/components/ui/badge';
 import { SyncedLoader2 } from '@renderer/components/ui/SyncedLoader2';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
-import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { renderLinkifiedText } from '@renderer/utils/linkifiedText';
@@ -816,7 +815,6 @@ export const MemberCard = memo(function MemberCard({
       ? (launchStatusLabel ?? presenceLabel)
       : presenceLabel;
   const colors = getTeamColorSet(memberColor);
-  const { isLight } = useTheme();
   const pending = taskCounts?.pending ?? 0;
   const inProgress = taskCounts?.inProgress ?? 0;
   const completed = taskCounts?.completed ?? 0;
@@ -1176,11 +1174,8 @@ export const MemberCard = memo(function MemberCard({
         <div className="relative z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1">
           <div className="relative shrink-0">
             <div
-              className="rounded-full border-2 p-px"
-              style={{
-                borderColor: colors.border,
-                boxShadow: isLight ? 'none' : `0 0 0 1px ${colors.badge}`,
-              }}
+              className="rounded-full border p-px"
+              style={{ borderColor: 'var(--color-border)' }}
             >
               <img
                 src={avatarUrl ?? agentAvatarUrl(member.name)}
