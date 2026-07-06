@@ -744,6 +744,10 @@
     "updateReady": "Update ready",
     "restartNow": "Restart now"
   },
+  "theme": {
+    "switchToDark": "Switch to dark mode",
+    "switchToLight": "Switch to light mode"
+  },
   "layout": {
     "safeStopAll": "Safely stop all teams",
     "safeStopAllTooltip": "Gracefully stops every running team and process before you close the app",

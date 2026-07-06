@@ -9,8 +9,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { useAppTranslation } from '@features/localization/renderer';
 import { api } from '@renderer/api';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
-import { Bell, PowerOff } from 'lucide-react';
+import { Bell, Moon, PowerOff, Sun } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { MoreMenu } from './MoreMenu';
@@ -24,6 +25,7 @@ export const TabBarActions = (): React.JSX.Element => {
     openTabs,
     tabSessionData,
     leadActivityByTeam,
+    updateConfig,
   } = useStore(
     useShallow((s) => ({
       unreadCount: s.unreadCount,
@@ -32,13 +34,22 @@ export const TabBarActions = (): React.JSX.Element => {
       openTabs: s.openTabs,
       tabSessionData: s.tabSessionData,
       leadActivityByTeam: s.leadActivityByTeam,
+      updateConfig: s.updateConfig,
     }))
   );
+  const { isLight } = useTheme();
 
   // Hover states for buttons
   const [notificationsHover, setNotificationsHover] = useState(false);
+  const [themeHover, setThemeHover] = useState(false);
   const [safeStopHover, setSafeStopHover] = useState(false);
   const [stoppingAll, setStoppingAll] = useState(false);
+
+  // One-click light/dark toggle. Writes an explicit theme (not "system") so the
+  // toggle is deterministic — matching what the user just chose.
+  const toggleTheme = useCallback((): void => {
+    void updateConfig('general', { theme: isLight ? 'dark' : 'light' });
+  }, [isLight, updateConfig]);
 
   // Any team that is not offline is considered running and worth a safe stop.
   const hasRunningTeams = useMemo(
@@ -71,6 +82,28 @@ export const TabBarActions = (): React.JSX.Element => {
       className="ml-2 flex shrink-0 items-center gap-1"
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
+      {/* Light/dark theme toggle */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={toggleTheme}
+            onMouseEnter={() => setThemeHover(true)}
+            onMouseLeave={() => setThemeHover(false)}
+            className="rounded-md p-2 transition-colors"
+            style={{
+              color: themeHover ? 'var(--color-text)' : 'var(--color-text-muted)',
+              backgroundColor: themeHover ? 'var(--color-surface-raised)' : 'transparent',
+            }}
+            aria-label={isLight ? t('theme.switchToDark') : t('theme.switchToLight')}
+          >
+            {isLight ? <Moon className="size-4" /> : <Sun className="size-4" />}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {isLight ? t('theme.switchToDark') : t('theme.switchToLight')}
+        </TooltipContent>
+      </Tooltip>
+
       {/* Safe stop — gracefully stop all running teams before closing */}
       {(hasRunningTeams || stoppingAll) && (
         <Tooltip>

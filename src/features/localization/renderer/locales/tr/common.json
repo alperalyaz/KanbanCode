@@ -744,6 +744,10 @@
     "updateReady": "Güncelleme hazır",
     "restartNow": "Şimdi yeniden başlat"
   },
+  "theme": {
+    "switchToDark": "Koyu moda geç",
+    "switchToLight": "Açık moda geç"
+  },
   "layout": {
     "safeStopAll": "Tüm ekipleri güvenli durdur",
     "safeStopAllTooltip": "Kapatmadan önce çalışan tüm ekipleri ve süreçleri güvenli şekilde durdurur",

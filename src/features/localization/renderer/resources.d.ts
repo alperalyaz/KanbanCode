@@ -771,6 +771,10 @@ export default interface Resources {
       "title": "Run in your terminal",
       "windowsEnvNote": "On Windows, set the environment variables first (for example: set KEY=value) and then run the command without the KEY=value prefix."
     },
+    "theme": {
+      "switchToDark": "Switch to dark mode",
+      "switchToLight": "Switch to light mode"
+    },
     "tmuxInstaller": {
       "actions": {
         "cancel": "Cancel",
