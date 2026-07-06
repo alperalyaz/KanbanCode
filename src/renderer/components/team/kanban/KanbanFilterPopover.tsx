@@ -27,7 +27,6 @@ export const KANBAN_COLUMNS = [
   { id: 'in_progress', labelKey: 'kanban.columns.inProgress', color: 'rgb(234, 179, 8)' },
   { id: 'done', labelKey: 'kanban.columns.done', color: 'rgb(34, 197, 94)' },
   { id: 'review', labelKey: 'kanban.columns.review', color: 'rgb(139, 92, 246)' },
-  { id: 'approved', labelKey: 'kanban.columns.approved', color: 'rgb(22, 163, 74)' },
 ] as const satisfies readonly { id: KanbanColumnId; labelKey: string; color: string }[];
 
 interface KanbanFilterPopoverProps {

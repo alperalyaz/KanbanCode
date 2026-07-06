@@ -115,12 +115,16 @@ const SCROLLABLE_OVERFLOW_VALUES = new Set(['auto', 'scroll', 'overlay']);
 const INITIAL_VISIBLE_TASKS_PER_COLUMN = 20;
 const LOAD_MORE_TASKS_PER_COLUMN = 20;
 
+// "Approved" is intentionally NOT a board column: work that needs the human's
+// approval waits in Review; once approved it becomes Done, once rejected it goes
+// back to Todo/In Progress. Work that needs no approval is Done directly.
+// The 'approved' review state still exists in data and is merged into Done for
+// display (see getTaskColumn), so re-adding the column later is non-destructive.
 const COLUMNS = [
   { id: 'todo', titleKey: 'kanban.columns.todo' },
   { id: 'in_progress', titleKey: 'kanban.columns.inProgress' },
   { id: 'review', titleKey: 'kanban.columns.review' },
   { id: 'done', titleKey: 'kanban.columns.done' },
-  { id: 'approved', titleKey: 'kanban.columns.approved' },
 ] as const satisfies readonly { id: KanbanColumnId; titleKey: string }[];
 
 function getTaskColumn(task: TeamTask, kanbanState: KanbanState): KanbanColumnId | null {
@@ -129,7 +133,8 @@ function getTaskColumn(task: TeamTask, kanbanState: KanbanState): KanbanColumnId
   // fall back to task.reviewState, otherwise the task reappears in approved/review.
   const kanbanEntry = kanbanState.tasks[task.id];
   if (kanbanEntry?.column) {
-    return kanbanEntry.column;
+    // Approved work is shown in the Done column — there is no Approved column.
+    return kanbanEntry.column === 'approved' ? 'done' : kanbanEntry.column;
   }
 
   if (task.status === 'pending') {
