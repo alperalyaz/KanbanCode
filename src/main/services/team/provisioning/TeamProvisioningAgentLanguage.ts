@@ -1,4 +1,3 @@
-import { ConfigManager } from '@main/services/infrastructure/ConfigManager';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
 
 export function getSystemLocale(): string {
@@ -10,10 +9,14 @@ export function getSystemLocale(): string {
 }
 
 export function getConfiguredAgentLanguageName(): string {
-  const config = ConfigManager.getInstance().getConfig();
-  const langCode = config.general.agentLanguage || 'system';
-  const systemLocale = getSystemLocale();
-  return resolveLanguageName(langCode, systemLocale);
+  // TEMPORARY: agents are locked to English while the app UI is English-only
+  // (see LocalizationProvider). Models are most reliable in English and this
+  // keeps UI + agents + startup intro consistent. To restore config/OS-based
+  // agent language later, replace the line below with:
+  //   const config = ConfigManager.getInstance().getConfig();
+  //   const langCode = config.general.agentLanguage || 'system';
+  //   return resolveLanguageName(langCode, getSystemLocale());
+  return resolveLanguageName('en', 'en');
 }
 
 export function getAgentLanguageInstruction(): string {

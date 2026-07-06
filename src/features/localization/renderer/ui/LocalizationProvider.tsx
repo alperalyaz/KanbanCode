@@ -1,9 +1,7 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { I18nextProvider } from 'react-i18next';
 
-import { resolveRuntimeLocale } from '../../core/application/resolveRuntimeLocale';
-import { normalizeAppLocalePreference } from '../../core/domain/localePolicy';
-import { getBrowserSystemLocale } from '../adapters/browserSystemLocaleAdapter';
+import { FALLBACK_APP_LOCALE } from '../../contracts';
 import { appI18n } from '../composition/createI18nextInstance';
 import { persistStartupLocaleCaches } from '@shared/i18n/startupMessages';
 
@@ -15,18 +13,15 @@ interface LocalizationProviderProps {
 }
 
 export const LocalizationProvider = ({
-  appConfig,
+  appConfig: _appConfig,
   children,
 }: LocalizationProviderProps): React.JSX.Element => {
-  const resolvedLocale = useMemo(
-    () =>
-      resolveRuntimeLocale({
-        preference: normalizeAppLocalePreference(appConfig?.general.appLocale),
-        systemLocale: getBrowserSystemLocale(),
-      }),
-    [appConfig?.general.appLocale]
-  );
-  const localePreference = normalizeAppLocalePreference(appConfig?.general.appLocale);
+  // TEMPORARY: the app UI is locked to English while the i18n coverage is
+  // incomplete (many strings are still hardcoded English). The i18n scaffolding
+  // (t() calls, locale files) stays in place so Turkish (and future languages)
+  // can be re-activated later by restoring OS/preference-based resolution here.
+  const resolvedLocale = FALLBACK_APP_LOCALE;
+  const localePreference = FALLBACK_APP_LOCALE;
 
   useEffect(() => {
     if (appI18n.language !== resolvedLocale) {
