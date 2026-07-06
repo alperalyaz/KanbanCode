@@ -10,9 +10,10 @@ import {
 } from '@renderer/components/ui/dialog';
 import { CARD_ICON_MUTED } from '@renderer/constants/cssVariables';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
-import { agentAvatarUrl, buildMemberAvatarMap } from '@renderer/utils/memberHelpers';
+import { useTheme } from '@renderer/hooks/useTheme';
 
 import { MemberBadge } from '../MemberBadge';
+import { MemberColorAvatar } from '../MemberColorAvatar';
 
 import { ActivityItem } from './ActivityItem';
 import { buildMessageContext, resolveMessageRenderProps } from './activityMessageContext';
@@ -41,7 +42,6 @@ interface DialogThoughtsContentProps {
 
 const DialogThoughtsContent = ({
   group,
-  members,
   memberColor,
   onTaskIdClick,
   onReply,
@@ -51,23 +51,18 @@ const DialogThoughtsContent = ({
   onTeamClick,
 }: DialogThoughtsContentProps): React.JSX.Element => {
   const { t } = useAppTranslation('team');
+  const { isLight } = useTheme();
   const { thoughts } = group;
   const newest = thoughts[0];
   const oldest = thoughts[thoughts.length - 1];
   const colors = getTeamColorSet(memberColor ?? '');
-  const avatarMap = useMemo(() => buildMemberAvatarMap(members ?? []), [members]);
   const chronological = useMemo(() => [...thoughts].reverse(), [thoughts]);
 
   return (
     <div>
       {/* Header */}
       <div className="flex items-center gap-2 pb-3">
-        <img
-          src={avatarMap.get(newest.from) ?? agentAvatarUrl(newest.from, 32)}
-          alt=""
-          className="size-6 rounded-full bg-[var(--color-surface-raised)]"
-          loading="lazy"
-        />
+        <MemberColorAvatar color={memberColor} isLight={isLight} className="size-6" />
         <MemberBadge name={newest.from} color={memberColor} hideAvatar />
         <span className="text-[10px]" style={{ color: CARD_ICON_MUTED }}>
           {t('activity.thoughts.count', { count: thoughts.length })}

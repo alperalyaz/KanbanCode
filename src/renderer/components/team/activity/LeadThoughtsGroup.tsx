@@ -13,6 +13,7 @@ import {
 import { useAppTranslation } from '@features/localization/renderer';
 import { CompactMarkdownPreview } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
+import { MemberColorAvatar } from '@renderer/components/team/MemberColorAvatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import {
   CARD_BG,
@@ -22,7 +23,6 @@ import {
 } from '@renderer/constants/cssVariables';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
-import { agentAvatarUrl } from '@renderer/utils/memberHelpers';
 import {
   areStringArraysEqual,
   areStringMapsEqual,
@@ -903,11 +903,10 @@ const LeadThoughtsGroupRowComponent = ({
                 ) : null}
                 {!compactHeader ? (
                   <div className="relative shrink-0">
-                    <img
-                      src={agentAvatarUrl(leadName, 24)}
-                      alt=""
-                      className="size-5 rounded-full bg-[var(--color-surface-raised)]"
-                      loading="lazy"
+                    <MemberColorAvatar
+                      color={memberColor}
+                      isLight={isLight}
+                      className="size-5"
                     />
                     <LiveThoughtStatusBadge
                       canBeLive={canBeLive}
@@ -974,11 +973,10 @@ const LeadThoughtsGroupRowComponent = ({
               ) : null}
               {!compactHeader ? (
                 <div className="relative shrink-0">
-                  <img
-                    src={agentAvatarUrl(leadName, 24)}
-                    alt=""
-                    className="size-5 rounded-full bg-[var(--color-surface-raised)]"
-                    loading="lazy"
+                  <MemberColorAvatar
+                    color={memberColor}
+                    isLight={isLight}
+                    className="size-5"
                   />
                   <LiveThoughtStatusBadge
                     canBeLive={canBeLive}

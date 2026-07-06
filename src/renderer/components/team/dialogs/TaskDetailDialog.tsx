@@ -11,6 +11,7 @@ import {
 import { CollapsibleTeamSection } from '@renderer/components/team/CollapsibleTeamSection';
 import { FileIcon } from '@renderer/components/team/editor/FileIcon';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
+import { MemberColorAvatar } from '@renderer/components/team/MemberColorAvatar';
 import { TaskLogsPanel } from '@renderer/components/team/taskLogs/TaskLogsPanel';
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
@@ -39,8 +40,6 @@ import { useStore } from '@renderer/store';
 import { isImageMimeType } from '@renderer/utils/attachmentUtils';
 import { isImeComposing } from '@renderer/utils/imeComposition';
 import {
-  agentAvatarUrl,
-  buildMemberAvatarMap,
   buildMemberColorMap,
   displayMemberName,
   KANBAN_COLUMN_DISPLAY,
@@ -221,7 +220,6 @@ export const TaskDetailDialog = ({
   headerExtra,
 }: TaskDetailDialogProps): React.JSX.Element => {
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
-  const avatarMap = useMemo(() => buildMemberAvatarMap(members), [members]);
   const { isLight } = useTheme();
   const { t } = useAppTranslation('team');
   const currentTask = task ? (taskMap.get(task.id) ?? task) : null;
@@ -808,14 +806,10 @@ export const TaskDetailDialog = ({
                         className="inline-flex items-center gap-1 rounded-r-full px-1.5 py-0.5 text-[10px] font-medium"
                         style={reviewerBadgeStyle}
                       >
-                        <img
-                          src={
-                            avatarMap.get(currentTask.reviewer) ??
-                            agentAvatarUrl(currentTask.reviewer, 18)
-                          }
-                          alt=""
-                          className="size-4 shrink-0 rounded-full bg-[var(--color-surface-raised)]"
-                          loading="lazy"
+                        <MemberColorAvatar
+                          color={reviewerColor}
+                          isLight={isLight}
+                          className="size-4"
                         />
                         {displayMemberName(currentTask.reviewer)}
                       </span>

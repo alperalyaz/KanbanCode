@@ -1,16 +1,12 @@
 import { memo, type ReactNode, useMemo, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
+import { MemberColorAvatar } from '@renderer/components/team/MemberColorAvatar';
 import { CARD_BG, CARD_BORDER_STYLE, CARD_ICON_MUTED } from '@renderer/constants/cssVariables';
 import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
-import {
-  agentAvatarUrl,
-  buildMemberAvatarMap,
-  buildMemberColorMap,
-  displayMemberName,
-} from '@renderer/utils/memberHelpers';
+import { buildMemberColorMap, displayMemberName } from '@renderer/utils/memberHelpers';
 import { isDisplayableCurrentTask } from '@renderer/utils/teamTaskDisplayState';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { getTeamTaskWorkflowColumn } from '@shared/utils/teamTaskState';
@@ -48,7 +44,6 @@ export const ActiveTasksBlock = memo(function ActiveTasksBlock({
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
-  const avatarMap = useMemo(() => buildMemberAvatarMap(members), [members]);
   const entries = useMemo<ActivityEntry[]>(() => {
     const taskMap = new Map(tasks.map((task) => [task.id, task]));
     const reviewTaskByReviewer = new Map<string, TeamTaskWithKanban>();
@@ -139,11 +134,10 @@ export const ActiveTasksBlock = memo(function ActiveTasksBlock({
             >
               <div className="flex items-center gap-2 px-3 py-2">
                 <span className="relative inline-flex shrink-0">
-                  <img
-                    src={avatarMap.get(member.name) ?? agentAvatarUrl(member.name, 24)}
-                    alt=""
-                    className="size-5 rounded-full bg-[var(--color-surface-raised)]"
-                    loading="lazy"
+                  <MemberColorAvatar
+                    color={colorMap.get(member.name)}
+                    isLight={isLight}
+                    className="size-5"
                   />
                   <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5">
                     <span
