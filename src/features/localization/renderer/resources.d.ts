@@ -3324,6 +3324,9 @@ export default interface Resources {
         "partialMissing": "Last launch failed partway - {{missing}}/{{expected}} teammates did not join",
         "reconciling": "Last launch is still reconciling"
       },
+      "addMember": {
+        "failed": "Could not add the member. Please try again."
+      },
       "previous": "Previous: {{paths}}",
       "removeMember": {
         "description": "Remove \"{{member}}\" from the team? Tasks and messages will be preserved, but this name cannot be reused.",

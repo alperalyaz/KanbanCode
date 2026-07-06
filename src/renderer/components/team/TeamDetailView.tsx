@@ -1087,6 +1087,7 @@ export const TeamDetailView = memo(function TeamDetailView({
   const [creatingTask, setCreatingTask] = useState(false);
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [addingMemberLoading, setAddingMemberLoading] = useState(false);
+  const [addMemberError, setAddMemberError] = useState<string | null>(null);
   const [removeMemberConfirm, setRemoveMemberConfirm] = useState<string | null>(null);
   const [updatingRoleLoading, setUpdatingRoleLoading] = useState(false);
   // Which surface of the edit dialog is open: team settings (top pencil) or the
@@ -2666,6 +2667,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                         className="h-7 gap-1.5 rounded-full px-3 text-xs font-semibold shadow-sm"
                         onClick={(e) => {
                           e.stopPropagation();
+                          setAddMemberError(null);
                           setAddMemberDialogOpen(true);
                         }}
                       >
@@ -2909,9 +2911,14 @@ export const TeamDetailView = memo(function TeamDetailView({
                   existingMembers={membersWithLiveBranches}
                   projectPath={data.config.projectPath}
                   adding={addingMemberLoading}
-                  onClose={() => setAddMemberDialogOpen(false)}
+                  errorMessage={addMemberError}
+                  onClose={() => {
+                    setAddMemberError(null);
+                    setAddMemberDialogOpen(false);
+                  }}
                   onAdd={(entries: AddMemberEntry[]) => {
                     setAddingMemberLoading(true);
+                    setAddMemberError(null);
                     void (async () => {
                       try {
                         for (const entry of entries) {
@@ -2928,9 +2935,16 @@ export const TeamDetailView = memo(function TeamDetailView({
                             mcpPolicy: entry.mcpPolicy,
                           });
                         }
+                        setAddMemberError(null);
                         setAddMemberDialogOpen(false);
-                      } catch {
-                        // error shown via store
+                      } catch (error) {
+                        // Surface the failure (e.g. a running OpenCode-led team blocks
+                        // live roster edits) instead of silently spinning to no effect.
+                        setAddMemberError(
+                          error instanceof Error && error.message
+                            ? error.message
+                            : t('detail.addMember.failed')
+                        );
                       } finally {
                         setAddingMemberLoading(false);
                       }

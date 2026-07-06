@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from '@renderer/components/ui/dialog';
 import { isGeminiUiFrozen } from '@renderer/utils/geminiUiFreeze';
-import { Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 
 import type { MemberDraft } from '@renderer/components/team/members/membersEditorTypes';
 import type {
@@ -53,6 +53,8 @@ interface AddMemberDialogProps {
   /** Called with the list of new members to add. */
   onAdd: (members: AddMemberEntry[]) => void;
   adding?: boolean;
+  /** Error surfaced from the async add (e.g. a running OpenCode-led team blocks live roster edits). */
+  errorMessage?: string | null;
   /** Project path for @file mentions in workflow field. */
   projectPath?: string | null;
   /** Existing team members with their colors — used so new drafts get the next available color */
@@ -101,6 +103,7 @@ export const AddMemberDialog = ({
   onClose,
   onAdd,
   adding,
+  errorMessage,
   projectPath,
   existingMembers,
 }: AddMemberDialogProps): React.JSX.Element => {
@@ -221,6 +224,21 @@ export const AddMemberDialog = ({
             disableGeminiOption={isGeminiUiFrozen()}
           />
         </div>
+
+        {errorMessage ? (
+          <div
+            className="flex items-start gap-2 rounded-md border px-3 py-2 text-xs"
+            style={{
+              backgroundColor: 'var(--warning-bg)',
+              borderColor: 'var(--warning-border)',
+              color: 'var(--warning-text)',
+            }}
+            role="alert"
+          >
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <span className="leading-relaxed">{errorMessage}</span>
+          </div>
+        ) : null}
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={adding}>

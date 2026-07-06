@@ -360,6 +360,9 @@
       "partialMissing": "Son başlatma yarıda başarısız oldu - {{missing}}/{{expected}} takım arkadaşı katılmadı",
       "reconciling": "Son başlatma hâlâ uzlaştırılıyor"
     },
+    "addMember": {
+      "failed": "Üye eklenemedi. Lütfen tekrar deneyin."
+    },
     "previous": "Önceki: {{paths}}",
     "removeMember": {
       "description": "\"{{member}}\" ekipten kaldırılsın mı? Görevler ve mesajlar korunacak, ancak bu ad yeniden kullanılamaz.",
