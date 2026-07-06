@@ -1209,23 +1209,22 @@ export class NotificationManager extends EventEmitter {
    * routine teammate chatter is stored only when its per-type toggle is on.
    */
   private shouldStoreTeamNotification(teamEventType: TeamNotificationPayload['teamEventType']): boolean {
-    const notifications = this.configManager.getConfig().notifications;
     switch (teamEventType) {
+      // Lead-centric policy: routine coordination chatter NEVER creates a
+      // notification. The human only interacts with the lead, so member→lead
+      // inbox traffic, task status/comment/creation churn, all-done pings,
+      // cross-team relays, and launch confirmations are pure noise here.
+      // Suppressed unconditionally (ignoring config toggles) so a stale
+      // persisted "on" value can't reintroduce the flood.
       case 'lead_inbox':
-        return notifications.notifyOnLeadInbox;
       case 'task_status_change':
-        return notifications.notifyOnStatusChange;
       case 'task_comment':
-        return notifications.notifyOnTaskComments;
       case 'task_created':
-        return notifications.notifyOnTaskCreated;
       case 'all_tasks_completed':
-        return notifications.notifyOnAllTasksCompleted;
       case 'cross_team_message':
-        return notifications.notifyOnCrossTeamMessage;
       case 'team_launched':
-        return notifications.notifyOnTeamLaunched;
-      // Always store: user_inbox (lead→user), task_clarification (question to
+        return false;
+      // Always store: user_inbox (lead→user), task_clarification (lead asks the
       // user), rate_limit / api_error (systemic critical), task_blocked,
       // task_review_requested, team_launch_incomplete (actionable/critical).
       default:
