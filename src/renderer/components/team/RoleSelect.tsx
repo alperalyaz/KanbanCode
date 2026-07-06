@@ -166,13 +166,6 @@ export const RoleSelect = ({
     return opt?.label;
   }, [roleOptions, value]);
 
-  const selectedDescription = useMemo(() => {
-    if (value === CUSTOM_ROLE || value === NO_ROLE) {
-      return null;
-    }
-    return roleOptions.find((option) => option.value === value)?.description ?? null;
-  }, [roleOptions, value]);
-
   const renderTriggerLabel = useCallback((option: ComboboxOption) => {
     const Icon = getRoleIcon(option.value);
     return (
@@ -203,9 +196,6 @@ export const RoleSelect = ({
         renderOption={renderRoleOption}
         renderTriggerLabel={renderTriggerLabel}
       />
-      {selectedDescription && value !== CUSTOM_ROLE ? (
-        <p className="text-[10px] leading-relaxed text-[var(--color-text-muted)]">{selectedDescription}</p>
-      ) : null}
       {value === CUSTOM_ROLE && onCustomRoleChange ? (
         <div>
           <Input
