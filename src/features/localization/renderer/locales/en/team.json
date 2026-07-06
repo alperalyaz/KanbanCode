@@ -318,6 +318,7 @@
   "detail": {
     "actions": {
       "add": "Add",
+      "editRoster": "Edit members",
       "cancel": "Cancel",
       "delete": "Delete",
       "launch": "Launch",

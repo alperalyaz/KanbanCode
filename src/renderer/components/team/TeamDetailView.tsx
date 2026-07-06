@@ -1089,7 +1089,9 @@ export const TeamDetailView = memo(function TeamDetailView({
   const [addingMemberLoading, setAddingMemberLoading] = useState(false);
   const [removeMemberConfirm, setRemoveMemberConfirm] = useState<string | null>(null);
   const [updatingRoleLoading, setUpdatingRoleLoading] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  // Which surface of the edit dialog is open: team settings (top pencil) or the
+  // member roster editor (pencil on the Ekip section). null = closed.
+  const [editDialogVariant, setEditDialogVariant] = useState<'settings' | 'roster' | null>(null);
   const [launchDialogState, setLaunchDialogState] = useState<{
     open: boolean;
     mode: TeamLaunchDialogMode;
@@ -1795,7 +1797,7 @@ export const TeamDetailView = memo(function TeamDetailView({
   );
 
   const handleChangeLeadRuntime = useCallback(() => {
-    setEditDialogOpen(false);
+    setEditDialogVariant(null);
     openLaunchDialog(data?.isAlive && !isTeamProvisioning ? 'relaunch' : 'launch');
   }, [data?.isAlive, isTeamProvisioning, openLaunchDialog]);
 
@@ -2510,7 +2512,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                           size="sm"
                           className="h-7 gap-1 px-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                           disabled={isTeamProvisioning}
-                          onClick={() => setEditDialogOpen(true)}
+                          onClick={() => setEditDialogVariant('settings')}
                         >
                           <Pencil size={12} />
                         </Button>
@@ -2632,18 +2634,40 @@ export const TeamDetailView = memo(function TeamDetailView({
                   badge={activeTeammateCount === 0 ? t('detail.solo') : activeTeammateCount}
                   defaultOpen
                   afterBadge={
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="pointer-events-auto h-7 gap-1.5 rounded-full px-3 text-xs font-semibold shadow-sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setAddMemberDialogOpen(true);
-                      }}
-                    >
-                      <UserPlus size={13} />
-                      {t('detail.actions.add')}
-                    </Button>
+                    <div className="pointer-events-auto flex items-center gap-1.5">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                            disabled={isTeamProvisioning}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditDialogVariant('roster');
+                            }}
+                            aria-label={t('detail.actions.editRoster')}
+                          >
+                            <Pencil size={12} />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          {t('detail.actions.editRoster')}
+                        </TooltipContent>
+                      </Tooltip>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="h-7 gap-1.5 rounded-full px-3 text-xs font-semibold shadow-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAddMemberDialogOpen(true);
+                        }}
+                      >
+                        <UserPlus size={13} />
+                        {t('detail.actions.add')}
+                      </Button>
+                    </div>
                   }
                   action={
                     <div className="runtime-telemetry-legend flex items-center gap-3 pr-3 text-[11px] font-medium leading-none text-[var(--color-text-muted)] opacity-0 transition-opacity duration-150">
@@ -2852,9 +2876,10 @@ export const TeamDetailView = memo(function TeamDetailView({
                 </Suspense>
               )}
 
-              {editDialogOpen && (
+              {editDialogVariant && (
                 <EditTeamDialog
-                  open={editDialogOpen}
+                  open={editDialogVariant !== null}
+                  variant={editDialogVariant}
                   teamName={teamName}
                   currentName={data.config.name}
                   currentDescription={data.config.description ?? ''}
@@ -2865,7 +2890,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                   isTeamAlive={data.isAlive && !isTeamProvisioning}
                   isTeamProvisioning={isTeamProvisioning}
                   projectPath={data.config.projectPath}
-                  onClose={() => setEditDialogOpen(false)}
+                  onClose={() => setEditDialogVariant(null)}
                   onChangeLeadRuntime={handleChangeLeadRuntime}
                   onSaved={() => void selectTeam(teamName)}
                 />

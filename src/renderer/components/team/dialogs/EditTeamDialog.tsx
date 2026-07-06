@@ -68,6 +68,14 @@ interface EditTeamDialogProps {
   onClose: () => void;
   onChangeLeadRuntime: () => void;
   onSaved: () => Promise<void> | void;
+  /**
+   * Which surfaces this dialog exposes:
+   * - 'settings' (default): team name / description / color only.
+   * - 'roster': the member roster editor (roles, models, lead model, worktree).
+   * Member editing is deliberately kept out of the top "settings" pencil and is
+   * opened from the team members ("Ekip") section instead.
+   */
+  variant?: 'settings' | 'roster';
 }
 
 function membersToDrafts(members: ResolvedTeamMember[], memberNameLocale: ResolvedAppLocale) {
@@ -155,7 +163,12 @@ export const EditTeamDialog = ({
   onClose,
   onChangeLeadRuntime,
   onSaved,
+  variant = 'roster',
 }: EditTeamDialogProps): React.JSX.Element => {
+  // Team name/description are always shown. The member roster is hidden in the
+  // 'settings' variant so the top "settings" pencil can't edit members — member
+  // editing is opened from the team members ("Ekip") section instead ('roster').
+  const showRoster = variant === 'roster';
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
   const { isLight } = useTheme();
@@ -585,47 +598,49 @@ export const EditTeamDialog = ({
         </DialogHeader>
 
         <div className="space-y-3">
-          <div>
-            <label
-              htmlFor="edit-team-name"
-              className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]"
-            >
-              {t('editTeam.fields.name')}
-            </label>
-            <input
-              id="edit-team-name"
-              type="text"
-              value={name}
-              onChange={(e) => {
-                clearTransientErrors();
-                setName(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (!isImeComposing(e) && e.key === 'Enter' && !saving && name.trim()) handleSave();
-              }}
-              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-border-emphasis)]"
-              placeholder={t('editTeam.placeholders.teamName')}
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="edit-team-description"
-              className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]"
-            >
-              {t('editTeam.fields.description')}
-            </label>
-            <textarea
-              id="edit-team-description"
-              value={description}
-              onChange={(e) => {
-                clearTransientErrors();
-                setDescription(e.target.value);
-              }}
-              rows={3}
-              className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-border-emphasis)]"
-              placeholder={t('editTeam.placeholders.description')}
-            />
-          </div>
+              <div>
+                <label
+                  htmlFor="edit-team-name"
+                  className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]"
+                >
+                  {t('editTeam.fields.name')}
+                </label>
+                <input
+                  id="edit-team-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => {
+                    clearTransientErrors();
+                    setName(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (!isImeComposing(e) && e.key === 'Enter' && !saving && name.trim())
+                      handleSave();
+                  }}
+                  className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-border-emphasis)]"
+                  placeholder={t('editTeam.placeholders.teamName')}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="edit-team-description"
+                  className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]"
+                >
+                  {t('editTeam.fields.description')}
+                </label>
+                <textarea
+                  id="edit-team-description"
+                  value={description}
+                  onChange={(e) => {
+                    clearTransientErrors();
+                    setDescription(e.target.value);
+                  }}
+                  rows={3}
+                  className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-border-emphasis)]"
+                  placeholder={t('editTeam.placeholders.description')}
+                />
+              </div>
+          {showRoster ? (
           <div>
             <MembersEditorSection
               members={members}
@@ -689,6 +704,7 @@ export const EditTeamDialog = ({
               disableGeminiOption={isGeminiUiFrozen()}
             />
           </div>
+          ) : null}
           {isTeamProvisioning ? (
             <p className="text-xs text-amber-300">{t('editTeam.notices.provisioning')}</p>
           ) : null}

@@ -3279,6 +3279,7 @@ export default interface Resources {
         "add": "Add",
         "cancel": "Cancel",
         "delete": "Delete",
+        "editRoster": "Edit members",
         "launch": "Launch",
         "remove": "Remove",
         "stop": "Stop",

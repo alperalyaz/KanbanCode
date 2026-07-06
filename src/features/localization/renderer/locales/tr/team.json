@@ -318,6 +318,7 @@
   "detail": {
     "actions": {
       "add": "Ekle",
+      "editRoster": "Üyeleri düzenle",
       "cancel": "İptal",
       "delete": "Sil",
       "launch": "Başlat",
