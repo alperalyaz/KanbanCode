@@ -21,12 +21,23 @@ type OpenCodeTaskStallRelayResult = Awaited<
 type OpenCodeTaskStallDelivery = NonNullable<OpenCodeTaskStallRelayResult['lastDelivery']>;
 
 function buildLeadAlertText(alerts: TaskStallAlert[]): string {
-  return alerts
-    .map(
-      (alert) =>
-        `- ${formatTaskDisplayLabel({ id: alert.taskId, displayId: alert.displayId })} [${alert.branch}] ${alert.subject} - ${alert.reason}`
-    )
-    .join('\n');
+  const lines = alerts.map((alert) => {
+    const label = formatTaskDisplayLabel({ id: alert.taskId, displayId: alert.displayId });
+    const owner = alert.owner?.trim();
+    const ownerNote = owner ? ` (owner: ${owner})` : '';
+    return `- ${label} [${alert.branch}]${ownerNote} ${alert.subject} - ${alert.reason}`;
+  });
+
+  return [
+    'These tasks look stalled — the owner is not making progress:',
+    ...lines,
+    '',
+    'ACT NOW, do NOT keep waiting:',
+    '- Send the owner at most ONE short nudge asking for a concrete status/next step.',
+    '- If they already went silent, errored, or hit a provider usage/quota/rate limit, do NOT wait: reassign the task to an available (idle/ready) teammate via task_set_owner, then task_start them with clear instructions.',
+    '- If no teammate is available to take over, SendMessage "user" a short plain-language heads-up (which task, which owner, why it is stuck) and ask how to proceed.',
+    'Silent waiting on a non-working teammate is not acceptable — keep the work moving or escalate to "user".',
+  ].join('\n');
 }
 
 function buildOpenCodeOwnerNudgeText(alert: TaskStallAlert): string {
