@@ -17,7 +17,6 @@ import {
   Braces,
   FileText,
   MoreHorizontal,
-  Puzzle,
   Search,
   Settings,
   Type,
@@ -56,14 +55,12 @@ export const MoreMenu = ({
 
   const {
     openCommandPalette,
-    openExtensionsTab,
     openSessionReport,
     openSettingsTab,
     openTeamsTab,
   } = useStore(
     useShallow((s) => ({
       openCommandPalette: s.openCommandPalette,
-      openExtensionsTab: s.openExtensionsTab,
       openSessionReport: s.openSessionReport,
       openSettingsTab: s.openSettingsTab,
       openTeamsTab: s.openTeamsTab,
@@ -127,15 +124,6 @@ export const MoreMenu = ({
       icon: Settings,
       onClick: () => {
         openSettingsTab();
-        setIsOpen(false);
-      },
-    },
-    {
-      id: 'extensions',
-      label: t('layout.menu.extensions'),
-      icon: Puzzle,
-      onClick: () => {
-        openExtensionsTab();
         setIsOpen(false);
       },
     },

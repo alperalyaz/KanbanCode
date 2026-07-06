@@ -2517,16 +2517,13 @@ export const TeamDetailView = memo(function TeamDetailView({
                           variant="ghost"
                           size="sm"
                           className="h-7 gap-1 px-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                          disabled={isTeamProvisioning}
                           onClick={() => setEditDialogVariant('settings')}
                         >
                           <Pencil size={12} />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
-                        {isTeamProvisioning
-                          ? t('detail.tooltips.editUnavailableProvisioning')
-                          : t('detail.tooltips.editTeam')}
+                        {t('detail.tooltips.editTeam')}
                       </TooltipContent>
                     </Tooltip>
                     <Tooltip>
