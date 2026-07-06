@@ -93,7 +93,26 @@ export interface TabSlice {
 /**
  * Sync root-level state from the focused pane.
  */
-function syncFromLayout(layout: PaneLayout): Record<string, unknown> {
+/**
+ * Keep the Dashboard tab pinned to the far-left (index 0) of every pane. Applied
+ * centrally in syncFromLayout so every mutation (open, reorder, move) preserves it.
+ */
+function pinDashboardTabsFirst(layout: PaneLayout): PaneLayout {
+  let changed = false;
+  const panes = layout.panes.map((pane) => {
+    const idx = pane.tabs.findIndex((t) => t.type === 'dashboard');
+    if (idx <= 0) return pane;
+    const reordered = [...pane.tabs];
+    const [dashboard] = reordered.splice(idx, 1);
+    reordered.unshift(dashboard);
+    changed = true;
+    return { ...pane, tabs: reordered };
+  });
+  return changed ? { ...layout, panes } : layout;
+}
+
+function syncFromLayout(rawLayout: PaneLayout): Record<string, unknown> {
+  const layout = pinDashboardTabsFirst(rawLayout);
   const synced = syncFocusedPaneState(layout);
   return {
     paneLayout: layout,
