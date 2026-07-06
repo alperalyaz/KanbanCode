@@ -1,11 +1,5 @@
 import { memo, useMemo } from 'react';
 
-import {
-  getTeamColorSet,
-  getThemedBadge,
-  getThemedBorder,
-  getThemedText,
-} from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
 import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
@@ -73,7 +67,6 @@ const MemberBadgeResolvedContent = memo(
     color,
     variant = 'colored',
     teamName,
-    isLight,
     size = 'sm',
     resolvedAvatarUrl,
     hideAvatar,
@@ -81,23 +74,18 @@ const MemberBadgeResolvedContent = memo(
     disableHoverCard,
   }: MemberBadgeResolvedContentProps): React.JSX.Element => {
     const isNeutral = variant === 'neutral';
-    const colors = isNeutral ? undefined : getTeamColorSet(color ?? '');
     const avatarSize = size === 'md' ? 32 : size === 'sm' ? 24 : 18;
     const avatarClass = size === 'md' ? 'size-6' : size === 'sm' ? 'size-5' : 'size-4';
     const textClass = size === 'md' ? 'text-xs' : size === 'sm' ? 'text-[10px]' : 'text-[9px]';
     const paddingClass = size === 'xs' ? 'px-1 py-0.5' : 'px-1.5 py-0.5';
 
-    const badgeStyle = !colors
-      ? {
-          backgroundColor: 'var(--color-surface)',
-          color: 'var(--color-text-secondary)',
-          border: '1px solid var(--color-border)',
-        }
-      : {
-          backgroundColor: getThemedBadge(colors, isLight),
-          color: getThemedText(colors, isLight),
-          border: `1px solid ${getThemedBorder(colors, isLight)}40`,
-        };
+    // Identity color now lives in the avatar itself — the name pill stays neutral so
+    // members aren't tagged with a second, separate color (the old colored "frame").
+    const badgeStyle = {
+      backgroundColor: 'var(--color-surface)',
+      color: 'var(--color-text-secondary)',
+      border: '1px solid var(--color-border)',
+    };
 
     const avatar = (
       <img
