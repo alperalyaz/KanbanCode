@@ -14,7 +14,7 @@ import { useTaskSuggestions } from '@renderer/hooks/useTaskSuggestions';
 import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
-import { isTeamProvisioningActive } from '@renderer/store/slices/teamSlice';
+import { isTeamProvisioningActive, selectTeamTasksForName } from '@renderer/store/slices/teamSlice';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
 import {
   canMemberShowAttachmentControl,
@@ -267,6 +267,15 @@ export const MessageComposer = ({
     s.selectedTeamName === teamName ? (s.selectedTeamData?.config.projectPath ?? null) : null
   );
   const isProvisioning = useStore((s) => isTeamProvisioningActive(s, teamName));
+  // The composer's ambient "orbit" glow reads as "give me a command" — it should only
+  // invite input when the team is idle. While there is active work (pending/in-progress
+  // board tasks) or the team is still launching, keep the composer calm (no glow).
+  const teamHasActiveWork = useStore((s) =>
+    selectTeamTasksForName(s, teamName).some(
+      (task) => task.status === 'pending' || task.status === 'in_progress'
+    )
+  );
+  const composerIsIdle = !teamHasActiveWork && !isProvisioning;
   const draft = useComposerDraft(teamName);
   const appliedRevisionRequestIdRef = useRef<string | null>(null);
   const textHasTeamMentionTrigger = draft.text.includes('@');
@@ -987,7 +996,7 @@ export const MessageComposer = ({
           dismissMentionsRef={dismissMentionsRef}
           extraTips={[t('messageComposer.input.slashTip')]}
           surfaceClassName="message-composer-shell message-composer-orbit-surface border border-transparent bg-[var(--color-surface-raised)] shadow-[0_8px_24px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.03)]"
-          surfaceDecoration="orbit-border"
+          surfaceDecoration={composerIsIdle ? 'orbit-border' : 'none'}
           surfaceFadeColor="var(--color-surface-raised)"
           className="border-transparent shadow-none"
           minRows={isCompactLayout ? 1 : 2}
