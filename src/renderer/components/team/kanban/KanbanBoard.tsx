@@ -14,9 +14,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ClipboardList,
-  Columns3,
   Eye,
-  LayoutGrid,
   PlayCircle,
   Plus,
   ShieldCheck,
@@ -28,7 +26,6 @@ import { KanbanFilterPopover } from './KanbanFilterPopover';
 import {
   KanbanGridLayout,
   SKELETON_HIDE_DELAY_MS,
-  SKELETON_HIDE_DELAY_MS_ON_MODE_SWITCH,
 } from './KanbanGridLayout';
 import { KanbanSortPopover } from './KanbanSortPopover';
 import { KanbanTaskCard } from './KanbanTaskCard';
@@ -111,7 +108,6 @@ interface KanbanBoardProps {
 
 type KanbanViewMode = 'grid' | 'columns';
 
-const SCROLLABLE_OVERFLOW_VALUES = new Set(['auto', 'scroll', 'overlay']);
 const INITIAL_VISIBLE_TASKS_PER_COLUMN = 20;
 const LOAD_MORE_TASKS_PER_COLUMN = 20;
 
@@ -365,9 +361,11 @@ export const KanbanBoard = memo(function KanbanBoard({
   const { t } = useAppTranslation('team');
   const boardRef = useRef<HTMLDivElement>(null);
   const scrollRestoreTimeoutsRef = useRef<number[]>([]);
-  const [viewMode, setViewMode] = useState<KanbanViewMode>('grid');
+  // View toggle removed — the board is always the classic horizontal columns
+  // kanban. Pinned here so no grid/columns switcher is needed.
+  const [viewMode] = useState<KanbanViewMode>('columns');
   const [gridPrimaryColumnWidth, setGridPrimaryColumnWidth] = useState<number | null>(null);
-  const [gridSkeletonDelayMs, setGridSkeletonDelayMs] = useState(SKELETON_HIDE_DELAY_MS);
+  const [gridSkeletonDelayMs] = useState(SKELETON_HIDE_DELAY_MS);
   const [visibleTaskLimitsByColumn, setVisibleTaskLimitsByColumn] = useState<
     Partial<Record<KanbanColumnId, number>>
   >({});
@@ -694,54 +692,6 @@ export const KanbanBoard = memo(function KanbanBoard({
 
   useEffect(() => clearScheduledScrollRestore, [clearScheduledScrollRestore]);
 
-  const findScrollContainer = useCallback((startNode: HTMLElement | null): HTMLElement | null => {
-    let current = startNode?.parentElement ?? null;
-    while (current) {
-      const { overflowY } = window.getComputedStyle(current);
-      if (SCROLLABLE_OVERFLOW_VALUES.has(overflowY)) {
-        return current;
-      }
-      current = current.parentElement;
-    }
-    return null;
-  }, []);
-
-  const scheduleScrollRestore = useCallback(
-    (nextViewMode: KanbanViewMode, skeletonDelayMs: number) => {
-      const container = findScrollContainer(boardRef.current);
-      if (!container) {
-        return;
-      }
-
-      const savedScrollTop = container.scrollTop;
-      clearScheduledScrollRestore();
-
-      const restore = (): void => {
-        container.scrollTop = savedScrollTop;
-      };
-
-      const delays =
-        nextViewMode === 'grid' ? [skeletonDelayMs + 40, skeletonDelayMs + 220] : [120];
-
-      scrollRestoreTimeoutsRef.current = delays.map((delay) => window.setTimeout(restore, delay));
-    },
-    [clearScheduledScrollRestore, findScrollContainer]
-  );
-
-  const switchViewMode = useCallback(
-    (nextViewMode: KanbanViewMode) => {
-      const nextSkeletonDelayMs =
-        nextViewMode === 'grid' && viewMode === 'columns'
-          ? SKELETON_HIDE_DELAY_MS_ON_MODE_SWITCH
-          : SKELETON_HIDE_DELAY_MS;
-
-      setGridSkeletonDelayMs(nextSkeletonDelayMs);
-      scheduleScrollRestore(nextViewMode, nextSkeletonDelayMs);
-      setViewMode(nextViewMode);
-    },
-    [scheduleScrollRestore, viewMode]
-  );
-
   const gridColumns = useMemo(
     () =>
       visibleColumns.map((column) => {
@@ -816,46 +766,9 @@ export const KanbanBoard = memo(function KanbanBoard({
               <TooltipContent side="bottom">{t('kanban.board.trash')}</TooltipContent>
             </Tooltip>
           ) : null}
-          <div className="inline-flex rounded-md border border-[var(--color-border)]">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    'h-7 rounded-r-none px-2',
-                    viewMode === 'grid'
-                      ? 'bg-[var(--color-surface-raised)] text-[var(--color-text)]'
-                      : 'text-[var(--color-text-muted)]'
-                  )}
-                  onClick={() => switchViewMode('grid')}
-                  aria-label={t('kanban.board.gridView')}
-                >
-                  <LayoutGrid size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('kanban.board.gridView')}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    'h-7 rounded-l-none border-l border-[var(--color-border)] px-2',
-                    viewMode === 'columns'
-                      ? 'bg-[var(--color-surface-raised)] text-[var(--color-text)]'
-                      : 'text-[var(--color-text-muted)]'
-                  )}
-                  onClick={() => switchViewMode('columns')}
-                  aria-label={t('kanban.board.columnsView')}
-                >
-                  <Columns3 size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('kanban.board.columnsView')}</TooltipContent>
-            </Tooltip>
-          </div>
+          {/* Grid/columns view toggle removed: the board is always the classic
+              horizontal kanban (columns). A kanban is columns — the alternate
+              react-grid-layout view was extra weight and choice we don't need. */}
         </div>
       </div>
 
