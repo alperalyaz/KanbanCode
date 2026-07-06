@@ -164,14 +164,14 @@ export const DashboardView = (): React.JSX.Element => {
 
   return (
     <div className="relative flex-1 overflow-auto bg-surface">
+      {/* Ambient aurora: slow GPU-only drift, near-zero CPU/RAM. */}
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[720px] bg-[radial-gradient(ellipse_90%_60%_at_50%_-10%,rgba(99,102,241,0.14),transparent)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[760px] overflow-hidden"
         aria-hidden="true"
-      />
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[720px] bg-[radial-gradient(ellipse_70%_45%_at_80%_0%,rgba(192,132,252,0.08),transparent)]"
-        aria-hidden="true"
-      />
+      >
+        <div className="dashboard-aurora dashboard-aurora--one" />
+        <div className="dashboard-aurora dashboard-aurora--two" />
+      </div>
 
       <div className="relative w-full px-6 py-8 sm:px-8 lg:px-12 lg:py-10 xl:px-16 2xl:px-20">
         <div className="mb-6 space-y-3 empty:mb-0 empty:hidden">

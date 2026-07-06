@@ -1642,3 +1642,65 @@ a[href],
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Dashboard ambient aurora
+   Two large, heavily-blurred radial blobs that drift and breathe very slowly.
+   Uses only GPU-composited transform/opacity (no layout, no paint storms) so it
+   is effectively free on CPU/RAM — a lightweight alternative to a video bg.
+   --------------------------------------------------------------------------- */
+.dashboard-aurora {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
+.dashboard-aurora--one {
+  top: -12%;
+  left: 8%;
+  width: 46vw;
+  height: 42vh;
+  background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.22), transparent 70%);
+  animation: dashboard-aurora-drift-one 34s ease-in-out infinite;
+}
+
+.dashboard-aurora--two {
+  top: -8%;
+  right: 4%;
+  width: 40vw;
+  height: 40vh;
+  background: radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.16), transparent 70%);
+  animation: dashboard-aurora-drift-two 42s ease-in-out infinite;
+}
+
+@keyframes dashboard-aurora-drift-one {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate3d(6%, 4%, 0) scale(1.12);
+    opacity: 1;
+  }
+}
+
+@keyframes dashboard-aurora-drift-two {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.05);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate3d(-5%, 5%, 0) scale(1);
+    opacity: 0.95;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-aurora {
+    animation: none !important;
+  }
+}
