@@ -102,7 +102,6 @@ import { SourceMessageAttachments } from '../attachments/SourceMessageAttachment
 import { WorkflowTimeline } from './StatusHistoryTimeline';
 import { TaskAttachments } from './TaskAttachments';
 import { TaskCommentAwaitingReply } from './TaskCommentAwaitingReply';
-import { TaskCommentInput } from './TaskCommentInput';
 import { TaskCommentsSection } from './TaskCommentsSection';
 
 import type {
@@ -320,12 +319,6 @@ export const TaskDetailDialog = ({
     setTaskLogStreamCount(undefined);
   }, [open, currentTask?.id]);
 
-  const [replyTo, setReplyTo] = useState<{
-    taskId: string;
-    author: string;
-    text: string;
-  } | null>(null);
-
   // Track whether a lightbox is open to block Dialog dismiss events.
   // Using a ref for synchronous reads (no render cycle delay) + a stable
   // callback so context consumers never cause re-renders.
@@ -339,18 +332,6 @@ export const TaskDetailDialog = ({
   // useViewportObserver recreates the IntersectionObserver when the portal mounts
   // and the DOM element becomes available.
   const [dialogContentEl, setDialogContentEl] = useState<HTMLDivElement | null>(null);
-  const handleReply = useCallback(
-    (author: string, text: string) => {
-      if (currentTask) setReplyTo({ taskId: currentTask.id, author, text });
-    },
-    [currentTask]
-  );
-  const clearReply = useCallback(() => setReplyTo(null), []);
-
-  const effectiveReplyTo =
-    replyTo && replyTo.taskId === currentTask?.id
-      ? { author: replyTo.author, text: replyTo.text }
-      : null;
 
   // Snapshot unread comment IDs when dialog opens — these will show blue dots.
   // Dots persist for the duration of the dialog session; markAsRead happens
@@ -387,7 +368,6 @@ export const TaskDetailDialog = ({
 
   const handleClose = useCallback(() => {
     flushCommentRead();
-    setReplyTo(null);
     onClose();
   }, [onClose, flushCommentRead]);
 
@@ -1541,15 +1521,6 @@ export const TaskDetailDialog = ({
               headerContentClassName="pl-6"
               defaultOpen
             >
-              <div className="pl-2.5">
-                <TaskCommentInput
-                  teamName={teamName}
-                  taskId={currentTask.id}
-                  members={members}
-                  replyTo={effectiveReplyTo}
-                  onClearReply={clearReply}
-                />
-              </div>
               <TaskCommentAwaitingReply
                 comments={currentTask.comments}
                 taskOwner={currentTask.owner}
@@ -1563,7 +1534,6 @@ export const TaskDetailDialog = ({
                 members={members}
                 hideHeader
                 hideInput
-                onReply={handleReply}
                 onTaskIdClick={
                   onScrollToTask ? (taskId) => handleDependencyClick(taskId) : undefined
                 }
