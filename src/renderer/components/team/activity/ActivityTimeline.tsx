@@ -9,6 +9,8 @@ import React, {
 } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
+import { useStore } from '@renderer/store';
+import { selectTeamDataForName } from '@renderer/store/slices/teamSlice';
 import {
   areInboxMessagesEquivalentForRender,
   areStringArraysEqual,
@@ -509,7 +511,10 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
     return () => observer.disconnect();
   }, []);
 
-  const ctx = useMemo(() => buildMessageContext(members), [members]);
+  // The team's chosen "Color" is the human user's identity color — thread it in so
+  // the user's own messages render in that color.
+  const userColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
+  const ctx = useMemo(() => buildMessageContext(members, userColor), [members, userColor]);
   const { colorMap, localMemberNames, memberInfo } = ctx;
 
   const handleMemberNameClick = useCallback(

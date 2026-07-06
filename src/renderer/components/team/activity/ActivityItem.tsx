@@ -18,7 +18,7 @@ import {
   CARD_ICON_MUTED,
   CARD_TEXT_LIGHT,
 } from '@renderer/constants/cssVariables';
-import { getTeamColorSet, getThemedBorder } from '@renderer/constants/teamColors';
+import { getTeamColorSet, getThemedBadge, getThemedBorder } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
 import {
@@ -1061,9 +1061,14 @@ export const ActivityItem = memo(
     }, [crossTeamSentTarget, isCrossTeamSent, message.to, qualifiedRecipient]);
     const senderName = crossTeamOrigin ? crossTeamOrigin.memberName : message.from;
     const senderColor = crossTeamOrigin ? undefined : (memberColor ?? message.color);
+    // The human user's own messages render in the team's chosen "Color" (their identity
+    // color) — a matching accent border + tint + a color dot, so it stands out and the
+    // team color picker actually means something.
+    const isFromUser = message.from === 'user';
+    const fromUserColorSet = isFromUser && senderColor ? getTeamColorSet(senderColor) : null;
     const senderHideAvatar =
-      message.from === 'user' ||
       message.from === 'system' ||
+      (isFromUser && !fromUserColorSet) ||
       crossTeamOrigin?.memberName === 'user';
     const isUserSent = message.source === 'user_sent' || isCrossTeamSent;
     const isSystemMessage = message.from === 'system';
@@ -1481,9 +1486,11 @@ export const ActivityItem = memo(
           backgroundColor:
             rateLimited || isApiError
               ? 'var(--tool-result-error-bg)'
-              : isHumanConversation
-                ? 'var(--info-bg)'
-                : isSlashCommandResult
+              : fromUserColorSet
+                ? getThemedBadge(fromUserColorSet, isLight)
+                : isHumanConversation
+                  ? 'var(--info-bg)'
+                  : isSlashCommandResult
                   ? 'rgba(245, 158, 11, 0.08)'
                   : isSlashCommandMessage
                     ? 'rgba(245, 158, 11, 0.08)'
@@ -1497,9 +1504,11 @@ export const ActivityItem = memo(
           border:
             rateLimited || isApiError
               ? '1px solid var(--tool-result-error-border)'
-              : isHumanConversation
-                ? '1px solid var(--info-border)'
-                : isSlashCommandResult
+              : fromUserColorSet
+                ? CARD_BORDER_STYLE
+                : isHumanConversation
+                  ? '1px solid var(--info-border)'
+                  : isSlashCommandResult
                   ? '1px solid rgba(245, 158, 11, 0.22)'
                   : isSlashCommandMessage
                     ? '1px solid rgba(245, 158, 11, 0.22)'
@@ -1511,9 +1520,11 @@ export const ActivityItem = memo(
           borderLeft:
             rateLimited || isApiError
               ? '3px solid var(--tool-result-error-text)'
-              : isHumanConversation
-                ? '4px solid var(--color-accent)'
-                : isSlashCommandResult
+              : fromUserColorSet
+                ? `4px solid ${getThemedBorder(fromUserColorSet, isLight)}`
+                : isHumanConversation
+                  ? '4px solid var(--color-accent)'
+                  : isSlashCommandResult
                   ? '3px solid rgba(245, 158, 11, 0.85)'
                   : isSlashCommandMessage
                     ? '3px solid rgba(245, 158, 11, 0.85)'
