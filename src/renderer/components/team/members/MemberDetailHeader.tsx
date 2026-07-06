@@ -1,20 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { Badge } from '@renderer/components/ui/badge';
 import { DialogDescription, DialogTitle } from '@renderer/components/ui/dialog';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
-import { useStore } from '@renderer/store';
-import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
+import { useTheme } from '@renderer/hooks/useTheme';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import {
-  agentAvatarUrl,
-  buildMemberAvatarMap,
   buildMemberLaunchPresentation,
   displayMemberName,
 } from '@renderer/utils/memberHelpers';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { Pencil } from 'lucide-react';
+
+import { MemberColorAvatar } from '../MemberColorAvatar';
 
 import { MemberPresenceDot } from './MemberPresenceDot';
 import { MemberRoleEditor } from './MemberRoleEditor';
@@ -84,11 +83,7 @@ export const MemberDetailHeader = ({
 }: MemberDetailHeaderProps): React.JSX.Element => {
   const { t } = useAppTranslation('team');
   const [editing, setEditing] = useState(false);
-  const selectedTeamName = useStore((s) => s.selectedTeamName);
-  const teamMembers = useStore((s) =>
-    selectedTeamName ? selectResolvedMembersForTeamName(s, selectedTeamName) : []
-  );
-  const avatarMap = useMemo(() => buildMemberAvatarMap(teamMembers), [teamMembers]);
+  const { isLight } = useTheme();
 
   // NOTE: lead context display disabled — usage formula is inaccurate
   // const teamName = useStore((s) => s.selectedTeamName);
@@ -149,12 +144,7 @@ export const MemberDetailHeader = ({
   return (
     <div className="flex items-center gap-3">
       <div className="relative shrink-0">
-        <img
-          src={avatarMap.get(member.name) ?? agentAvatarUrl(member.name, 96)}
-          alt={member.name}
-          className="size-12 rounded-full bg-[var(--color-surface-raised)]"
-          loading="lazy"
-        />
+        <MemberColorAvatar color={member.color} isLight={isLight} className="size-12" />
         <MemberPresenceDot className={`size-3 ${dotClass}`} label={badgeLabel} />
       </div>
       <div className="min-w-0 flex-1">

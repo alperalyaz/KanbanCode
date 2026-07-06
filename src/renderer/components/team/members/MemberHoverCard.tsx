@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { Badge } from '@renderer/components/ui/badge';
@@ -20,8 +20,6 @@ import {
 } from '@renderer/store/slices/teamSlice';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import {
-  agentAvatarUrl,
-  buildMemberAvatarMap,
   buildMemberLaunchPresentation,
   displayMemberName,
   shouldDisplayMemberCurrentTask,
@@ -38,6 +36,7 @@ import { getTeamTaskWorkflowColumn } from '@shared/utils/teamTaskState';
 import { ExternalLink } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
+import { MemberColorAvatar } from '../MemberColorAvatar';
 import { getLaunchJoinMilestonesFromMembers, getLaunchJoinState } from '../provisioningSteps';
 
 import { CurrentTaskIndicator } from './CurrentTaskIndicator';
@@ -147,7 +146,6 @@ const MemberHoverCardContent = ({
     }))
   );
   const openMemberProfile = useStore((s) => s.openMemberProfile);
-  const avatarMap = useMemo(() => buildMemberAvatarMap(teamMembers), [teamMembers]);
 
   if (!member) {
     return null;
@@ -270,11 +268,10 @@ const MemberHoverCardContent = ({
         {/* Header: avatar + name + presence */}
         <div className="flex items-center gap-3">
           <div className="relative shrink-0">
-            <img
-              src={avatarMap.get(member.name) ?? agentAvatarUrl(member.name, 64)}
-              alt={member.name}
-              className="size-10 rounded-full bg-[var(--color-surface-raised)]"
-              loading="lazy"
+            <MemberColorAvatar
+              color={color ?? member.color}
+              isLight={isLight}
+              className="size-10"
             />
             <MemberPresenceDot className={`size-3 ${dotClass}`} label={badgeLabel} />
           </div>
