@@ -4,12 +4,12 @@ import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
 import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
 import {
-  agentAvatarUrl,
   buildMemberAvatarMap,
   displayMemberName,
   resolveCanonicalMemberName,
 } from '@renderer/utils/memberHelpers';
 
+import { MemberColorAvatar } from './MemberColorAvatar';
 import { MemberHoverCard } from './members/MemberHoverCard';
 
 import type { ResolvedTeamMember } from '@shared/types';
@@ -67,19 +67,19 @@ const MemberBadgeResolvedContent = memo(
     color,
     variant = 'colored',
     teamName,
+    isLight,
     size = 'sm',
-    resolvedAvatarUrl,
     hideAvatar,
     onClick,
     disableHoverCard,
   }: MemberBadgeResolvedContentProps): React.JSX.Element => {
     const isNeutral = variant === 'neutral';
-    const avatarSize = size === 'md' ? 32 : size === 'sm' ? 24 : 18;
     const avatarClass = size === 'md' ? 'size-6' : size === 'sm' ? 'size-5' : 'size-4';
     const textClass = size === 'md' ? 'text-xs' : size === 'sm' ? 'text-[10px]' : 'text-[9px]';
     const paddingClass = size === 'xs' ? 'px-1 py-0.5' : 'px-1.5 py-0.5';
 
-    // Identity color now lives in the avatar itself — the name pill stays neutral so
+    // A member's identity is a single plain color. The avatar is that color as a solid
+    // dot (same color as their message accent border); the name pill stays neutral so
     // members aren't tagged with a second, separate color (the old colored "frame").
     const badgeStyle = {
       backgroundColor: 'var(--color-surface)',
@@ -88,11 +88,10 @@ const MemberBadgeResolvedContent = memo(
     };
 
     const avatar = (
-      <img
-        src={resolvedAvatarUrl ?? agentAvatarUrl(name, avatarSize)}
-        alt=""
-        className={`${avatarClass} shrink-0 rounded-full bg-[var(--color-surface-raised)]`}
-        loading="lazy"
+      <MemberColorAvatar
+        color={isNeutral ? undefined : color}
+        isLight={isLight}
+        className={avatarClass}
       />
     );
 

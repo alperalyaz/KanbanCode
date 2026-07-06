@@ -5,11 +5,11 @@ import { Badge } from '@renderer/components/ui/badge';
 import { SyncedLoader2 } from '@renderer/components/ui/SyncedLoader2';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
+import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { renderLinkifiedText } from '@renderer/utils/linkifiedText';
 import {
-  agentAvatarUrl,
   buildMemberLaunchPresentation,
   displayMemberName,
   isOpenCodeRelaunchActionable,
@@ -47,6 +47,8 @@ import {
 
 import { CurrentTaskIndicator } from './CurrentTaskIndicator';
 import { MemberLaunchDiagnosticsButton } from './MemberLaunchDiagnosticsButton';
+import { MemberColorAvatar } from '../MemberColorAvatar';
+
 import { MemberPresenceDot } from './MemberPresenceDot';
 
 import type { MemberActivityTimerAnchor } from '@renderer/utils/memberActivityTimer';
@@ -695,7 +697,6 @@ export const MemberCard = memo(function MemberCard({
   teamName,
   member,
   memberColor,
-  avatarUrl,
   fullBleedSurface = true,
   runtimeSummary,
   runtimeEntry,
@@ -815,6 +816,7 @@ export const MemberCard = memo(function MemberCard({
       ? (launchStatusLabel ?? presenceLabel)
       : presenceLabel;
   const colors = getTeamColorSet(memberColor);
+  const { isLight } = useTheme();
   const pending = taskCounts?.pending ?? 0;
   const inProgress = taskCounts?.inProgress ?? 0;
   const completed = taskCounts?.completed ?? 0;
@@ -1173,17 +1175,7 @@ export const MemberCard = memo(function MemberCard({
         <div className="pointer-events-none absolute inset-0 z-10 rounded transition-colors group-hover:bg-white/5" />
         <div className="relative z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1">
           <div className="relative shrink-0">
-            <div
-              className="rounded-full border p-px"
-              style={{ borderColor: 'var(--color-border)' }}
-            >
-              <img
-                src={avatarUrl ?? agentAvatarUrl(member.name)}
-                alt={member.name}
-                className="size-7 rounded-full bg-[var(--color-surface-raised)]"
-                loading="lazy"
-              />
-            </div>
+            <MemberColorAvatar color={memberColor} isLight={isLight} className="size-7" />
             <MemberPresenceDot className={`size-2.5 ${dotClass}`} label={displayPresenceLabel} />
           </div>
           <div className="min-w-0 flex-1">
