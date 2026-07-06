@@ -2025,6 +2025,8 @@
       "noTasks": "Görev yok",
       "showMore": "{{count}} tane daha göster",
       "hiddenCount": "{{count}} gizli",
+      "showAll": "Tümünü göster",
+      "collapse": "Daralt",
       "trash": "Çöp",
       "gridView": "Izgara görünümü",
       "columnsView": "Sütun görünümü"

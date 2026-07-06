@@ -3432,10 +3432,12 @@ export default interface Resources {
     "kanban": {
       "board": {
         "addTask": "Add task",
+        "collapse": "Collapse",
         "columnsView": "Columns view",
         "gridView": "Grid view",
         "hiddenCount": "{{count}} hidden",
         "noTasks": "No tasks",
+        "showAll": "Show all",
         "showMore": "Show {{count}} more",
         "trash": "Trash"
       },

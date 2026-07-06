@@ -13,6 +13,7 @@ import { isTeamTaskNeedsFixActionable } from '@shared/utils/teamTaskState';
 import {
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   ClipboardList,
   Eye,
   PlayCircle,
@@ -110,6 +111,11 @@ type KanbanViewMode = 'grid' | 'columns';
 
 const INITIAL_VISIBLE_TASKS_PER_COLUMN = 20;
 const LOAD_MORE_TASKS_PER_COLUMN = 20;
+// Collapsed columns cap their scroll body to ~4-5 cards; the "Show all" toggle only
+// appears once a column holds more than this many tasks.
+const COLUMN_COLLAPSE_THRESHOLD = 5;
+const COLLAPSED_COLUMN_BODY_CLASS = 'max-h-[420px] overflow-y-auto';
+const EXPANDED_COLUMN_BODY_CLASS = 'max-h-none overflow-visible';
 
 // Neither "Review" nor "Approved" is a board column. The code-review capability
 // itself is fully intact (bot-to-bot Q-A review, diff view, accept/reject) — but
@@ -369,6 +375,17 @@ export const KanbanBoard = memo(function KanbanBoard({
   const [visibleTaskLimitsByColumn, setVisibleTaskLimitsByColumn] = useState<
     Partial<Record<KanbanColumnId, number>>
   >({});
+  // Columns cap their height and scroll internally by default (so a long Done column
+  // doesn't push the whole board down); "Show all" expands a column to full height.
+  const [expandedColumns, setExpandedColumns] = useState<Set<KanbanColumnId>>(new Set());
+  const toggleColumnExpanded = useCallback((columnId: KanbanColumnId) => {
+    setExpandedColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(columnId)) next.delete(columnId);
+      else next.add(columnId);
+      return next;
+    });
+  }, []);
   const hasReviewers = kanbanState.reviewers.length > 0;
   const enableTaskSorting =
     viewMode === 'columns' && !!onColumnOrderChange && sort.field === 'manual';
@@ -788,6 +805,8 @@ export const KanbanBoard = memo(function KanbanBoard({
               const accent = COLUMN_ACCENTS[column.id];
               const width = columnWidths.get(column.id) ?? 256;
               const handleProps = getHandleProps(column.id);
+              const isColumnExpanded = expandedColumns.has(column.id);
+              const canToggleColumn = columnTasks.length > COLUMN_COLLAPSE_THRESHOLD;
               return (
                 <div key={column.id} className="flex shrink-0">
                   <div style={{ width }}>
@@ -797,7 +816,34 @@ export const KanbanBoard = memo(function KanbanBoard({
                       icon={accent.icon}
                       headerBg={accent.headerBg}
                       bodyBg={accent.bodyBg}
-                      bodyClassName="max-h-none overflow-visible"
+                      bodyClassName={
+                        isColumnExpanded
+                          ? EXPANDED_COLUMN_BODY_CLASS
+                          : COLLAPSED_COLUMN_BODY_CLASS
+                      }
+                      headerAccessory={
+                        canToggleColumn ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleColumnExpanded(column.id)}
+                            className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+                            title={
+                              isColumnExpanded
+                                ? t('kanban.board.collapse')
+                                : t('kanban.board.showAll')
+                            }
+                          >
+                            {isColumnExpanded ? (
+                              <ChevronUp size={12} />
+                            ) : (
+                              <ChevronDown size={12} />
+                            )}
+                            {isColumnExpanded
+                              ? t('kanban.board.collapse')
+                              : t('kanban.board.showAll')}
+                          </button>
+                        ) : undefined
+                      }
                     >
                       {renderCards(column.id, columnTasks, true)}
                     </KanbanColumn>

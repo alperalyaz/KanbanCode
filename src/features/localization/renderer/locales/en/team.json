@@ -2026,6 +2026,8 @@
       "noTasks": "No tasks",
       "showMore": "Show {{count}} more",
       "hiddenCount": "{{count}} hidden",
+      "showAll": "Show all",
+      "collapse": "Collapse",
       "trash": "Trash",
       "gridView": "Grid view",
       "columnsView": "Columns view"
