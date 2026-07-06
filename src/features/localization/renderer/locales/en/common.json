@@ -749,6 +749,7 @@
     "switchToLight": "Switch to light mode"
   },
   "layout": {
+    "openDashboard": "Dashboard",
     "safeStopAll": "Safely stop all teams",
     "safeStopAllTooltip": "Gracefully stops every running team and process before you close the app",
     "safeStopAllInProgress": "Stopping teams...",

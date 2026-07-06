@@ -11,7 +11,7 @@ import { api } from '@renderer/api';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
-import { Bell, Moon, PowerOff, Sun } from 'lucide-react';
+import { Bell, LayoutDashboard, Moon, PowerOff, Sun } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { MoreMenu } from './MoreMenu';
@@ -21,6 +21,7 @@ export const TabBarActions = (): React.JSX.Element => {
   const {
     unreadCount,
     openNotificationsTab,
+    openDashboard,
     activeTabId,
     openTabs,
     tabSessionData,
@@ -30,6 +31,7 @@ export const TabBarActions = (): React.JSX.Element => {
     useShallow((s) => ({
       unreadCount: s.unreadCount,
       openNotificationsTab: s.openNotificationsTab,
+      openDashboard: s.openDashboard,
       activeTabId: s.activeTabId,
       openTabs: s.openTabs,
       tabSessionData: s.tabSessionData,
@@ -41,6 +43,7 @@ export const TabBarActions = (): React.JSX.Element => {
 
   // Hover states for buttons
   const [notificationsHover, setNotificationsHover] = useState(false);
+  const [dashboardHover, setDashboardHover] = useState(false);
   const [themeHover, setThemeHover] = useState(false);
   const [safeStopHover, setSafeStopHover] = useState(false);
   const [stoppingAll, setStoppingAll] = useState(false);
@@ -82,6 +85,32 @@ export const TabBarActions = (): React.JSX.Element => {
       className="ml-2 flex shrink-0 items-center gap-1"
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
+      {/* Dashboard — always reachable, focuses the existing dashboard tab or opens one */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={openDashboard}
+            onMouseEnter={() => setDashboardHover(true)}
+            onMouseLeave={() => setDashboardHover(false)}
+            className="rounded-md p-2 transition-colors"
+            style={{
+              color:
+                dashboardHover || activeTab?.type === 'dashboard'
+                  ? 'var(--color-text)'
+                  : 'var(--color-text-muted)',
+              backgroundColor:
+                dashboardHover || activeTab?.type === 'dashboard'
+                  ? 'var(--color-surface-raised)'
+                  : 'transparent',
+            }}
+            aria-label={t('layout.openDashboard')}
+          >
+            <LayoutDashboard className="size-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{t('layout.openDashboard')}</TooltipContent>
+      </Tooltip>
+
       {/* Light/dark theme toggle */}
       <Tooltip>
         <TooltipTrigger asChild>

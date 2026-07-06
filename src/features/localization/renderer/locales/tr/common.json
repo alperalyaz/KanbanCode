@@ -749,6 +749,7 @@
     "switchToLight": "Açık moda geç"
   },
   "layout": {
+    "openDashboard": "Panel",
     "safeStopAll": "Tüm ekipleri güvenli durdur",
     "safeStopAllTooltip": "Kapatmadan önce çalışan tüm ekipleri ve süreçleri güvenli şekilde durdurur",
     "safeStopAllInProgress": "Ekipler durduruluyor...",

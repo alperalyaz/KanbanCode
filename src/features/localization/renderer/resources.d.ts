@@ -278,6 +278,7 @@ export default interface Resources {
       "newTabDashboard": "New tab (Dashboard)",
       "openedFromSearch": "Opened from search",
       "pinnedSession": "Pinned session",
+      "openDashboard": "Dashboard",
       "refreshSession": "Refresh session",
       "refreshSessionWithShortcut": "Refresh Session ({{shortcut}})",
       "resizeSidebar": "Resize sidebar",
