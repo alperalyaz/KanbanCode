@@ -1022,12 +1022,20 @@ export const ActivityItem = memo(
 
     const systemLabel = !structured && !rateLimited ? getSystemMessageLabel(message.text) : null;
     const isManaged = collapseMode === 'managed';
-    const isExpanded = isManaged ? !isCollapsed : true;
 
     const parsedCrossTeamPrefix = parseCrossTeamPrefix(message.text);
     const qualifiedRecipient = parseQualifiedRecipient(message.to);
     const crossTeamSentTarget = getCrossTeamSentTarget(message.to, teamName, localMemberNames);
     const crossTeamSentMemberName = getCrossTeamSentMemberName(message.to);
+    // Messages to/from the human user are the primary conversation. They are always
+    // shown fully expanded (never collapsed/truncated), rendered in a single place
+    // (no duplicated header summary), with a larger font and a dominant card style so
+    // they stand out clearly from bot-to-bot chatter.
+    const recipientIsUser =
+      (crossTeamSentMemberName ?? qualifiedRecipient?.memberName ?? message.to) === 'user';
+    const isHumanConversation =
+      message.from === 'user' || (recipientIsUser && message.from !== 'system');
+    const isExpanded = isHumanConversation ? true : isManaged ? !isCollapsed : true;
     const isCrossTeam = message.source === CROSS_TEAM_SOURCE || parsedCrossTeamPrefix !== null;
     const isCrossTeamSent =
       message.source === CROSS_TEAM_SENT_SOURCE || crossTeamSentTarget !== null;
@@ -1311,7 +1319,7 @@ export const ActivityItem = memo(
       onCreateTask?.(subject, description);
     }, [autoSummary, message.from, message.summary, message, onCreateTask, structured, timestamp]);
 
-    const isHeaderClickable = isManaged && canToggleCollapse;
+    const isHeaderClickable = isManaged && canToggleCollapse && !isHumanConversation;
     const showChevron = isHeaderClickable && !compactHeader;
     const handleHeaderToggle = useCallback(() => {
       if (isHeaderClickable && collapseToggleKey) {
@@ -1473,41 +1481,47 @@ export const ActivityItem = memo(
           backgroundColor:
             rateLimited || isApiError
               ? 'var(--tool-result-error-bg)'
-              : isSlashCommandResult
-                ? 'rgba(245, 158, 11, 0.08)'
-                : isSlashCommandMessage
+              : isHumanConversation
+                ? 'var(--info-bg)'
+                : isSlashCommandResult
                   ? 'rgba(245, 158, 11, 0.08)'
-                  : isCrossTeamAny
-                    ? 'var(--cross-team-bg)'
-                    : isSystemMessage
-                      ? 'var(--system-activity-bg)'
-                      : zebraShade
-                        ? CARD_BG_ZEBRA
-                        : CARD_BG,
+                  : isSlashCommandMessage
+                    ? 'rgba(245, 158, 11, 0.08)'
+                    : isCrossTeamAny
+                      ? 'var(--cross-team-bg)'
+                      : isSystemMessage
+                        ? 'var(--system-activity-bg)'
+                        : zebraShade
+                          ? CARD_BG_ZEBRA
+                          : CARD_BG,
           border:
             rateLimited || isApiError
               ? '1px solid var(--tool-result-error-border)'
-              : isSlashCommandResult
-                ? '1px solid rgba(245, 158, 11, 0.22)'
-                : isSlashCommandMessage
+              : isHumanConversation
+                ? '1px solid var(--info-border)'
+                : isSlashCommandResult
                   ? '1px solid rgba(245, 158, 11, 0.22)'
-                  : isCrossTeamAny
-                    ? '1px solid var(--cross-team-border)'
-                    : isSystemMessage
-                      ? '1px solid var(--system-activity-border)'
-                      : CARD_BORDER_STYLE,
+                  : isSlashCommandMessage
+                    ? '1px solid rgba(245, 158, 11, 0.22)'
+                    : isCrossTeamAny
+                      ? '1px solid var(--cross-team-border)'
+                      : isSystemMessage
+                        ? '1px solid var(--system-activity-border)'
+                        : CARD_BORDER_STYLE,
           borderLeft:
             rateLimited || isApiError
               ? '3px solid var(--tool-result-error-text)'
-              : isSlashCommandResult
-                ? '3px solid rgba(245, 158, 11, 0.85)'
-                : isSlashCommandMessage
+              : isHumanConversation
+                ? '4px solid var(--color-accent)'
+                : isSlashCommandResult
                   ? '3px solid rgba(245, 158, 11, 0.85)'
-                  : isCrossTeamAny
-                    ? '3px solid var(--cross-team-accent)'
-                    : isSystemMessage
-                      ? '3px solid var(--system-activity-accent)'
-                      : `3px solid ${getThemedBorder(colors, isLight)}`,
+                  : isSlashCommandMessage
+                    ? '3px solid rgba(245, 158, 11, 0.85)'
+                    : isCrossTeamAny
+                      ? '3px solid var(--cross-team-accent)'
+                      : isSystemMessage
+                        ? '3px solid var(--system-activity-accent)'
+                        : `3px solid ${getThemedBorder(colors, isLight)}`,
         }}
       >
         {/* Header — div with role=button (cannot use <button> due to nested buttons inside) */}
@@ -1690,9 +1704,16 @@ export const ActivityItem = memo(
               {leadSourceBadge}
               {statusBadge}
               {recipientBadge}
-              <span className="min-w-0 flex-1 truncate text-xs" style={{ color: CARD_TEXT_LIGHT }}>
-                {summaryContent}
-              </span>
+              {isHumanConversation ? (
+                <div className="min-w-0 flex-1" />
+              ) : (
+                <span
+                  className="min-w-0 flex-1 truncate text-xs"
+                  style={{ color: CARD_TEXT_LIGHT }}
+                >
+                  {summaryContent}
+                </span>
+              )}
               <div className="relative flex shrink-0 items-center">
                 <span
                   className={
@@ -1902,7 +1923,11 @@ export const ActivityItem = memo(
                     <MarkdownViewer
                       content={displayText}
                       maxHeight="max-h-none"
-                      className="[&_li]:text-[13px] [&_p]:text-[13px] [&_table]:text-[13px]"
+                      className={
+                        isHumanConversation
+                          ? '[&_li]:text-[15px] [&_p]:text-[15px] [&_table]:text-[15px] [&_li]:leading-relaxed [&_p]:leading-relaxed [&_li]:font-medium [&_p]:font-medium [&_strong]:font-semibold'
+                          : '[&_li]:text-[13px] [&_p]:text-[13px] [&_table]:text-[13px]'
+                      }
                       bare
                       teamColorByName={teamColorByName}
                       onTeamClick={onTeamClick}
