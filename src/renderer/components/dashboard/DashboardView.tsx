@@ -171,7 +171,7 @@ export const DashboardView = (): React.JSX.Element => {
         <div className="dashboard-aurora dashboard-aurora--three" />
       </div>
 
-      <div className="relative flex w-full flex-1 flex-col px-6 py-6 sm:px-8 lg:px-12 lg:py-7 xl:px-16 2xl:px-20">
+      <div className="relative flex min-h-0 w-full flex-1 flex-col px-6 py-6 sm:px-8 lg:px-12 lg:py-7 xl:px-16 2xl:px-20">
         <div className="mb-5 space-y-3 empty:mb-0 empty:hidden">
           <WebPreviewBanner />
           <WindowsAdministratorBanner />
@@ -240,7 +240,9 @@ export const DashboardView = (): React.JSX.Element => {
               ) : undefined
             }
           />
-          <RecentProjectsSection searchQuery={searchQuery} section={recentProjectsSection} />
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <RecentProjectsSection searchQuery={searchQuery} section={recentProjectsSection} />
+          </div>
         </section>
       </div>
     </div>
