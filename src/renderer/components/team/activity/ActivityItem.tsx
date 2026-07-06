@@ -455,7 +455,7 @@ const PassiveIdlePeerSummaryRow = ({
 
   return (
     <div className="flex items-center gap-2 px-3 py-1.5" style={{ opacity: 0.78 }}>
-      <span className="bg-sky-500/12 rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">
+      <span className="bg-sky-500/12 rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-700 dark:text-sky-300">
         {t('activity.badges.note')}
       </span>
       <MemberBadge
@@ -541,7 +541,7 @@ const TaskStallRemediationRow = ({
             {' '}
             <button
               type="button"
-              className="font-medium text-blue-300 hover:text-blue-200"
+              className="font-medium text-blue-700 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200"
               onClick={(event) => {
                 event.stopPropagation();
                 onTaskIdClick?.(taskRef.taskId);
@@ -618,7 +618,7 @@ const MemberWorkSyncNudgeRow = ({
             {' '}
             <button
               type="button"
-              className="font-medium text-blue-300 hover:text-blue-200"
+              className="font-medium text-blue-700 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200"
               onClick={(event) => {
                 event.stopPropagation();
                 onTaskIdClick?.(primaryTaskRef.taskId);
@@ -666,7 +666,9 @@ const BootstrapSystemRow = ({
     <div className="flex items-center gap-2 px-3 py-2" style={{ opacity: 0.82 }}>
       <span
         className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-          isRestart ? 'bg-amber-500/12 text-amber-300' : 'bg-sky-500/12 text-sky-300'
+          isRestart
+            ? 'bg-amber-500/12 text-amber-700 dark:text-amber-300'
+            : 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
         }`}
       >
         {isRestart ? t('activity.badges.restart') : t('activity.badges.start')}
@@ -721,7 +723,7 @@ const BootstrapAcknowledgementRow = ({
   const { t } = useAppTranslation('team');
   return (
     <div className="flex items-center gap-2 px-3 py-2" style={{ opacity: 0.72 }}>
-      <span className="bg-emerald-500/12 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
+      <span className="bg-emerald-500/12 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
         {t('activity.badges.bootstrap')}
       </span>
       <MemberBadge

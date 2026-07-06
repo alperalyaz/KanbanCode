@@ -2152,7 +2152,7 @@ export const CreateTeamDialog = ({
           {isSolo ? (
             <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2">
               <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
-              <p className="text-[11px] leading-relaxed text-sky-300">
+              <p className="text-[11px] leading-relaxed text-sky-700 dark:text-sky-300">
                 {t('create.solo.description')}
               </p>
             </div>
@@ -2243,7 +2243,7 @@ export const CreateTeamDialog = ({
             {prepareWarnings.length > 0 && prepareChecks.length === 0 ? (
               <div className="mt-0.5 space-y-0.5 pl-5">
                 {prepareWarnings.map((warning, index) => (
-                  <p key={`${index}:${warning}`} className="text-[11px] text-sky-300">
+                  <p key={`${index}:${warning}`} className="text-[11px] text-sky-700 dark:text-sky-300">
                     {warning}
                   </p>
                 ))}

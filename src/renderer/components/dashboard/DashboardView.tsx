@@ -180,7 +180,9 @@ export const DashboardView = (): React.JSX.Element => {
         </div>
 
         <header className="mb-6">
-          <p className="mb-2 text-sm font-medium tracking-wide text-indigo-300/80">{APP_NAME}</p>
+          <p className="mb-2 text-sm font-medium tracking-wide text-indigo-700/80 dark:text-indigo-300/80">
+            {APP_NAME}
+          </p>
           <h1 className="text-3xl font-semibold tracking-tight text-text sm:text-4xl lg:text-[2.5rem] lg:leading-tight">
             {t('hero.title')}
           </h1>
@@ -202,7 +204,7 @@ export const DashboardView = (): React.JSX.Element => {
             className="bg-surface-raised/80 group flex min-h-[148px] flex-col justify-between rounded-xl border border-border p-5 text-left transition-all duration-200 hover:border-indigo-500/35 hover:bg-surface-raised hover:shadow-[0_12px_40px_rgba(15,23,42,0.18)]"
           >
             <div className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface-overlay transition-colors group-hover:border-indigo-500/30">
-              <Users className="size-5 text-indigo-300" />
+              <Users className="size-5 text-indigo-700 dark:text-indigo-300" />
             </div>
             <div>
               <div className="flex items-center gap-2 text-lg font-semibold text-text">

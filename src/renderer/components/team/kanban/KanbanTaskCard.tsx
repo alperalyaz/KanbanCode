@@ -232,7 +232,7 @@ const TaskMetaActions = memo(function TaskMetaActions({
       className={
         changesNeedAttention
           ? 'text-amber-400 hover:bg-amber-500/10 hover:text-amber-300'
-          : 'text-sky-400 hover:bg-sky-500/10 hover:text-sky-300'
+          : 'text-sky-700 dark:text-sky-400 hover:bg-sky-500/10 hover:text-sky-800 dark:hover:text-sky-300'
       }
       onClick={(e) => {
         e.stopPropagation();

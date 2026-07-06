@@ -115,7 +115,7 @@ export const KanbanFilterPopover = ({
                 type="button"
                 className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
                   filter.sessionId === null
-                    ? 'bg-blue-500/15 text-blue-300'
+                    ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
                     : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]'
                 }`}
                 onClick={() => handleSessionSelect(null)}
@@ -132,7 +132,7 @@ export const KanbanFilterPopover = ({
                     type="button"
                     className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
                       isSelected
-                        ? 'bg-blue-500/15 text-blue-300'
+                        ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
                         : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]'
                     }`}
                     onClick={() => handleSessionSelect(isSelected ? null : session.id)}

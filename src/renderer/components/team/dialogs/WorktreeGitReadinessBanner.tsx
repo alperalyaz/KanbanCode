@@ -161,7 +161,7 @@ export const WorktreeGitReadinessBanner = ({
 
   if (loading) {
     return (
-      <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-[11px] leading-relaxed text-sky-300">
+      <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-[11px] leading-relaxed text-sky-700 dark:text-sky-300">
         <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin" />
         <p>{t('worktreeGitReadiness.checking')}</p>
       </div>
@@ -184,7 +184,7 @@ export const WorktreeGitReadinessBanner = ({
   if (status.canUseWorktrees) {
     if (!showReady) return null;
     return (
-      <div className="flex items-start gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[11px] leading-relaxed text-emerald-300">
+      <div className="flex items-start gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[11px] leading-relaxed text-emerald-700 dark:text-emerald-300">
         <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />
         <p>
           {status.branch

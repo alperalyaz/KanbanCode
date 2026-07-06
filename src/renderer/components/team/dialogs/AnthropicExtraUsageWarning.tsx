@@ -17,7 +17,7 @@ export const AnthropicExtraUsageWarning = (): React.JSX.Element => {
         href={ANTHROPIC_LONG_CONTEXT_PRICING_URL}
         target="_blank"
         rel="noreferrer"
-        className="font-medium text-amber-100 underline underline-offset-2 hover:text-white"
+        className="font-medium text-amber-700 dark:text-amber-100 underline underline-offset-2 hover:text-white"
       >
         {t('modelSelector.anthropicExtraUsage.pricingDocs')}
       </a>

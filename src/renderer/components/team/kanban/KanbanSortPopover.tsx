@@ -96,7 +96,7 @@ export const KanbanSortPopover = ({
                     className={cn(
                       'flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
                       isSelected
-                        ? 'bg-blue-500/15 text-blue-300'
+                        ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
                         : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]'
                     )}
                     onClick={() => onSortChange({ field: option.field })}
@@ -114,7 +114,7 @@ export const KanbanSortPopover = ({
                       <div
                         className={cn(
                           'text-[10px]',
-                          isSelected ? 'text-blue-300/70' : 'text-[var(--color-text-muted)]'
+                          isSelected ? 'text-blue-700/70 dark:text-blue-300/70' : 'text-[var(--color-text-muted)]'
                         )}
                       >
                         {t(option.descriptionKey)}

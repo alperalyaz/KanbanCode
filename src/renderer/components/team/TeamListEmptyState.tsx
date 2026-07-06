@@ -30,9 +30,11 @@ export const TeamListEmptyState = ({
 
       <div className="relative z-10 flex max-w-lg flex-col items-center text-center">
         <div className="bg-surface-raised/90 mb-5 flex size-16 items-center justify-center rounded-2xl border border-border shadow-[0_12px_40px_rgba(15,23,42,0.22)]">
-          <UsersRound className="size-8 text-indigo-300" />
+          <UsersRound className="size-8 text-indigo-700 dark:text-indigo-300" />
         </div>
-        <p className="mb-2 text-xs font-medium tracking-wide text-indigo-300/80">{APP_NAME}</p>
+        <p className="mb-2 text-xs font-medium tracking-wide text-indigo-700/80 dark:text-indigo-300/80">
+          {APP_NAME}
+        </p>
         <h3 className="text-2xl font-semibold tracking-tight text-text">{t('list.empty.title')}</h3>
         <p className="mt-3 text-sm leading-relaxed text-text-muted">
           {canCreate ? t('list.empty.description') : t('list.empty.localOnly')}

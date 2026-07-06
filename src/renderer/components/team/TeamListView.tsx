@@ -293,7 +293,7 @@ const StatusBadge = ({ status, t }: { status: TeamStatus; t: TeamT }): React.JSX
       );
     case 'partial_skipped':
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-medium text-sky-300">
+        <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-300">
           <span className="size-1.5 rounded-full bg-sky-300" />
           {t('list.status.partialSkipped')}
         </span>
@@ -411,7 +411,7 @@ const ActiveTeamCard = ({
               {canLaunch ? (
                 <button
                   type="button"
-                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-300 disabled:opacity-50 group-hover:opacity-100"
+                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300 disabled:opacity-50 group-hover:opacity-100"
                   onClick={(event) =>
                     onLaunchTeam(team.teamName, team.projectPath ?? undefined, launchMode, event)
                   }
@@ -437,7 +437,7 @@ const ActiveTeamCard = ({
               {!team.pendingCreate ? (
                 <button
                   type="button"
-                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-300 group-hover:opacity-100"
+                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-700 dark:hover:text-blue-300 group-hover:opacity-100"
                   onClick={(event) => onCopyTeam(team.teamName, event)}
                   aria-label={copyTitle}
                   title={copyTitle}
@@ -484,7 +484,7 @@ const ActiveTeamCard = ({
               : t('list.partial.stopped')}
           </p>
         ) : team.teamLaunchState === 'partial_skipped' ? (
-          <p className="mt-2 text-[11px] text-sky-300">
+          <p className="mt-2 text-[11px] text-sky-700 dark:text-sky-300">
             {team.skippedMembers?.length
               ? t('list.partial.skippedWithCount', {
                   count: team.skippedMembers.length,
@@ -1433,7 +1433,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
                           <TooltipTrigger asChild>
                             <button
                               type="button"
-                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-300 group-hover:opacity-100"
+                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300 group-hover:opacity-100"
                               onClick={(e) => handleRestoreTeam(team.teamName, e)}
                               aria-label={t('list.actions.restoreTeam')}
                             >

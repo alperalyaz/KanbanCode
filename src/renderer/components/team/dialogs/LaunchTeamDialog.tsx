@@ -2594,7 +2594,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                   {prepareWarnings.length > 0 && prepareChecks.length === 0 ? (
                     <div className="mt-0.5 space-y-0.5 pl-5">
                       {prepareWarnings.map((warning, index) => (
-                        <p key={`${index}:${warning}`} className="text-[11px] text-sky-300">
+                        <p key={`${index}:${warning}`} className="text-[11px] text-sky-700 dark:text-sky-300">
                           {warning}
                         </p>
                       ))}

@@ -1588,7 +1588,7 @@ export const MessagesPanel = memo(function MessagesPanel({
                     <DropdownMenuContent align="end" side="top" className="w-48">
                       {messagesUnreadCount > 0 && (
                         <DropdownMenuItem
-                          className="text-blue-400 focus:text-blue-300"
+                          className="text-blue-700 dark:text-blue-400 focus:text-blue-800 dark:focus:text-blue-300"
                           onSelect={handleMarkAllRead}
                         >
                           <CheckCheck size={14} className="shrink-0" />

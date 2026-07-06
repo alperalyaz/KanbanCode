@@ -361,7 +361,7 @@ export const CreateTaskDialog = ({
                                 type="button"
                                 className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors ${
                                   isSelected
-                                    ? 'bg-blue-500/15 text-blue-300'
+                                    ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
                                     : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]'
                                 }`}
                                 onClick={() => toggleBlockedBy(t.id)}
@@ -369,7 +369,7 @@ export const CreateTaskDialog = ({
                                 <span
                                   className={`flex size-3.5 shrink-0 items-center justify-center rounded-sm border text-[9px] ${
                                     isSelected
-                                      ? 'border-blue-400 bg-blue-500/30 text-blue-300'
+                                      ? 'border-blue-400 bg-blue-500/30 text-blue-700 dark:text-blue-300'
                                       : 'border-[var(--color-border-emphasis)]'
                                   }`}
                                 >
@@ -435,7 +435,7 @@ export const CreateTaskDialog = ({
                                 type="button"
                                 className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors ${
                                   isSelected
-                                    ? 'bg-purple-500/15 text-purple-300'
+                                    ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300'
                                     : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]'
                                 }`}
                                 onClick={() => toggleRelated(t.id)}
@@ -443,7 +443,7 @@ export const CreateTaskDialog = ({
                                 <span
                                   className={`flex size-3.5 shrink-0 items-center justify-center rounded-sm border text-[9px] ${
                                     isSelected
-                                      ? 'border-purple-400 bg-purple-500/30 text-purple-300'
+                                      ? 'border-purple-400 bg-purple-500/30 text-purple-700 dark:text-purple-300'
                                       : 'border-[var(--color-border-emphasis)]'
                                   }`}
                                 >
@@ -462,7 +462,7 @@ export const CreateTaskDialog = ({
                       </div>
                     </div>
                     {related.length > 0 ? (
-                      <p className="text-[11px] text-purple-300">
+                      <p className="text-[11px] text-purple-700 dark:text-purple-300">
                         {t('tasks.createTask.relatedSummary', {
                           tasks: related.map((id) => `#${deriveTaskDisplayId(id)}`).join(', '),
                         })}

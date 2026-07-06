@@ -341,7 +341,7 @@ export const SkillsPanel = ({
   return (
     <div className="flex flex-col gap-4">
       {effectiveCliStatus?.flavor === 'agent_teams_orchestrator' && (
-        <div className="rounded-md border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-sm text-blue-300">
+        <div className="rounded-md border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-sm text-blue-700 dark:text-blue-300">
           {t('skillsPanel.runtimeAudience', {
             audience: skillsAudienceLabel ?? t('skillsPanel.configuredRuntime'),
           })}

@@ -428,7 +428,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
                 }
 
                 const statusTone = provider.authenticated
-                  ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
+                  ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300'
                   : provider.supported
                     ? 'border-amber-500/30 bg-amber-500/5 text-amber-300'
                     : 'border-border bg-surface-raised text-text-muted';
@@ -504,9 +504,9 @@ export const ExtensionStoreView = (): React.JSX.Element => {
 
     return (
       <div className="mx-4 mt-3 flex items-start gap-3 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
-        <Info className="mt-0.5 size-4 shrink-0 text-emerald-300" />
+        <Info className="mt-0.5 size-4 shrink-0 text-emerald-700 dark:text-emerald-300" />
         <div>
-          <p className="text-sm font-medium text-emerald-300">
+          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
             {t('store.runtime.readyTitle', { runtime: runtimeDisplayName })}
           </p>
           <p className="mt-0.5 text-xs text-text-muted">

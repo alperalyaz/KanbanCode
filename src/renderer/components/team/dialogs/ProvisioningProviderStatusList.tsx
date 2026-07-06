@@ -906,7 +906,7 @@ function getStatusColor(status: ProvisioningProviderCheckStatus): string {
     case 'ready':
       return 'text-emerald-400';
     case 'notes':
-      return 'text-sky-300';
+      return 'text-sky-700 dark:text-sky-300';
     case 'failed':
       return 'text-red-300';
     case 'checking':

@@ -261,7 +261,7 @@ const FilesTouchedSection = ({
           {t('members.stats.filesTouched', { count: validFiles.length })}
         </p>
         {onShowAll && (
-          <button className="text-[10px] text-blue-400 hover:text-blue-300" onClick={onShowAll}>
+          <button className="text-[10px] text-blue-700 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" onClick={onShowAll}>
             {t('members.stats.viewAllChanges')}
           </button>
         )}

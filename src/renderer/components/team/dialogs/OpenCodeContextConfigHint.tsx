@@ -47,7 +47,7 @@ export const OpenCodeContextConfigHint = (): React.JSX.Element => {
         ) : (
           <ChevronRight className="mt-0.5 size-3.5 shrink-0" />
         )}
-        <Info className="mt-0.5 size-3.5 shrink-0 text-cyan-300" />
+        <Info className="mt-0.5 size-3.5 shrink-0 text-cyan-700 dark:text-cyan-300" />
         <span className="min-w-0">{t('openCodeContextConfigHint.summary')}</span>
       </Button>
 

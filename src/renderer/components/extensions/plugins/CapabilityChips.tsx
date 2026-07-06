@@ -48,7 +48,7 @@ export const CapabilityChips = ({
             aria-pressed={isActive}
             className={`h-7 rounded-full border px-2.5 text-[11px] font-medium transition-all ${
               isActive
-                ? 'border-purple-500/40 bg-purple-500/15 text-purple-300 shadow-sm'
+                ? 'border-purple-500/40 bg-purple-500/15 text-purple-700 dark:text-purple-300 shadow-sm'
                 : 'hover:bg-surface-raised/60 border-border bg-transparent text-text-secondary hover:border-border-emphasis hover:text-text'
             }`}
           >

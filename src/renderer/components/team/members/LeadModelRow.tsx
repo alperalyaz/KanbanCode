@@ -254,7 +254,7 @@ export const LeadModelRow = ({
           ) : null}
           <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2">
             <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
-            <p className="text-[11px] leading-relaxed text-sky-300">
+            <p className="text-[11px] leading-relaxed text-sky-700 dark:text-sky-300">
               {t('members.leadModel.runtimeInheritance')}
               {showAnthropicContextLimit
                 ? ` ${t('members.leadModel.anthropicContextLimit')}`

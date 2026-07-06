@@ -335,7 +335,7 @@ const RuntimeTelemetryTooltipContent = ({
   return (
     <div className="w-[320px] max-w-[min(320px,var(--radix-tooltip-content-available-width))] space-y-2.5">
       <div className="flex items-start gap-2">
-        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border border-blue-500/30 bg-blue-500/10 text-blue-300">
+        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300">
           <Activity className="size-3.5" />
         </span>
         <div className="min-w-0">
@@ -350,26 +350,26 @@ const RuntimeTelemetryTooltipContent = ({
 
       <div className="grid grid-cols-2 gap-1.5">
         <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-1.5">
-          <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-blue-200/80">
+          <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-blue-700/80 dark:text-blue-200/80">
             <Cpu className="size-3" />
             {t('members.runtimeTelemetry.cpu')}
           </div>
-          <div className="mt-1 text-[14px] font-semibold text-blue-100">
+          <div className="mt-1 text-[14px] font-semibold text-blue-700 dark:text-blue-100">
             {aggregateCpuLabel ?? 'unknown'}
           </div>
           {cpuSplit.length > 0 ? (
-            <div className="mt-0.5 text-[10px] leading-snug text-blue-100/65">
+            <div className="mt-0.5 text-[10px] leading-snug text-blue-700/65 dark:text-blue-100/65">
               {cpuSplit.join(' · ')}
             </div>
           ) : null}
         </div>
 
         <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1.5">
-          <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-emerald-200/80">
+          <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700/80 dark:text-emerald-200/80">
             <HardDrive className="size-3" />
             {t('members.runtimeTelemetry.memory')}
           </div>
-          <div className="mt-1 text-[14px] font-semibold text-emerald-100">
+          <div className="mt-1 text-[14px] font-semibold text-emerald-700 dark:text-emerald-100">
             {rssLabel ?? 'unknown'}
           </div>
           <div className="mt-0.5 text-[10px] leading-snug text-emerald-100/65">
@@ -1206,7 +1206,7 @@ export const MemberCard = memo(function MemberCard({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span
-                      className="shrink-0 rounded border border-emerald-400/35 bg-emerald-400/10 px-1 py-0.5 text-[9px] font-semibold uppercase leading-none text-emerald-300"
+                      className="shrink-0 rounded border border-emerald-400/35 bg-emerald-400/10 px-1 py-0.5 text-[9px] font-semibold uppercase leading-none text-emerald-700 dark:text-emerald-300"
                       data-runtime-telemetry-exempt="true"
                     >
                       {t('members.badges.worktree')}
@@ -1485,7 +1485,7 @@ export const MemberCard = memo(function MemberCard({
                       <Ban className="size-3.5 shrink-0 text-zinc-400" />
                       <Badge
                         variant="secondary"
-                        className="shrink-0 bg-zinc-500/15 px-1.5 py-0.5 text-[10px] font-normal leading-none text-zinc-300"
+                        className="shrink-0 bg-zinc-500/15 px-1.5 py-0.5 text-[10px] font-normal leading-none text-zinc-600 dark:text-zinc-300"
                       >
                         {displayPresenceLabel}
                       </Badge>
@@ -1503,7 +1503,7 @@ export const MemberCard = memo(function MemberCard({
                         aria-label={
                           retryingLaunch ? restartActionBusyLabel : restartActionIdleLabel
                         }
-                        className="rounded p-1 text-zinc-300 transition-colors hover:bg-zinc-500/10 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded p-1 text-zinc-600 dark:text-zinc-300 transition-colors hover:bg-zinc-500/10 hover:text-zinc-800 dark:hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
                         disabled={retryingLaunch}
                         onClick={handleRestartMember}
                       >

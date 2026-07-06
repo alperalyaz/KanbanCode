@@ -158,9 +158,9 @@ export const ApiKeysPanel = ({
                 <span
                   className={`rounded-full px-2 py-0.5 text-[11px] ${
                     provider.authenticated
-                      ? 'bg-emerald-500/10 text-emerald-300'
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                       : provider.apiKeyConfigured
-                        ? 'bg-blue-500/10 text-blue-300'
+                        ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300'
                         : 'bg-amber-500/10 text-amber-300'
                   }`}
                 >

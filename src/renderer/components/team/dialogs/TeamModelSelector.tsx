@@ -1704,19 +1704,19 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
           {openCodePricingInfo?.free || openCodeRouteKind === 'builtin_free' ? (
             <span
               data-testid="team-model-selector-model-free-badge"
-              className="inline-flex items-center justify-center rounded-full border border-emerald-300/30 bg-emerald-300/10 px-1.5 py-0 text-[9px] font-semibold uppercase text-emerald-200"
+              className="inline-flex items-center justify-center rounded-full border border-emerald-300/30 bg-emerald-300/10 px-1.5 py-0 text-[9px] font-semibold uppercase text-emerald-700 dark:text-emerald-200"
               title={t('modelSelector.openCode.freeTooltip')}
             >
               {t('modelSelector.badges.free')}
             </span>
           ) : null}
           {openCodeRouteKind === 'configured_local' ? (
-            <span className="inline-flex items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-300/10 px-1.5 py-0 text-[9px] font-semibold uppercase text-cyan-200">
+            <span className="inline-flex items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-300/10 px-1.5 py-0 text-[9px] font-semibold uppercase text-cyan-700 dark:text-cyan-200">
               {t('modelSelector.badges.local')}
             </span>
           ) : null}
           {openCodeRouteKind === 'configured_local' ? (
-            <span className="inline-flex items-center justify-center rounded-full border border-sky-300/30 bg-sky-300/10 px-1.5 py-0 text-[9px] font-semibold uppercase text-sky-200">
+            <span className="inline-flex items-center justify-center rounded-full border border-sky-300/30 bg-sky-300/10 px-1.5 py-0 text-[9px] font-semibold uppercase text-sky-700 dark:text-sky-200">
               {t('modelSelector.badges.configured')}
             </span>
           ) : null}
@@ -1745,15 +1745,15 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
               className={cn(
                 'inline-flex items-center justify-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
                 modelRecommendation.level === 'recommended'
-                  ? 'border-emerald-300/35 bg-emerald-300/10 text-emerald-200'
+                  ? 'border-emerald-300/35 bg-emerald-300/10 text-emerald-700 dark:text-emerald-200'
                   : modelRecommendation.level === 'recommended-with-limits'
                     ? 'border-amber-300/35 bg-amber-300/10 text-amber-200'
                     : modelRecommendation.level === 'tested'
-                      ? 'border-sky-300/35 bg-sky-300/10 text-sky-200'
+                      ? 'border-sky-300/35 bg-sky-300/10 text-sky-700 dark:text-sky-200'
                       : modelRecommendation.level === 'tested-with-limits'
-                        ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-200'
+                        ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-700 dark:text-cyan-200'
                         : modelRecommendation.level === 'unavailable-in-opencode'
-                          ? 'border-slate-300/30 bg-slate-400/10 text-slate-200'
+                          ? 'border-slate-300/30 bg-slate-400/10 text-slate-600 dark:text-slate-200'
                           : 'border-red-300/35 bg-red-400/10 text-red-200'
               )}
               title={modelRecommendation.reason}
@@ -1951,7 +1951,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                 >
                   <div className="flex items-start gap-2">
                     {activeProviderStatusPanel.tone === 'ready' ? (
-                      <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-200" />
+                      <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-700 dark:text-emerald-200" />
                     ) : (
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-200" />
                     )}
@@ -1996,7 +1996,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                               className={cn(
                                 'flex items-center gap-1.5',
                                 loginPhase === 'success'
-                                  ? 'text-emerald-200'
+                                  ? 'text-emerald-700 dark:text-emerald-200'
                                   : loginPhase === 'error'
                                     ? 'text-red-200'
                                     : 'opacity-90'

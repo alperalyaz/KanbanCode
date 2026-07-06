@@ -1000,7 +1000,7 @@ export const TaskDetailDialog = ({
                           <TooltipTrigger asChild>
                             <button
                               type="button"
-                              className="inline-flex items-center rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-medium text-purple-300 transition-colors hover:bg-purple-500/25"
+                              className="inline-flex items-center rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300 transition-colors hover:bg-purple-500/25"
                               onClick={() => handleDependencyClick(id)}
                             >
                               {depTask
