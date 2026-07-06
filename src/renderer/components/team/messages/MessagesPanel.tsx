@@ -1459,8 +1459,10 @@ export const MessagesPanel = memo(function MessagesPanel({
             {renderSearchAndFilterControls()}
           </div>
         )}
-        {/* Pinned status (in-progress work) above the chat stream */}
-        <div className="max-h-[38%] shrink-0 overflow-y-auto px-3 pt-2">
+        {/* Pinned status (in-progress work) above the chat stream. Overflow is an
+            inline style (not the overflow-y-auto class) so the message stream
+            below stays the sole `.overflow-y-auto` scroll container. */}
+        <div className="shrink-0 px-3 pt-2" style={{ maxHeight: '38%', overflowY: 'auto' }}>
           {renderSidebarStatusSection()}
         </div>
         {/* Chat stream: oldest at top, newest at the bottom, scrolls up for history */}
