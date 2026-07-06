@@ -119,7 +119,7 @@ export const RecentProjectsSection = ({
 
   if (error && cards.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border px-10 py-20">
+      <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border px-8 py-12">
         <div className="flex size-14 items-center justify-center rounded-xl border border-border bg-surface-raised">
           <FolderGit2 className="size-7 text-text-muted" />
         </div>
@@ -141,7 +141,7 @@ export const RecentProjectsSection = ({
 
   if (cards.length === 0 && searchQuery.trim()) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border px-10 py-20">
+      <div className="flex w-full flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border px-8 py-12">
         <div className="mb-5 flex size-14 items-center justify-center rounded-xl border border-border bg-surface-raised">
           <Search className="size-7 text-text-muted" />
         </div>
@@ -157,7 +157,7 @@ export const RecentProjectsSection = ({
 
   if (cards.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border px-10 py-20">
+      <div className="flex w-full flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border px-8 py-12">
         <div className="mb-5 flex size-14 items-center justify-center rounded-xl border border-border bg-surface-raised">
           <FolderGit2 className="size-7 text-text-muted" />
         </div>

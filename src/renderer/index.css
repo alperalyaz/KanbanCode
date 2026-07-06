@@ -1645,44 +1645,66 @@ a[href],
 
 /* ---------------------------------------------------------------------------
    Dashboard ambient aurora
-   Two large, heavily-blurred radial blobs that drift and breathe very slowly.
-   Uses only GPU-composited transform/opacity (no layout, no paint storms) so it
-   is effectively free on CPU/RAM — a lightweight alternative to a video bg.
+   Large, blurred radial blobs that slowly drift, breathe, AND cycle hue so the
+   background colors visibly shift over time. Uses only GPU-composited
+   transform/opacity/filter (no layout, no paint storms) so it stays cheap on
+   CPU/RAM — a lightweight alternative to a background video.
    --------------------------------------------------------------------------- */
 .dashboard-aurora {
   position: absolute;
   border-radius: 9999px;
-  filter: blur(80px);
-  will-change: transform, opacity;
+  will-change: transform, opacity, filter;
   pointer-events: none;
 }
 
 .dashboard-aurora--one {
-  top: -12%;
-  left: 8%;
-  width: 46vw;
-  height: 42vh;
-  background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.22), transparent 70%);
-  animation: dashboard-aurora-drift-one 34s ease-in-out infinite;
+  top: -14%;
+  left: 2%;
+  width: 52vw;
+  height: 52vh;
+  background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.5), transparent 68%);
+  animation: dashboard-aurora-drift-one 30s ease-in-out infinite;
 }
 
 .dashboard-aurora--two {
-  top: -8%;
-  right: 4%;
-  width: 40vw;
-  height: 40vh;
-  background: radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.16), transparent 70%);
-  animation: dashboard-aurora-drift-two 42s ease-in-out infinite;
+  top: -10%;
+  right: -4%;
+  width: 48vw;
+  height: 50vh;
+  background: radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.42), transparent 68%);
+  animation: dashboard-aurora-drift-two 38s ease-in-out infinite;
+}
+
+.dashboard-aurora--three {
+  top: 18%;
+  left: 34%;
+  width: 44vw;
+  height: 46vh;
+  background: radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.34), transparent 68%);
+  animation: dashboard-aurora-drift-three 46s ease-in-out infinite;
+}
+
+/* Softer in light theme so the tint doesn't overwhelm a bright surface. */
+:root[data-theme='light'] .dashboard-aurora--one {
+  background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.28), transparent 68%);
+}
+:root[data-theme='light'] .dashboard-aurora--two {
+  background: radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.24), transparent 68%);
+}
+:root[data-theme='light'] .dashboard-aurora--three {
+  background: radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.2), transparent 68%);
 }
 
 @keyframes dashboard-aurora-drift-one {
   0%,
   100% {
     transform: translate3d(0, 0, 0) scale(1);
-    opacity: 0.85;
+    filter: blur(64px) hue-rotate(0deg);
+    opacity: 0.9;
   }
   50% {
-    transform: translate3d(6%, 4%, 0) scale(1.12);
+    transform: translate3d(7%, 5%, 0) scale(1.15);
+    filter: blur(64px) hue-rotate(45deg);
     opacity: 1;
   }
 }
@@ -1690,17 +1712,34 @@ a[href],
 @keyframes dashboard-aurora-drift-two {
   0%,
   100% {
-    transform: translate3d(0, 0, 0) scale(1.05);
-    opacity: 0.7;
+    transform: translate3d(0, 0, 0) scale(1.06);
+    filter: blur(66px) hue-rotate(0deg);
+    opacity: 0.78;
   }
   50% {
-    transform: translate3d(-5%, 5%, 0) scale(1);
+    transform: translate3d(-6%, 6%, 0) scale(1);
+    filter: blur(66px) hue-rotate(-40deg);
     opacity: 0.95;
+  }
+}
+
+@keyframes dashboard-aurora-drift-three {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.02);
+    filter: blur(70px) hue-rotate(0deg);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate3d(4%, -5%, 0) scale(1.14);
+    filter: blur(70px) hue-rotate(50deg);
+    opacity: 0.85;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .dashboard-aurora {
     animation: none !important;
+    filter: blur(66px);
   }
 }

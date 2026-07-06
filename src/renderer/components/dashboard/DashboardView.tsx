@@ -163,25 +163,23 @@ export const DashboardView = (): React.JSX.Element => {
   }, [recentProjectsSection.hasRecentProjects, recentProjectsSection.loading, searchQuery]);
 
   return (
-    <div className="relative flex-1 overflow-auto bg-surface">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-auto bg-surface">
       {/* Ambient aurora: slow GPU-only drift, near-zero CPU/RAM. */}
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[760px] overflow-hidden"
-        aria-hidden="true"
-      >
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         <div className="dashboard-aurora dashboard-aurora--one" />
         <div className="dashboard-aurora dashboard-aurora--two" />
+        <div className="dashboard-aurora dashboard-aurora--three" />
       </div>
 
-      <div className="relative w-full px-6 py-8 sm:px-8 lg:px-12 lg:py-10 xl:px-16 2xl:px-20">
-        <div className="mb-6 space-y-3 empty:mb-0 empty:hidden">
+      <div className="relative flex w-full flex-1 flex-col px-6 py-6 sm:px-8 lg:px-12 lg:py-7 xl:px-16 2xl:px-20">
+        <div className="mb-5 space-y-3 empty:mb-0 empty:hidden">
           <WebPreviewBanner />
           <WindowsAdministratorBanner />
           <CliStatusBanner />
           <TmuxStatusBanner />
         </div>
 
-        <header className="mb-8">
+        <header className="mb-6">
           <p className="mb-2 text-sm font-medium tracking-wide text-indigo-300/80">{APP_NAME}</p>
           <h1 className="text-3xl font-semibold tracking-tight text-text sm:text-4xl lg:text-[2.5rem] lg:leading-tight">
             {t('hero.title')}
@@ -192,7 +190,7 @@ export const DashboardView = (): React.JSX.Element => {
         </header>
 
         <div
-          className={`mb-10 grid gap-4 ${
+          className={`mb-6 grid gap-4 ${
             showProjectSearch
               ? 'lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] lg:items-start xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'
               : 'max-w-2xl'
@@ -226,7 +224,7 @@ export const DashboardView = (): React.JSX.Element => {
 
         <RunningTeamsSection searchQuery={searchQuery} />
 
-        <section>
+        <section className="flex min-h-0 flex-1 flex-col">
           <DashboardSectionHeading
             title={
               searchQuery.trim() ? t('recentProjects.searchResults') : t('recentProjects.title')
