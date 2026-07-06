@@ -33391,8 +33391,41 @@ export class TeamProvisioningService {
    * Uses killTeamProcess() (SIGKILL) to guarantee instant death
    * without CLI cleanup that would delete team files.
    */
+  /**
+   * Force any in-flight provisioning run into the 'cancelled' state and tear it
+   * down. Without this, stopAllTeams SIGKILLs the CLI child but leaves the run's
+   * progress stuck at e.g. 'spawning' ("Starting Claude CLI process…"), so the UI
+   * banner keeps showing "Team launching…" forever after the user hits stop.
+   */
+  private cancelActiveProvisioningRunsForStop(): void {
+    const cancellableStates = new Set([
+      'validating',
+      'spawning',
+      'configuring',
+      'assembling',
+      'finalizing',
+      'verifying',
+    ]);
+    for (const run of [...this.runs.values()]) {
+      if (!cancellableStates.has(run.progress.state)) {
+        continue;
+      }
+      try {
+        run.cancelRequested = true;
+        run.processKilled = true;
+        killTeamProcess(run.child);
+        const progress = updateProgress(run, 'cancelled', 'Team launch stopped by user');
+        run.onProgress(progress);
+        this.cleanupRun(run);
+      } catch (error) {
+        logger.warn(`[${run.teamName}] Failed to cancel in-flight run on stop: ${String(error)}`);
+      }
+    }
+  }
+
   async stopAllTeams(): Promise<void> {
     this.stopAllTeamsGeneration += 1;
+    this.cancelActiveProvisioningRunsForStop();
     for (const teamName of this.getShutdownTrackedTeamNames()) {
       this.taskActivityIntervalService.pauseActiveIntervalsForTeam(teamName);
     }
