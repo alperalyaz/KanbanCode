@@ -1,6 +1,7 @@
 # Contributor License Agreement (CLA)
 
-**Project:** Agent Teams (agent-teams-ai)
+**Project:** KanbanCode (a fork of Agent Teams AI)
+**Maintainer:** Alper Alyaz — kanbancode@hidroteknik.com.tr
 **License:** GNU Affero General Public License v3.0 (AGPL-3.0)
 
 ---
@@ -15,9 +16,10 @@ You represent that you have the right to grant the above license and that your c
 
 ## Signed contributors
 
-| Name             | Email                  | Date       |
-| ---------------- | ---------------------- | ---------- |
-| Илия (777genius) | quantjumppro@gmail.com | 2026-02-22 |
+| Name                  | Email                        | Date       |
+| --------------------- | ---------------------------- | ---------- |
+| Alper Alyaz           | kanbancode@hidroteknik.com.tr | 2026-07-07 |
+| Илия (777genius)      | quantjumppro@gmail.com       | 2026-02-22 |
 
 ---
 
