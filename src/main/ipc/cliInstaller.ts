@@ -126,9 +126,10 @@ function resetProviderRuntimeRequestLimiter(): void {
 }
 
 function getProviderRuntimeRequestLimit(): number {
-  return process.env[PARALLEL_PROVIDER_STATUS_ENV] === '1'
-    ? MAX_PARALLEL_PROVIDER_RUNTIME_REQUESTS
-    : 1;
+  if (process.env[PARALLEL_PROVIDER_STATUS_ENV] === '0') {
+    return 1;
+  }
+  return MAX_PARALLEL_PROVIDER_RUNTIME_REQUESTS;
 }
 
 function acquireProviderRuntimeRequestSlot(): Promise<void> {

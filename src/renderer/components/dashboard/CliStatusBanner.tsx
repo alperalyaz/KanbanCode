@@ -52,6 +52,7 @@ import {
   getProviderTerminalLogoutCommand,
 } from '@renderer/components/runtime/providerTerminalCommands';
 import { useCliInstaller } from '@renderer/hooks/useCliInstaller';
+import { shouldExpandProviderBannerOnDashboard } from '@renderer/services/firstRunExperience';
 import {
   RUNTIME_LOGIN_KEY,
   useProviderLoginLauncher,
@@ -1368,7 +1369,11 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
   const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
   const [showTroubleshoot, setShowTroubleshoot] = useState(false);
+  const teams = useStore((s) => s.teams);
+  const teamsLoading = useStore((s) => s.teamsLoading);
+  const hasTeams = useMemo(() => teams.some((team) => !team.deletedAt), [teams]);
   const [providersCollapsed, setProvidersCollapsed] = useState(true);
+  const [firstRunProviderExpandApplied, setFirstRunProviderExpandApplied] = useState(false);
   const [providerChecksEngaged, setProviderChecksEngaged] = useState(() =>
     hasRequestedProviderRuntimeChecks()
   );
@@ -1378,6 +1383,21 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
       setProviderChecksEngaged(true);
     }
   }, [cliStatus]);
+
+  useEffect(() => {
+    if (teamsLoading || firstRunProviderExpandApplied || hasTeams) {
+      return;
+    }
+
+    if (!shouldExpandProviderBannerOnDashboard(hasTeams)) {
+      return;
+    }
+
+    setProvidersCollapsed(false);
+    setProviderChecksEngaged(true);
+    void requestProviderRuntimeChecks();
+    setFirstRunProviderExpandApplied(true);
+  }, [firstRunProviderExpandApplied, hasTeams, teamsLoading]);
   const [anthropicRateLimitsRefreshing, setAnthropicRateLimitsRefreshing] = useState(false);
   const selectedProjectPath = useMemo(
     () => resolveProjectPathById(selectedProjectId, projects, repositoryGroups)?.path ?? null,
@@ -2301,9 +2321,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
                       }
                       setShowLoginTerminal(true);
                     }}
-                    disabled={
-                      loginLauncher.activeKey === RUNTIME_LOGIN_KEY && loginLauncher.isBusy
-                    }
+                    disabled={loginLauncher.activeKey === RUNTIME_LOGIN_KEY && loginLauncher.isBusy}
                     className="flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60"
                     style={{ backgroundColor: '#f59e0b' }}
                   >

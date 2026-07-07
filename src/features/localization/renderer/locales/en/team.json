@@ -136,6 +136,18 @@
       "copy": "Copy Team",
       "create": "Create Team"
     },
+    "firstRun": {
+      "intro": "Three quick steps to your first team",
+      "steps": {
+        "name": "Name your team",
+        "project": "Choose a project",
+        "model": "Confirm the model"
+      },
+      "description": "Start with a solo OpenCode team on the free big-pickle model.",
+      "launchDescription": "Launch immediately after create so you can start on the kanban board.",
+      "showAdvanced": "Show advanced options",
+      "openCodeSetupHint": "OpenCode may take up to a minute on first launch while the runtime and model catalog load."
+    },
     "optional": {
       "launchSettingsTitle": "Optional launch settings",
       "launchSettingsDescription": "Prompt, safety, and CLI overrides live here when you need them.",

@@ -135,7 +135,7 @@ const GET_STATUS_TIMEOUT_MS = 30_000;
 const AUTH_TOTAL_TIMEOUT_MS = 15_000;
 
 /** Initial multimodel provider status budget for startup metadata (final status hydrates async). */
-const MULTIMODEL_PROVIDER_STATUS_INITIAL_TIMEOUT_MS = 1_500;
+const MULTIMODEL_PROVIDER_STATUS_INITIAL_TIMEOUT_MS = 5_000;
 const GET_STATUS_TIMING_LOG_THRESHOLD_MS = 2_000;
 
 /** Max retries for EBUSY (antivirus scanning the new binary) */

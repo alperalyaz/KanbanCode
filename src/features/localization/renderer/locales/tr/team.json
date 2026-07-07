@@ -136,6 +136,18 @@
       "copy": "Ekibi Kopyala",
       "create": "Ekip Oluştur"
     },
+    "firstRun": {
+      "intro": "İlk ekibiniz için üç hızlı adım",
+      "steps": {
+        "name": "Ekibinize ad verin",
+        "project": "Proje seçin",
+        "model": "Modeli onaylayın"
+      },
+      "description": "Ücretsiz big-pickle modeliyle tek kişilik bir OpenCode ekibiyle başlayın.",
+      "launchDescription": "Kanban panosunda hemen çalışmaya başlamak için oluşturduktan sonra başlatın.",
+      "showAdvanced": "Gelişmiş seçenekleri göster",
+      "openCodeSetupHint": "OpenCode ilk açılışta çalışma zamanı ve model kataloğu yüklenirken bir dakikaya kadar sürebilir."
+    },
     "optional": {
       "launchSettingsTitle": "İsteğe bağlı başlatma ayarları",
       "launchSettingsDescription": "Komut istemi, güvenlik ve CLI geçersiz kılmaları ihtiyaç duyduğunuzda burada bulunur.",

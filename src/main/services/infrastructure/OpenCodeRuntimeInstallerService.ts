@@ -32,7 +32,7 @@ const MAX_BINARY_BYTES = 350 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 60_000;
 const VERSION_TIMEOUT_MS = 10_000;
 const VERSION_PROBE_SUCCESS_CACHE_TTL_MS = 30_000;
-const VERSION_PROBE_FAILURE_CACHE_TTL_MS = 5_000;
+const VERSION_PROBE_FAILURE_CACHE_TTL_MS = 15_000;
 const RUNTIME_STATUS_SUCCESS_CACHE_TTL_MS = 30_000;
 const RUNTIME_STATUS_FAILURE_CACHE_TTL_MS = 5_000;
 
@@ -201,15 +201,31 @@ const runtimeBinaryResolveInFlight = new Map<string, Promise<string | null>>();
 let runtimeResolverCacheGeneration = 0;
 
 async function probeOpenCodeBinaryVersion(binaryPath: string): Promise<OpenCodeBinaryVersionProbe> {
-  try {
-    const { stdout } = await execCli(binaryPath, ['--version'], {
-      timeout: VERSION_TIMEOUT_MS,
-      windowsHide: true,
-    });
-    return { ok: true, version: stdout.trim() || null };
-  } catch (error) {
-    return { ok: false, error: getErrorMessage(error) };
+  const runProbe = async (): Promise<OpenCodeBinaryVersionProbe> => {
+    try {
+      const { stdout } = await execCli(binaryPath, ['--version'], {
+        timeout: VERSION_TIMEOUT_MS,
+        windowsHide: true,
+      });
+      return { ok: true, version: stdout.trim() || null };
+    } catch (error) {
+      return { ok: false, error: getErrorMessage(error) };
+    }
+  };
+
+  const firstAttempt = await runProbe();
+  if (firstAttempt.ok) {
+    return firstAttempt;
   }
+
+  const retryable =
+    process.platform === 'win32' && /timed out|ebusy|eacces|eperm|busy/i.test(firstAttempt.error);
+  if (!retryable) {
+    return firstAttempt;
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
+  return runProbe();
 }
 
 function normalizeBinaryCandidateForCompare(binaryPath: string): string {

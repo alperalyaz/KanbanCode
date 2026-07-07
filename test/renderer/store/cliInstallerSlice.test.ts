@@ -264,6 +264,30 @@ describe('cliInstallerSlice', () => {
       expect(getModelOnlyFallbackProviderIds(status)).toEqual(['opencode']);
     });
 
+    it('treats OpenCode legacy fallback routes as hydrated when the runtime backend is present', () => {
+      const status = createMultimodelStatus([
+        createMultimodelProvider({
+          providerId: 'opencode',
+          displayName: 'OpenCode',
+          supported: false,
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'unknown',
+          statusMessage: 'Provider status unavailable',
+          models: ['opencode/big-pickle'],
+          backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          capabilities: {
+            teamLaunch: false,
+            oneShot: false,
+            extensions: createDefaultCliExtensionCapabilities(),
+          },
+        }),
+      ]);
+
+      expect(getIncompleteMultimodelProviderIds(status)).toEqual([]);
+      expect(getModelOnlyFallbackProviderIds(status)).toEqual([]);
+    });
+
     it('classifies OpenCode summary-only model lists as incomplete until catalog hydration', () => {
       const status = createMultimodelStatus([
         createMultimodelProvider({

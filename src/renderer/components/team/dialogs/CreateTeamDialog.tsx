@@ -59,6 +59,13 @@ import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import {
+  applyFirstRunCreateTeamDefaults,
+  isFirstRunExperienceActive,
+  markFirstRunComplete,
+  shouldDeferCreatePreflight,
+  shouldShowSimplifiedCreateDialog,
+} from '@renderer/services/firstRunExperience';
+import {
   applyStoredCreateTeamMemberRuntimePreferences,
   getStoredCreateTeamEffort,
   getStoredCreateTeamFastMode as getStoredTeamFastMode,
@@ -100,6 +107,7 @@ import { AdvancedCliSection } from './AdvancedCliSection';
 import { AnthropicFastModeSelector } from './AnthropicFastModeSelector';
 import { CodexFastModeSelector } from './CodexFastModeSelector';
 import { CodexReconnectPrompt, shouldShowCodexReconnectPrompt } from './CodexReconnectPrompt';
+import { FirstRunCreateStepIndicator } from './FirstRunCreateStepIndicator';
 import {
   clearInheritedMemberModelsUnavailableForProvider,
   resolveProviderScopedMemberModel,
@@ -412,6 +420,8 @@ export const CreateTeamDialog = ({
   const { isLight } = useTheme();
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
+  const firstRunMode = shouldShowSimplifiedCreateDialog(Boolean(initialData));
+  const [showAdvancedCreateOptions, setShowAdvancedCreateOptions] = useState(!firstRunMode);
   const anthropicProviderFastModeDefault = useStore(
     (s) => s.appConfig?.providerConnections?.anthropic.fastModeDefault ?? false
   );
@@ -518,6 +528,15 @@ export const CreateTeamDialog = ({
   useEffect(() => {
     migrateLegacyCreateTeamPreferences();
   }, []);
+
+  useEffect(() => {
+    if (!open || !firstRunMode) {
+      return;
+    }
+    applyFirstRunCreateTeamDefaults();
+    void requestProviderRuntimeChecks();
+    setShowAdvancedCreateOptions(false);
+  }, [firstRunMode, open]);
 
   useEffect(() => {
     if (!open) {
@@ -733,6 +752,21 @@ export const CreateTeamDialog = ({
       selectedMemberProviders,
     ]
   );
+  const firstRunStep = useMemo<1 | 2 | 3>(() => {
+    if (!teamName.trim()) {
+      return 1;
+    }
+    if (launchTeam && !effectiveCwd) {
+      return 2;
+    }
+    return 3;
+  }, [effectiveCwd, launchTeam, teamName]);
+  const openCodeProviderStatus = runtimeProviderStatusById.get('opencode');
+  const showFirstRunOpenCodeSetupHint =
+    firstRunMode &&
+    selectedProviderId === 'opencode' &&
+    !runtimeProviderLoadingById.get('opencode') &&
+    !openCodeProviderStatus?.models?.length;
   const selectedProviderBackendId = useMemo(
     () =>
       resolveUiOwnedProviderBackendId(
@@ -998,7 +1032,7 @@ export const CreateTeamDialog = ({
   );
 
   useEffect(() => {
-    if (!open || !canCreate || !launchTeam) {
+    if (!open || !canCreate || !launchTeam || shouldDeferCreatePreflight()) {
       cancelScheduledIdleSet(prepareIdleHandlesRef.current);
       prepareRequestSeqRef.current += 1;
       lastPrepareProviderSignatureByIdRef.current.clear();
@@ -1804,10 +1838,6 @@ export const CreateTeamDialog = ({
       if (!selectedModel.trim()) {
         return t('create.validation.openCodeLeadModelRequired');
       }
-      const activeMemberCount = activeTeammateCount;
-      if (activeMemberCount === 0) {
-        return t('create.validation.openCodeTeammateRequired');
-      }
     }
 
     if (!runtimeProviderLoadingById.get(selectedProviderId)) {
@@ -2086,6 +2116,7 @@ export const CreateTeamDialog = ({
             extraCliArgs: request.extraCliArgs,
           });
           onOpenTeam(request.teamName, effectiveCwd || undefined);
+          markFirstRunComplete();
           resetFormState();
           onClose();
         } catch (error) {
@@ -2106,6 +2137,7 @@ export const CreateTeamDialog = ({
         }
         await onCreate(request);
         onOpenTeam(request.teamName, effectiveCwd || undefined);
+        markFirstRunComplete();
         resetFormState();
         onClose();
       } catch (error) {
@@ -2176,7 +2208,7 @@ export const CreateTeamDialog = ({
   );
 
   const selectedProvidersPreflightPanel =
-    canCreate && launchTeam ? (
+    canCreate && launchTeam && !firstRunMode ? (
       <div className="min-w-0">
         <ProviderActivityStatusStrip
           cliStatus={effectiveCliStatus}
@@ -2243,7 +2275,10 @@ export const CreateTeamDialog = ({
             {prepareWarnings.length > 0 && prepareChecks.length === 0 ? (
               <div className="mt-0.5 space-y-0.5 pl-5">
                 {prepareWarnings.map((warning, index) => (
-                  <p key={`${index}:${warning}`} className="text-[11px] text-sky-700 dark:text-sky-300">
+                  <p
+                    key={`${index}:${warning}`}
+                    className="text-[11px] text-sky-700 dark:text-sky-300"
+                  >
                     {warning}
                   </p>
                 ))}
@@ -2325,9 +2360,23 @@ export const CreateTeamDialog = ({
             {initialData ? t('create.title.copy') : t('create.title.create')}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            {initialData ? t('create.description.copy') : t('create.description.create')}
+            {firstRunMode
+              ? t('create.firstRun.description')
+              : initialData
+                ? t('create.description.copy')
+                : t('create.description.create')}
           </DialogDescription>
         </DialogHeader>
+
+        {firstRunMode ? (
+          <FirstRunCreateStepIndicator currentStep={firstRunStep} className="shrink-0" />
+        ) : null}
+
+        {showFirstRunOpenCodeSetupHint ? (
+          <div className="shrink-0 rounded-md border border-sky-500/25 bg-sky-500/5 px-3 py-2 text-xs text-sky-800 dark:text-sky-200">
+            {t('create.firstRun.openCodeSetupHint')}
+          </div>
+        ) : null}
 
         {conflictingTeam && !conflictDismissed ? (
           <div
@@ -2470,9 +2519,7 @@ export const CreateTeamDialog = ({
                   }
                   headerBottom={rosterHeaderBottom}
                   memberListClassName="max-h-[min(52vh,520px)] overflow-y-auto xl:max-h-none xl:overflow-visible"
-                  onOpenProviderSettings={(providerId) =>
-                    setProviderSettingsProviderId(providerId)
-                  }
+                  onOpenProviderSettings={(providerId) => setProviderSettingsProviderId(providerId)}
                 />
               </div>
             </div>
@@ -2505,7 +2552,11 @@ export const CreateTeamDialog = ({
                           : 'var(--color-text-muted)',
                       }}
                     >
-                      {t('create.launchAfterCreate.description')}
+                      {t(
+                        firstRunMode
+                          ? 'create.firstRun.launchDescription'
+                          : 'create.launchAfterCreate.description'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -2525,169 +2576,173 @@ export const CreateTeamDialog = ({
                       fieldError={fieldErrors.cwd}
                     />
 
-                    <OptionalSettingsSection
-                      title={t('create.optional.launchSettingsTitle')}
-                      description={t('create.optional.launchSettingsDescription')}
-                      summary={launchOptionalSummary}
-                      onOpenChange={(isOpen) => {
-                        if (isOpen) {
-                          enableWorkflowMentionSuggestions();
-                        }
-                      }}
-                    >
-                      <div className="space-y-4">
-                        {selectedProviderId === 'anthropic' ? (
-                          <div className="space-y-2">
-                            <AnthropicFastModeSelector
-                              value={selectedFastMode}
-                              onValueChange={setSelectedFastMode}
-                              providerFastModeDefault={anthropicProviderFastModeDefault}
-                              model={selectedModel}
-                              limitContext={effectiveAnthropicRuntimeLimitContext}
-                              id="create-fast-mode"
-                            />
-                            {anthropicRuntimeNotice ? (
-                              <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-                                <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
-                                <p>{anthropicRuntimeNotice}</p>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                        {selectedProviderId === 'codex' ? (
-                          <div className="space-y-2">
-                            <CodexFastModeSelector
-                              value={selectedFastMode}
-                              onValueChange={setSelectedFastMode}
-                              model={selectedModel}
-                              providerBackendId={
-                                resolveUiOwnedProviderBackendId(
-                                  'codex',
-                                  runtimeProviderStatusById.get('codex')
-                                ) ?? undefined
-                              }
-                              id="create-fast-mode"
-                            />
-                            {anthropicRuntimeNotice ? (
-                              <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-                                <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
-                                <p>{anthropicRuntimeNotice}</p>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
+                    {showAdvancedCreateOptions || !firstRunMode ? (
+                      <OptionalSettingsSection
+                        title={t('create.optional.launchSettingsTitle')}
+                        description={t('create.optional.launchSettingsDescription')}
+                        summary={launchOptionalSummary}
+                        onOpenChange={(isOpen) => {
+                          if (isOpen) {
+                            enableWorkflowMentionSuggestions();
+                          }
+                        }}
+                      >
+                        <div className="space-y-4">
+                          {selectedProviderId === 'anthropic' ? (
+                            <div className="space-y-2">
+                              <AnthropicFastModeSelector
+                                value={selectedFastMode}
+                                onValueChange={setSelectedFastMode}
+                                providerFastModeDefault={anthropicProviderFastModeDefault}
+                                model={selectedModel}
+                                limitContext={effectiveAnthropicRuntimeLimitContext}
+                                id="create-fast-mode"
+                              />
+                              {anthropicRuntimeNotice ? (
+                                <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+                                  <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
+                                  <p>{anthropicRuntimeNotice}</p>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {selectedProviderId === 'codex' ? (
+                            <div className="space-y-2">
+                              <CodexFastModeSelector
+                                value={selectedFastMode}
+                                onValueChange={setSelectedFastMode}
+                                model={selectedModel}
+                                providerBackendId={
+                                  resolveUiOwnedProviderBackendId(
+                                    'codex',
+                                    runtimeProviderStatusById.get('codex')
+                                  ) ?? undefined
+                                }
+                                id="create-fast-mode"
+                              />
+                              {anthropicRuntimeNotice ? (
+                                <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+                                  <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
+                                  <p>{anthropicRuntimeNotice}</p>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
 
-                        <div className="space-y-1.5">
-                          <Label htmlFor="team-prompt" className="label-optional">
-                            {t('create.fields.prompt')}
-                          </Label>
-                          <MentionableTextarea
-                            id="team-prompt"
-                            className="text-xs"
-                            minRows={3}
-                            maxRows={12}
-                            value={prompt}
-                            onValueChange={promptDraft.setValue}
-                            suggestions={isSolo ? [] : mentionSuggestions}
-                            teamSuggestions={teamMentionSuggestions}
-                            taskSuggestions={taskSuggestions}
-                            projectPath={effectiveCwd || null}
-                            chips={promptChipDraft.chips}
-                            onChipRemove={promptChipDraft.removeChip}
-                            onFileChipInsert={promptChipDraft.addChip}
-                            placeholder={t('create.placeholders.prompt')}
-                            footerRight={
-                              promptDraft.isSaved ? (
-                                <span className="text-[10px] text-[var(--color-text-muted)]">
-                                  {t('create.saved')}
-                                </span>
-                              ) : null
-                            }
+                          <div className="space-y-1.5">
+                            <Label htmlFor="team-prompt" className="label-optional">
+                              {t('create.fields.prompt')}
+                            </Label>
+                            <MentionableTextarea
+                              id="team-prompt"
+                              className="text-xs"
+                              minRows={3}
+                              maxRows={12}
+                              value={prompt}
+                              onValueChange={promptDraft.setValue}
+                              suggestions={isSolo ? [] : mentionSuggestions}
+                              teamSuggestions={teamMentionSuggestions}
+                              taskSuggestions={taskSuggestions}
+                              projectPath={effectiveCwd || null}
+                              chips={promptChipDraft.chips}
+                              onChipRemove={promptChipDraft.removeChip}
+                              onFileChipInsert={promptChipDraft.addChip}
+                              placeholder={t('create.placeholders.prompt')}
+                              footerRight={
+                                promptDraft.isSaved ? (
+                                  <span className="text-[10px] text-[var(--color-text-muted)]">
+                                    {t('create.saved')}
+                                  </span>
+                                ) : null
+                              }
+                            />
+                          </div>
+
+                          <SkipPermissionsCheckbox
+                            id="create-skip-permissions"
+                            checked={skipPermissions}
+                            onCheckedChange={setSkipPermissions}
+                          />
+
+                          <AdvancedCliSection
+                            teamName={advancedKey}
+                            internalArgs={internalArgs}
+                            worktreeEnabled={worktreeEnabled}
+                            onWorktreeEnabledChange={setWorktreeEnabled}
+                            worktreeName={worktreeName}
+                            onWorktreeNameChange={setWorktreeName}
+                            customArgs={customArgs}
+                            onCustomArgsChange={setCustomArgs}
                           />
                         </div>
-
-                        <SkipPermissionsCheckbox
-                          id="create-skip-permissions"
-                          checked={skipPermissions}
-                          onCheckedChange={setSkipPermissions}
-                        />
-
-                        <AdvancedCliSection
-                          teamName={advancedKey}
-                          internalArgs={internalArgs}
-                          worktreeEnabled={worktreeEnabled}
-                          onWorktreeEnabledChange={setWorktreeEnabled}
-                          worktreeName={worktreeName}
-                          onWorktreeNameChange={setWorktreeName}
-                          customArgs={customArgs}
-                          onCustomArgsChange={setCustomArgs}
-                        />
-                      </div>
-                    </OptionalSettingsSection>
+                      </OptionalSettingsSection>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
 
-              <div>
-                <OptionalSettingsSection
-                  title={t('create.optional.teamDetailsTitle')}
-                  description={t('create.optional.teamDetailsDescription')}
-                  summary={teamDetailsSummary}
-                >
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="team-description" className="label-optional">
-                        {t('create.fields.description')}
-                      </Label>
-                      <AutoResizeTextarea
-                        id="team-description"
-                        className="text-xs"
-                        minRows={2}
-                        maxRows={8}
-                        value={description}
-                        onChange={(event) => descriptionDraft.setValue(event.target.value)}
-                        placeholder={t('create.placeholders.description')}
-                      />
-                      {descriptionDraft.isSaved ? (
-                        <span className="text-[10px] text-[var(--color-text-muted)]">
-                          {t('create.saved')}
-                        </span>
-                      ) : null}
-                    </div>
+              {showAdvancedCreateOptions || !firstRunMode ? (
+                <div>
+                  <OptionalSettingsSection
+                    title={t('create.optional.teamDetailsTitle')}
+                    description={t('create.optional.teamDetailsDescription')}
+                    summary={teamDetailsSummary}
+                  >
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="team-description" className="label-optional">
+                          {t('create.fields.description')}
+                        </Label>
+                        <AutoResizeTextarea
+                          id="team-description"
+                          className="text-xs"
+                          minRows={2}
+                          maxRows={8}
+                          value={description}
+                          onChange={(event) => descriptionDraft.setValue(event.target.value)}
+                          placeholder={t('create.placeholders.description')}
+                        />
+                        {descriptionDraft.isSaved ? (
+                          <span className="text-[10px] text-[var(--color-text-muted)]">
+                            {t('create.saved')}
+                          </span>
+                        ) : null}
+                      </div>
 
-                    <div className="space-y-1.5">
-                      <Label className="label-optional">{t('create.fields.color')}</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {TEAM_COLOR_NAMES.map((colorName) => {
-                          const colorSet = getTeamColorSet(colorName);
-                          const isSelected = teamColor === colorName;
-                          return (
-                            <button
-                              key={colorName}
-                              type="button"
-                              className={cn(
-                                'flex size-7 items-center justify-center rounded-full border-2 transition-all',
-                                isSelected ? 'scale-110' : 'opacity-70 hover:opacity-100'
-                              )}
-                              style={{
-                                backgroundColor: getThemedBadge(colorSet, isLight),
-                                borderColor: isSelected ? colorSet.border : 'transparent',
-                              }}
-                              title={colorName}
-                              onClick={() => setTeamColor(isSelected ? '' : colorName)}
-                            >
-                              <span
-                                className="size-3.5 rounded-full"
-                                style={{ backgroundColor: colorSet.border }}
-                              />
-                            </button>
-                          );
-                        })}
+                      <div className="space-y-1.5">
+                        <Label className="label-optional">{t('create.fields.color')}</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {TEAM_COLOR_NAMES.map((colorName) => {
+                            const colorSet = getTeamColorSet(colorName);
+                            const isSelected = teamColor === colorName;
+                            return (
+                              <button
+                                key={colorName}
+                                type="button"
+                                className={cn(
+                                  'flex size-7 items-center justify-center rounded-full border-2 transition-all',
+                                  isSelected ? 'scale-110' : 'opacity-70 hover:opacity-100'
+                                )}
+                                style={{
+                                  backgroundColor: getThemedBadge(colorSet, isLight),
+                                  borderColor: isSelected ? colorSet.border : 'transparent',
+                                }}
+                                title={colorName}
+                                onClick={() => setTeamColor(isSelected ? '' : colorName)}
+                              >
+                                <span
+                                  className="size-3.5 rounded-full"
+                                  style={{ backgroundColor: colorSet.border }}
+                                />
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </OptionalSettingsSection>
-              </div>
+                  </OptionalSettingsSection>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -2713,6 +2768,17 @@ export const CreateTeamDialog = ({
 
         <DialogFooter className="shrink-0 pt-4 sm:justify-end">
           <div className="flex shrink-0 flex-col items-end gap-1">
+            {firstRunMode && !showAdvancedCreateOptions ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="self-end"
+                onClick={() => setShowAdvancedCreateOptions(true)}
+              >
+                {t('create.firstRun.showAdvanced')}
+              </Button>
+            ) : null}
             {skipPermissions ? (
               <p className="text-[11px] text-[var(--color-text-muted)]">
                 {t('create.skipPermissions.inlineDisclosure')}
@@ -2743,6 +2809,7 @@ export const CreateTeamDialog = ({
                     {t('create.actions.creating')}
                   </>
                 ) : launchTeam &&
+                  !firstRunMode &&
                   (effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading') ? (
                   t('create.actions.skipPreflightAndCreate')
                 ) : (

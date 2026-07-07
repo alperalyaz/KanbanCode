@@ -195,10 +195,24 @@
   "hero": {
     "title": "Where should we work today?",
     "subtitle": "Open a running team, jump into a recent project, or search across your sessions.",
+    "firstRunSubtitle": "Get started with a free OpenCode model — no Claude or Codex login required.",
     "selectTeamDescription": "Browse agent teams, kanban boards, and live teammates.",
     "createTeamDescription": "Create your first agent team and start working on the kanban board.",
     "searchLabel": "Search projects",
     "searchDescription": "Filter recent projects or open the command palette with ⌘K."
+  },
+  "firstRun": {
+    "title": "Quick start with OpenCode",
+    "description": "We will check the free OpenCode runtime, load the default model, and open a simplified team setup flow.",
+    "quickStart": "Quick Start",
+    "steps": {
+      "runtime": "OpenCode runtime",
+      "runtimeDetail": "Install or verify the local OpenCode CLI.",
+      "model": "Default model",
+      "modelDetail": "Load opencode/big-pickle for a free solo session.",
+      "team": "Create your team",
+      "teamDetail": "Pick a project folder and launch your first board."
+    }
   },
   "windowsAdmin": {
     "title": "Windows Administrator mode recommended",

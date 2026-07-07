@@ -1,5 +1,5 @@
-const PRIMARY_DEFAULT_TEAM_SLUG = 'hidroteknik';
-const PRIMARY_DEFAULT_TEAM_LABEL = 'Hidroteknik';
+const PRIMARY_DEFAULT_TEAM_SLUG = 'my-team';
+const PRIMARY_DEFAULT_TEAM_LABEL = 'my-team';
 
 const TEAM_NAME_SETS = [
   [

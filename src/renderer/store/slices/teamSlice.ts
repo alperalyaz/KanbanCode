@@ -907,8 +907,7 @@ function isVisibleInActiveTeamSurface(
     }
     const activeTab = pane.tabs.find((tab) => tab.id === pane.activeTabId);
     return (
-      (activeTab?.type === 'team' || activeTab?.type === 'usage') &&
-      activeTab.teamName === teamName
+      (activeTab?.type === 'team' || activeTab?.type === 'usage') && activeTab.teamName === teamName
     );
   });
 }
@@ -997,6 +996,9 @@ export interface TeamSlice {
   fetchTeams: () => Promise<void>;
   fetchAllTasks: () => Promise<void>;
   openTeamsTab: () => void;
+  pendingOpenCreateTeamDialog: boolean;
+  openTeamsTabAndCreate: () => void;
+  consumePendingOpenCreateTeamDialog: () => boolean;
   openTeamTab: (teamName: string, projectPath?: string, taskId?: string) => void;
   clearKanbanFilter: () => void;
   setSelectedTeamTaskChangePresence: (
@@ -1453,6 +1455,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     }
   },
   kanbanFilterQuery: null,
+  pendingOpenCreateTeamDialog: false,
   globalTaskDetail: null,
   pendingMemberProfile: null,
   pendingTeamSectionFocus: null,
@@ -1700,6 +1703,19 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       type: 'teams',
       label: 'Teams',
     });
+  },
+
+  openTeamsTabAndCreate: () => {
+    set({ pendingOpenCreateTeamDialog: true });
+    get().openTeamsTab();
+  },
+
+  consumePendingOpenCreateTeamDialog: () => {
+    const pending = get().pendingOpenCreateTeamDialog;
+    if (pending) {
+      set({ pendingOpenCreateTeamDialog: false });
+    }
+    return pending;
   },
 
   openTeamTab: (teamName: string, projectPath?: string, _taskId?: string) => {
@@ -2043,15 +2059,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         const displayName = committedTeamData.config.name || teamName;
         const allTabs = get().getAllPaneTabs();
         const relatedTabs = allTabs.filter(
-          (tab) =>
-            (tab.type === 'team' || tab.type === 'usage') &&
-            tab.teamName === teamName
+          (tab) => (tab.type === 'team' || tab.type === 'usage') && tab.teamName === teamName
         );
         for (const tab of relatedTabs) {
-          const nextLabel =
-            tab.type === 'usage'
-              ? `${displayName} Usage`
-              : displayName;
+          const nextLabel = tab.type === 'usage' ? `${displayName} Usage` : displayName;
           if (tab.label !== nextLabel) {
             get().updateTabLabel(tab.id, nextLabel);
           }
