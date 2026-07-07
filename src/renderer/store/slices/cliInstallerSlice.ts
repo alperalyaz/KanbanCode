@@ -25,17 +25,19 @@ const logger = createLogger('Store:cliInstaller');
 
 /** Max log lines to keep in UI (reserved for future use) */
 const _MAX_LOG_LINES = 50;
-const OPENCODE_PROVIDER_INSTALL_REFRESH_ATTEMPTS = 3;
-const OPENCODE_PROVIDER_INSTALL_REFRESH_RETRY_DELAY_MS = 700;
+const OPENCODE_PROVIDER_INSTALL_REFRESH_ATTEMPTS = 10;
+const OPENCODE_PROVIDER_INSTALL_REFRESH_RETRY_DELAY_MS = 4_000;
 const CODEX_PROVIDER_INSTALL_REFRESH_ATTEMPTS = 3;
 const CODEX_PROVIDER_INSTALL_REFRESH_RETRY_DELAY_MS = 700;
 const CODEX_CATALOG_LOADING_REFRESH_ATTEMPTS = 3;
 const CODEX_CATALOG_LOADING_REFRESH_RETRY_DELAY_MS = 2_000;
-// OpenCode expands a 200+ model catalog from a summary snapshot, so it needs a
-// few more polling attempts than Codex before we give up and surface whatever
-// models we already have instead of spinning forever.
-const OPENCODE_CATALOG_LOADING_REFRESH_ATTEMPTS = 4;
-const OPENCODE_CATALOG_LOADING_REFRESH_RETRY_DELAY_MS = 2_500;
+// OpenCode expands a 200+ model catalog from a summary snapshot. Cold starts
+// (fresh install, Windows AV scan, first app-server boot) can need 30-90s, so
+// keep polling longer than the old 4x2.5s budget before settling on a partial list.
+const OPENCODE_CATALOG_LOADING_REFRESH_ATTEMPTS = 20;
+const OPENCODE_CATALOG_LOADING_REFRESH_RETRY_DELAY_MS = 3_000;
+const OPENCODE_PARTIAL_CATALOG_MESSAGE =
+  'Partial model catalog loaded. Use Refresh if more models are missing.';
 
 export const MULTIMODEL_PROVIDER_IDS: CliProviderId[] = isGeminiUiFrozen()
   ? ['anthropic', 'codex', 'opencode']
@@ -89,6 +91,16 @@ export function createLoadingMultimodelCliStatus(): CliInstallationStatus {
 
 function isModelOnlyFallbackProviderStatus(provider: CliProviderStatus | undefined): boolean {
   if (!provider) {
+    return false;
+  }
+
+  // OpenCode can return a usable legacy fallback route after a slow summary probe
+  // while supported/authenticated flags are still false. Treat that as launchable.
+  if (
+    provider.providerId === 'opencode' &&
+    provider.models.length > 0 &&
+    provider.backend != null
+  ) {
     return false;
   }
 
@@ -193,6 +205,14 @@ function hasOpenCodeModels(provider: CliProviderStatus | undefined): boolean {
     provider.models.length > 0 &&
     !isOpenCodeSummaryOnlyCatalogStatus(provider)
   );
+}
+
+function hasOpenCodeRuntimeReady(provider: CliProviderStatus | undefined): boolean {
+  if (provider?.providerId !== 'opencode' || isOpenCodeRuntimeMissingSnapshot(provider)) {
+    return false;
+  }
+
+  return provider.backend != null && (provider.authenticated || provider.models.length > 0);
 }
 
 function hasCodexRuntimeReady(provider: CliProviderStatus | undefined): boolean {
@@ -575,7 +595,7 @@ export async function refreshOpenCodeProviderStatusAfterRuntimeInstall(
     const epoch = ++cliStatusEpoch;
     await get().fetchCliProviderStatus('opencode', { silent: false, epoch });
 
-    if (hasOpenCodeModels(getProviderStatus(get().cliStatus, 'opencode'))) {
+    if (hasOpenCodeRuntimeReady(getProviderStatus(get().cliStatus, 'opencode'))) {
       return;
     }
 
@@ -896,7 +916,11 @@ function resolveOpenCodeCatalogLoadingState(
         ...status,
         providers: status.providers.map((candidate) =>
           candidate.providerId === providerId
-            ? { ...candidate, modelCatalogRefreshState: 'idle' as const }
+            ? {
+                ...candidate,
+                modelCatalogRefreshState: 'idle' as const,
+                statusMessage: candidate.statusMessage ?? OPENCODE_PARTIAL_CATALOG_MESSAGE,
+              }
             : candidate
         ),
       },
