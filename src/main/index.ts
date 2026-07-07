@@ -17,13 +17,10 @@
 process.env.UV_THREADPOOL_SIZE ??= '16';
 
 // Keep userData stable before any integration can initialize Electron storage.
-// Sentry must stay near the top to capture early errors after storage migration.
-// eslint-disable-next-line simple-import-sort/imports -- userData migration must run before Sentry initializes Electron storage.
 import {
   earlyElectronDevPathOverrideResult,
   earlyElectronUserDataMigrationResult,
 } from './bootstrapUserDataMigration';
-import './sentry';
 
 import {
   type CodexAccountFeatureFacade,

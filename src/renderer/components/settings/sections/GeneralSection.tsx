@@ -713,23 +713,6 @@ export const GeneralSection = ({
         </>
       )}
 
-      {/* Privacy / Telemetry — only visible when Sentry DSN is baked into the build */}
-      {import.meta.env.VITE_SENTRY_DSN && (
-        <>
-          <SettingsSectionHeader title={t('general.privacy.title')} />
-          <SettingRow
-            label={t('general.privacy.telemetry.label')}
-            description={t('general.privacy.telemetry.description')}
-          >
-            <SettingsToggle
-              enabled={safeConfig.general.telemetryEnabled ?? true}
-              onChange={(v) => onGeneralToggle('telemetryEnabled', v)}
-              disabled={saving}
-            />
-          </SettingRow>
-        </>
-      )}
-
       <AboutSection />
     </div>
   );

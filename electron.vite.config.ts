@@ -1,5 +1,4 @@
 import { defineConfig } from 'electron-vite'
-import { sentryVitePlugin } from '@sentry/vite-plugin'
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
@@ -43,46 +42,15 @@ function nativeModuleStub(): Plugin {
   }
 }
 
-const sentrySourceMapTargets = {
-  main: {
-    assets: ['./dist-electron/main/**/*.{js,cjs,mjs,map}'],
-    filesToDeleteAfterUpload: ['./dist-electron/main/**/*.map'],
-  },
-  renderer: {
-    assets: ['./out/renderer/**/*.{js,cjs,mjs,map}'],
-    filesToDeleteAfterUpload: ['./out/renderer/**/*.map'],
-  },
-} as const
-
 const sourceMapSetting = process.env.AGENT_TEAMS_DISABLE_SOURCEMAPS === '1' ? false : 'hidden'
-
-// Sentry source map upload - only active in CI when SENTRY_AUTH_TOKEN is set.
-function createSentryPlugins(target: keyof typeof sentrySourceMapTargets): Plugin[] {
-  if (!process.env.SENTRY_AUTH_TOKEN) return []
-
-  return [
-    sentryVitePlugin({
-      org: process.env.SENTRY_ORG ?? 'quant-jump-pro',
-      project: process.env.SENTRY_PROJECT ?? 'electron',
-      authToken: process.env.SENTRY_AUTH_TOKEN,
-      telemetry: false,
-      release: { name: `kanbancode@${pkg.version}` },
-      sourcemaps: sentrySourceMapTargets[target],
-    }) as Plugin,
-  ]
-}
 
 export default defineConfig({
   main: {
     plugins: [
       nativeModuleStub(),
-      ...createSentryPlugins('main'),
     ],
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
-      // Inject DSN at compile time - process.env.SENTRY_DSN is NOT available
-      // at runtime in packaged Electron apps (only during CI build).
-      'process.env.SENTRY_DSN': JSON.stringify(process.env.SENTRY_DSN ?? ''),
     },
     resolve: {
       alias: {
@@ -156,8 +124,6 @@ export default defineConfig({
     },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
-      // Pass SENTRY_DSN to renderer as VITE_SENTRY_DSN (Vite replaces at compile time)
-      'import.meta.env.VITE_SENTRY_DSN': JSON.stringify(process.env.SENTRY_DSN ?? ''),
     },
     resolve: {
       alias: {
@@ -172,7 +138,7 @@ export default defineConfig({
         '@claude-teams/agent-graph': resolve(__dirname, 'packages/agent-graph/src/index.ts')
       }
     },
-    plugins: [react(), ...createSentryPlugins('renderer')],
+    plugins: [react()],
     build: {
       sourcemap: sourceMapSetting,
       rollupOptions: {
