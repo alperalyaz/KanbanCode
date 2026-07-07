@@ -51,6 +51,34 @@ describe('TeamProvisioningPromptBuilders', () => {
     );
   });
 
+  it('requires non-solo leads to seed the full pending backlog before starting work', () => {
+    const prompt = buildPersistentLeadContext({
+      teamName: 'signal-ops',
+      leadName: 'lead',
+      isSolo: false,
+      members: [
+        { name: 'lead', role: 'team-lead' },
+        { name: 'tom', role: 'developer' },
+      ] as TeamCreateRequest['members'],
+    });
+
+    expect(prompt).toContain('BOARD PLAN FIRST (MANDATORY for teams with teammates)');
+    expect(prompt).toContain('create ALL decomposed tasks on the team board in pending/TODO');
+    expect(prompt).toContain('BACKLOG SEEDING (MANDATORY)');
+  });
+
+  it('does not add team backlog seeding rules in solo mode', () => {
+    const prompt = buildPersistentLeadContext({
+      teamName: 'signal-ops',
+      leadName: 'lead',
+      isSolo: true,
+      members: [{ name: 'lead', role: 'team-lead' }] as TeamCreateRequest['members'],
+    });
+
+    expect(prompt).toContain('TASK BOARD FIRST (MANDATORY)');
+    expect(prompt).not.toContain('BOARD PLAN FIRST (MANDATORY for teams with teammates)');
+  });
+
   it('keeps errored provisioned-but-not-alive members failed in Gemini hydration prompts', () => {
     const prompt = buildPromptWithStatus({
       status: 'error',
