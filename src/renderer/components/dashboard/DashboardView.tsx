@@ -11,10 +11,12 @@ import { useRecentProjectsSection } from '@features/recent-projects/renderer/hoo
 import { RunningTeamsSection } from '@features/running-teams/renderer';
 import { useStore } from '@renderer/store';
 import { formatShortcut } from '@renderer/utils/stringUtils';
+import { requestProviderRuntimeChecks } from '@renderer/utils/requestProviderRuntimeChecks';
 import { APP_NAME } from '@shared/constants/brand';
 import { ArrowRight, Command, Search, Users } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
+import { FirstRunOnboardingChecklist } from './FirstRunOnboardingChecklist';
 import { CliStatusBanner } from './CliStatusBanner';
 import { TmuxStatusBanner } from './TmuxStatusBanner';
 import { WebPreviewBanner } from './WebPreviewBanner';
@@ -153,6 +155,13 @@ export const DashboardView = (): React.JSX.Element => {
   const showCreateTeamAction = !teamsLoading && !hasTeams;
 
   useEffect(() => {
+    if (teamsLoading || hasTeams) {
+      return;
+    }
+    void requestProviderRuntimeChecks();
+  }, [hasTeams, teamsLoading]);
+
+  useEffect(() => {
     if (
       !recentProjectsSection.loading &&
       !recentProjectsSection.hasRecentProjects &&
@@ -187,9 +196,11 @@ export const DashboardView = (): React.JSX.Element => {
             {t('hero.title')}
           </h1>
           <p className="mt-3 max-w-3xl text-base leading-relaxed text-text-secondary lg:text-lg">
-            {t('hero.subtitle')}
+            {showCreateTeamAction ? t('hero.firstRunSubtitle') : t('hero.subtitle')}
           </p>
         </header>
+
+        <FirstRunOnboardingChecklist hasTeams={hasTeams} />
 
         <div
           className={`mb-6 grid gap-4 ${

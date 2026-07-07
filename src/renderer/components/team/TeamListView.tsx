@@ -28,6 +28,11 @@ import {
 } from '@renderer/constants/teamColors';
 import { useBranchSync } from '@renderer/hooks/useBranchSync';
 import { useTheme } from '@renderer/hooks/useTheme';
+import {
+  bootstrapFirstRunExperience,
+  isFirstRunExperienceActive,
+  resetFirstRunCreateTeamDraft,
+} from '@renderer/services/firstRunExperience';
 import { useStore } from '@renderer/store';
 import {
   getCurrentProvisioningProgressForTeam,
@@ -411,7 +416,7 @@ const ActiveTeamCard = ({
               {canLaunch ? (
                 <button
                   type="button"
-                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300 disabled:opacity-50 group-hover:opacity-100"
+                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-700 disabled:opacity-50 group-hover:opacity-100 dark:hover:text-emerald-300"
                   onClick={(event) =>
                     onLaunchTeam(team.teamName, team.projectPath ?? undefined, launchMode, event)
                   }
@@ -437,7 +442,7 @@ const ActiveTeamCard = ({
               {!team.pendingCreate ? (
                 <button
                   type="button"
-                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-700 dark:hover:text-blue-300 group-hover:opacity-100"
+                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-700 group-hover:opacity-100 dark:hover:text-blue-300"
                   onClick={(event) => onCopyTeam(team.teamName, event)}
                   aria-label={copyTitle}
                   title={copyTitle}
@@ -549,6 +554,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
     selectedProjectId,
     activeProjectId,
     branchByPath,
+    consumePendingOpenCreateTeamDialog,
   } = useStore(
     useShallow((s) => ({
       teams: s.teams,
@@ -569,6 +575,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
       selectedProjectId: s.selectedProjectId,
       activeProjectId: s.activeProjectId,
       branchByPath: s.branchByPath,
+      consumePendingOpenCreateTeamDialog: s.consumePendingOpenCreateTeamDialog,
     }))
   );
   const {
@@ -1031,6 +1038,35 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
   }, [electronMode, fetchTeams, fetchAllTasks]);
 
   useEffect(() => {
+    if (teamsLoading) {
+      return;
+    }
+
+    bootstrapFirstRunExperience({ hasTeams: teamsWithProvisioning.length > 0 });
+  }, [teamsLoading, teamsWithProvisioning.length]);
+
+  useEffect(() => {
+    if (teamsLoading || teamsWithProvisioning.length > 0 || !isFirstRunExperienceActive()) {
+      return;
+    }
+
+    void resetFirstRunCreateTeamDraft();
+  }, [teamsLoading, teamsWithProvisioning.length]);
+
+  useEffect(() => {
+    if (teamsLoading || !canCreate) {
+      return;
+    }
+
+    if (!consumePendingOpenCreateTeamDialog()) {
+      return;
+    }
+
+    hasAutoOpenedCreateForEmptyTeamsRef.current = true;
+    setShowCreateDialog(true);
+  }, [canCreate, consumePendingOpenCreateTeamDialog, teamsLoading]);
+
+  useEffect(() => {
     if (teamsWithProvisioning.length > 0) {
       hasAutoOpenedCreateForEmptyTeamsRef.current = false;
     }
@@ -1042,7 +1078,8 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
       teamsError ||
       teamsWithProvisioning.length > 0 ||
       !canCreate ||
-      hasAutoOpenedCreateForEmptyTeamsRef.current
+      hasAutoOpenedCreateForEmptyTeamsRef.current ||
+      isFirstRunExperienceActive()
     ) {
       return;
     }
@@ -1433,7 +1470,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
                           <TooltipTrigger asChild>
                             <button
                               type="button"
-                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300 group-hover:opacity-100"
+                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-700 group-hover:opacity-100 dark:hover:text-emerald-300"
                               onClick={(e) => handleRestoreTeam(team.teamName, e)}
                               aria-label={t('list.actions.restoreTeam')}
                             >

@@ -195,10 +195,24 @@
   "hero": {
     "title": "Bugün nerede çalışalım?",
     "subtitle": "Çalışan bir ekibi açın, son projelerden birine geçin veya oturumlarınızda arayın.",
+    "firstRunSubtitle": "Ücretsiz OpenCode modeliyle başlayın — Claude veya Codex girişi gerekmez.",
     "selectTeamDescription": "Agent ekiplerini, kanban panolarını ve canlı takım arkadaşlarını görüntüleyin.",
     "createTeamDescription": "İlk agent ekibinizi oluşturun ve kanban panosunda çalışmaya başlayın.",
     "searchLabel": "Proje ara",
     "searchDescription": "Son projeleri filtreleyin veya ⌘K ile komut paletini açın."
+  },
+  "firstRun": {
+    "title": "OpenCode ile hızlı başlangıç",
+    "description": "Ücretsiz OpenCode çalışma zamanını kontrol eder, varsayılan modeli yükler ve basitleştirilmiş ekip kurulumunu açarız.",
+    "quickStart": "Hızlı Başlangıç",
+    "steps": {
+      "runtime": "OpenCode çalışma zamanı",
+      "runtimeDetail": "Yerel OpenCode CLI'yi kurun veya doğrulayın.",
+      "model": "Varsayılan model",
+      "modelDetail": "Ücretsiz solo oturum için opencode/big-pickle yüklenir.",
+      "team": "Ekibinizi oluşturun",
+      "teamDetail": "Bir proje klasörü seçin ve ilk panonuzu başlatın."
+    }
   },
   "windowsAdmin": {
     "title": "Windows Yönetici modu önerilir",
