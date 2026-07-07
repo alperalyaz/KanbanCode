@@ -5,6 +5,7 @@ import { useStore } from '@renderer/store';
 import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
 import {
   buildMemberAvatarMap,
+  buildMemberColorMap,
   displayMemberName,
   resolveCanonicalMemberName,
 } from '@renderer/utils/memberHelpers';
@@ -35,6 +36,7 @@ interface MemberBadgeProps {
 
 const EMPTY_TEAM_MEMBERS: readonly ResolvedTeamMember[] = [];
 const memberAvatarMapCache = new WeakMap<readonly ResolvedTeamMember[], Map<string, string>>();
+const memberColorMapCache = new WeakMap<readonly ResolvedTeamMember[], Map<string, string>>();
 
 function getCachedMemberAvatarMap(members: readonly ResolvedTeamMember[]): Map<string, string> {
   const cached = memberAvatarMapCache.get(members);
@@ -44,6 +46,17 @@ function getCachedMemberAvatarMap(members: readonly ResolvedTeamMember[]): Map<s
 
   const next = buildMemberAvatarMap(members);
   memberAvatarMapCache.set(members, next);
+  return next;
+}
+
+function getCachedMemberColorMap(members: readonly ResolvedTeamMember[]): Map<string, string> {
+  const cached = memberColorMapCache.get(members);
+  if (cached) {
+    return cached;
+  }
+
+  const next = buildMemberColorMap([...members]);
+  memberColorMapCache.set(members, next);
   return next;
 }
 
@@ -87,12 +100,12 @@ const MemberBadgeResolvedContent = memo(
       border: '1px solid var(--color-border)',
     };
 
+    // The avatar dot ALWAYS reflects the member's real identity color so a member
+    // reads as one consistent color everywhere (roster, kanban owner badge, chat).
+    // `variant="neutral"` only neutralizes the name pill, NOT the dot — otherwise
+    // neutral badges fell back to the default blue and mismatched the roster.
     const avatar = (
-      <MemberColorAvatar
-        color={isNeutral ? undefined : color}
-        isLight={isLight}
-        className={avatarClass}
-      />
+      <MemberColorAvatar color={color} isLight={isLight} className={avatarClass} />
     );
 
     const badge = (
@@ -148,16 +161,22 @@ const MemberBadgeWithResolvedAvatar = memo((props: MemberBadgeContentProps): Rea
       : EMPTY_TEAM_MEMBERS
   );
   const avatarMap = useMemo(() => getCachedMemberAvatarMap(teamMembers), [teamMembers]);
+  const colorMap = useMemo(() => getCachedMemberColorMap(teamMembers), [teamMembers]);
   // Recover the canonical roster name when a slugified handle (e.g. "k-ro-lu")
   // slipped into a message recipient/sender, so Turkish names render correctly.
   const canonicalName = useMemo(
     () => resolveCanonicalMemberName(props.name, teamMembers),
     [props.name, teamMembers]
   );
+  // Prefer an explicit color prop; otherwise resolve the member's real color from
+  // the same roster color map the roster/chat use, so the avatar dot matches.
+  const resolvedColor =
+    props.color ?? colorMap.get(canonicalName) ?? colorMap.get(props.name);
   return (
     <MemberBadgeResolvedContent
       {...props}
       name={canonicalName}
+      color={resolvedColor}
       resolvedAvatarUrl={avatarMap.get(canonicalName) ?? avatarMap.get(props.name)}
     />
   );
