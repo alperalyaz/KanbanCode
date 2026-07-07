@@ -7,7 +7,8 @@ KanbanCode is a desktop application developed and maintained by **Hidroteknik**.
 ## Summary
 
 - We do **not** operate an account system or a server that collects your projects, prompts, code, or personal data.
-- Your work stays **on your device**, except where **you** choose to send it to an AI provider or where limited, anonymous, optional diagnostics apply (see below).
+- The app does **not** send analytics, telemetry, or crash reports to us or to any third party.
+- Your work stays **on your device**, except where **you** choose to send it to an AI provider (see below).
 - There is no advertising and no selling of data.
 
 ## Data processed locally on your device
@@ -27,15 +28,9 @@ KanbanCode orchestrates AI agents using **your own** provider access (your subsc
 - That processing is governed by **that provider's** privacy policy and terms, not by Hidroteknik.
 - Hidroteknik is not a party to, and does not receive, that content.
 
-## Crash & performance diagnostics (optional)
+## Analytics, telemetry, and crash reporting
 
-Some distributed builds may include **anonymous crash and performance diagnostics** via [Sentry](https://sentry.io) to help improve stability. When this is present:
-
-- It is **opt-out**: you can disable it in **Settings**.
-- Builds compiled without a telemetry endpoint (including self-built copies) send **nothing** — diagnostics are a no-op.
-- Events are **filtered/scrubbed** before sending to reduce sensitive content; they are intended to contain technical information such as error type, stack trace, app version, and operating system — not your project files, prompts, or credentials.
-
-If you prefer, disabling the setting stops diagnostics entirely.
+The app does **not** collect analytics or usage statistics, and does **not** send telemetry or crash reports to Hidroteknik or to any third party. Errors are handled locally.
 
 ## Updates and runtime components
 
