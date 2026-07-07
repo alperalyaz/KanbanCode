@@ -374,6 +374,7 @@
     "contactLabel": "İletişim",
     "description": "KanbanCode, Hidroteknik tarafından geliştirilen bir masaüstü uygulamadır. Agent Teams AI (777genius) projesinin fork'udur. Paralel çalışan yapay zeka agent ekipleri oluşturun; kanban panosu, kod incelemesi ve canlı süreç izleme ile görevleri yönetin.",
     "projectLeadLabel": "Proje sorumlusu",
+    "sourceCodeLabel": "Kaynak kod",
     "standalone": "Bağımsız",
     "storeUpdates": "Uygulama güncellemeleri Microsoft Store üzerinden sağlanır.",
     "title": "Hakkında",

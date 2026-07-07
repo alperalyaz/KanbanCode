@@ -11,9 +11,12 @@ import {
   APP_NAME,
   CONTACT_EMAIL,
   PROJECT_LEAD,
+  REPO_LABEL,
+  REPO_URL,
   WEBSITE_LABEL,
   WEBSITE_URL,
 } from '@shared/constants/brand';
+import { Github } from 'lucide-react';
 
 import { SettingsSectionHeader } from '../components';
 
@@ -63,6 +66,21 @@ export const AboutSection = (): React.JSX.Element => {
               {t('about.projectLeadLabel')}
             </dt>
             <dd style={{ color: 'var(--color-text-muted)' }}>{PROJECT_LEAD}</dd>
+
+            <dt className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+              {t('about.sourceCodeLabel')}
+            </dt>
+            <dd>
+              <a
+                href={REPO_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-sky-700 hover:underline dark:text-sky-400"
+              >
+                <Github className="size-3.5" />
+                {REPO_LABEL}
+              </a>
+            </dd>
 
             <dt className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>
               {t('about.websiteLabel')}

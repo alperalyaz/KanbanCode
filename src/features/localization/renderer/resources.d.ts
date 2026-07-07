@@ -1993,6 +1993,7 @@ export default interface Resources {
       "contactLabel": "Contact",
       "description": "KanbanCode is a desktop app developed by Hidroteknik. It is a fork of Agent Teams AI (777genius). Build AI agent teams that work in parallel, with a kanban board, built-in code review, and live process monitoring.",
       "projectLeadLabel": "Project lead",
+      "sourceCodeLabel": "Source code",
       "standalone": "Standalone",
       "storeUpdates": "App updates are delivered through the Microsoft Store.",
       "title": "About",

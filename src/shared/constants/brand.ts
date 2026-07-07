@@ -9,3 +9,5 @@ export const PROJECT_LEAD = 'Alper Alyaz' as const;
 export const CONTACT_EMAIL = 'kanbancode@hidroteknik.com.tr' as const;
 export const WEBSITE_URL = 'https://www.hidroteknik.com.tr' as const;
 export const WEBSITE_LABEL = 'www.hidroteknik.com.tr' as const;
+export const REPO_URL = 'https://github.com/alperalyaz/kanbancode' as const;
+export const REPO_LABEL = 'alperalyaz/kanbancode' as const;
