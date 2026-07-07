@@ -1848,7 +1848,7 @@ export const ActivityItem = memo(
                 className={`group/message-body relative${isApiError ? '[&_code]:!text-red-400 [&_p]:!text-red-400' : ''}`}
                 style={isApiError ? { color: '#f87171' } : undefined}
               >
-                <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/80 opacity-70 backdrop-blur-sm transition-opacity group-hover/message-body:opacity-100">
+                <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] opacity-90 shadow-sm transition-opacity group-hover/message-body:opacity-100">
                   {canRevise && onRevise ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1912,7 +1912,7 @@ export const ActivityItem = memo(
                   ) : null}
                   <CopyButton text={displayText} inline />
                 </div>
-                <ExpandableContent onExpand={onExpandContent}>
+                <ExpandableContent className="pr-20" onExpand={onExpandContent}>
                   <span
                     onClickCapture={
                       onTaskIdClick
