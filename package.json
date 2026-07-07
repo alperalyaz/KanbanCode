@@ -51,6 +51,7 @@
     "dist:mac:x64": "pnpm build && node ./scripts/stage-runtime.mjs --platform darwin-x64 && node ./scripts/electron-builder/dist.mjs --mac --x64",
     "dist:win": "pnpm build && node ./scripts/stage-runtime.mjs --platform win32-x64 && node ./scripts/electron-builder/dist.mjs --win",
     "dist:linux": "pnpm build && node ./scripts/stage-runtime.mjs --platform linux-x64 && node ./scripts/electron-builder/dist.mjs --linux",
+    "gen:appx-assets": "node ./scripts/generate-appx-assets.mjs",
     "smoke:packaged": "node ./scripts/electron-builder/smokePackagedApp.cjs",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
