@@ -179,7 +179,7 @@
       "preparingEnvironment": "Preparing environment...",
       "selectedProvidersReadyWithNotes": "Selected providers ready (with notes)",
       "selectedProvidersReady": "Selected providers ready",
-      "providerStatusLoading": "{{provider}} provider status is still loading. Model checks will start automatically.",
+      "providerStatusLoading": "{{provider}} is getting ready — loading its model catalog. The first time can take a few minutes on a slow connection; it's working, not frozen. You can also skip the pre-check and create now.",
       "selectedProvidersLabel": "Selected providers",
       "readyStatus": "Ready"
     },

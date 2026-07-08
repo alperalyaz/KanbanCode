@@ -179,7 +179,7 @@
       "preparingEnvironment": "Ortam hazırlanıyor...",
       "selectedProvidersReadyWithNotes": "Seçili sağlayıcılar hazır (notlarla birlikte)",
       "selectedProvidersReady": "Seçili sağlayıcılar hazır",
-      "providerStatusLoading": "{{provider}} sağlayıcı durumu hâlâ yükleniyor. Model kontrolleri otomatik başlayacak.",
+      "providerStatusLoading": "{{provider}} hazırlanıyor — model kataloğu yükleniyor. İlk seferde yavaş bağlantıda birkaç dakika sürebilir; çalışıyor, donmadı. İstersen ön kontrolü atlayıp şimdi oluşturabilirsin.",
       "selectedProvidersLabel": "Seçili sağlayıcılar",
       "readyStatus": "Hazır"
     },
