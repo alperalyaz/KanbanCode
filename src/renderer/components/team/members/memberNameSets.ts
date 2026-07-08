@@ -20,21 +20,35 @@ const MEMBER_NAME_SETS_BY_LOCALE = {
     ['Thorin', 'Balin', 'Bard', 'Kili', 'Fili', 'Dwalin'],
     ['Aslan', 'Lucy', 'Edmund', 'Peter', 'Susan', 'Caspian'],
   ],
+  // Public-domain Turkish folk-humour characters — warm, memorable, and safe to
+  // ship (no franchise/IP). Karagöz shadow theatre + Nasreddin Hoca / fıkra world.
   tr: [
-    ['Köroğlu', 'Alpamış', 'Boğaç', 'Ayvaz', 'Selcan', 'Dede'],
-    ['Salur', 'Yiğen', 'Uzun', 'Baybora', 'Melik', 'Kara'],
-    ['Asena', 'Alp', 'Eren', 'Mert', 'Baran', 'Aslı'],
-    ['Deniz', 'Arda', 'Kaan', 'Ege', 'Bora', 'Nilay'],
+    ['Karagöz', 'Hacivat', 'Beberuhi', 'Tiryaki', 'Çelebi', 'Tuzsuz'],
+    ['Nasreddin', 'Keloğlan', 'Bekri', 'İncili', 'Bektaşi', 'Köse'],
   ],
 } as const satisfies Record<ResolvedAppLocale, readonly (readonly string[])[]>;
 
 /** Legacy ASCII spellings migrated to proper Turkish display names. */
 const ASCII_TURKISH_MEMBER_NAME_MIGRATION: Readonly<Record<string, string>> = {
+  // Legacy epic names (kept so existing teams still normalize their spelling).
   koroglu: 'Köroğlu',
   alpamis: 'Alpamış',
   bogac: 'Boğaç',
   yigen: 'Yiğen',
   asli: 'Aslı',
+  // Current folk-humour set — ASCII spellings map to proper Turkish display.
+  karagoz: 'Karagöz',
+  hacivat: 'Hacivat',
+  beberuhi: 'Beberuhi',
+  tiryaki: 'Tiryaki',
+  celebi: 'Çelebi',
+  tuzsuz: 'Tuzsuz',
+  nasreddin: 'Nasreddin',
+  keloglan: 'Keloğlan',
+  bekri: 'Bekri',
+  incili: 'İncili',
+  bektasi: 'Bektaşi',
+  kose: 'Köse',
 };
 
 export interface DefaultCreateTeamMemberConfig {
@@ -54,10 +68,10 @@ const DEFAULT_CREATE_TEAM_MEMBERS_BY_LOCALE: Record<
     { name: 'Gimli', roleSelection: 'developer' },
   ],
   tr: [
-    { name: 'Selcan', roleSelection: 'reviewer', workflowKind: 'reviewer' },
-    { name: 'Köroğlu', roleSelection: 'developer' },
-    { name: 'Alpamış', roleSelection: 'developer' },
-    { name: 'Boğaç', roleSelection: 'developer' },
+    { name: 'Hacivat', roleSelection: 'reviewer', workflowKind: 'reviewer' },
+    { name: 'Karagöz', roleSelection: 'developer' },
+    { name: 'Nasreddin', roleSelection: 'developer' },
+    { name: 'Keloğlan', roleSelection: 'developer' },
   ],
 };
 
