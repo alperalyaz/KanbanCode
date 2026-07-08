@@ -73,3 +73,12 @@ remotion/*
 /agent-teams-reference-fix-*.png
 /.tmp-*
 build/appx/
+
+# Large media / binaries — keep them OUT of git history (host on a CDN, GitHub
+# Releases, or the landing site instead). These bloated .git to 270MB+ before.
+# If you ever truly need one tracked, add it explicitly with: git add -f <file>
+*.mp4
+*.mov
+*.webm
+*.tar.gz
+*.tgz
