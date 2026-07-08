@@ -2909,6 +2909,9 @@ export const TeamDetailView = memo(function TeamDetailView({
                   projectPath={data.config.projectPath}
                   adding={addingMemberLoading}
                   errorMessage={addMemberError}
+                  liveRosterBlocked={data.isAlive === true && leadProviderId === 'opencode'}
+                  onStopTeam={handleStopTeam}
+                  stoppingTeam={stoppingTeam}
                   onClose={() => {
                     setAddMemberError(null);
                     setAddMemberDialogOpen(false);

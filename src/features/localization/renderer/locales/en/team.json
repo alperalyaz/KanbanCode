@@ -374,7 +374,11 @@
     },
     "addMember": {
       "failed": "Could not add the member. Please try again.",
-      "liveRosterUnsupported": "You can't add or remove members while an OpenCode-led team is running. Stop the team, edit the roster, then relaunch."
+      "liveRosterUnsupported": "You can't add or remove members while an OpenCode-led team is running. Stop the team, edit the roster, then relaunch.",
+      "addOne": "Add member",
+      "addMany": "Add {{count}} members",
+      "runningNotice": "This team is running with an OpenCode lead, so members can't be added while it's live. Stop the team first to edit the roster, then relaunch.",
+      "stopAndEdit": "Stop team"
     },
     "previous": "Previous: {{paths}}",
     "removeMember": {

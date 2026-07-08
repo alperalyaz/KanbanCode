@@ -374,7 +374,11 @@
     },
     "addMember": {
       "failed": "Üye eklenemedi. Lütfen tekrar deneyin.",
-      "liveRosterUnsupported": "Çalışan bir OpenCode-liderli ekipte üye ekleyip çıkaramazsın. Ekibi durdur, üyeleri düzenle, sonra yeniden başlat."
+      "liveRosterUnsupported": "Çalışan bir OpenCode-liderli ekipte üye ekleyip çıkaramazsın. Ekibi durdur, üyeleri düzenle, sonra yeniden başlat.",
+      "addOne": "Üye ekle",
+      "addMany": "{{count}} üye ekle",
+      "runningNotice": "Bu ekip OpenCode liderle çalışıyor; bu yüzden üyeler canlıyken eklenemez. Roster'ı düzenlemek için önce ekibi durdur, sonra yeniden başlat.",
+      "stopAndEdit": "Ekibi durdur"
     },
     "previous": "Önceki: {{paths}}",
     "removeMember": {

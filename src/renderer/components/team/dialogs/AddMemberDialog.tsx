@@ -64,6 +64,12 @@ interface AddMemberDialogProps {
     isolation?: 'worktree';
     removedAt?: number | string | null;
   }[];
+  /** True when the team is live with an OpenCode lead, which blocks adding members until it stops. */
+  liveRosterBlocked?: boolean;
+  /** Stop the running team so the roster can be edited. */
+  onStopTeam?: () => void;
+  /** True while a stop request is in flight. */
+  stoppingTeam?: boolean;
 }
 
 const DIALOG_WIDTH = 'max-w-[52rem]';
@@ -106,6 +112,9 @@ export const AddMemberDialog = ({
   errorMessage,
   projectPath,
   existingMembers,
+  liveRosterBlocked = false,
+  onStopTeam,
+  stoppingTeam = false,
 }: AddMemberDialogProps): React.JSX.Element => {
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
@@ -208,6 +217,21 @@ export const AddMemberDialog = ({
           </DialogDescription>
         </DialogHeader>
 
+        {liveRosterBlocked ? (
+          <div
+            className="flex items-start gap-2 rounded-md border px-3 py-2 text-xs"
+            style={{
+              backgroundColor: 'var(--warning-bg)',
+              borderColor: 'var(--warning-border)',
+              color: 'var(--warning-text)',
+            }}
+            role="alert"
+          >
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <span className="leading-relaxed">{t('detail.addMember.runningNotice')}</span>
+          </div>
+        ) : null}
+
         <div className="max-h-[60vh] overflow-y-auto py-2">
           <MembersEditorSection
             members={members}
@@ -241,13 +265,29 @@ export const AddMemberDialog = ({
         ) : null}
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={adding}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={adding || stoppingTeam}
+          >
             {t('dialogs.actions.cancel')}
           </Button>
-          <Button type="button" disabled={adding || !hasValidMembers} onClick={handleSubmit}>
-            {adding ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : null}
-            {memberCount > 1 ? `Add ${memberCount} members` : 'Add member'}
-          </Button>
+          {liveRosterBlocked ? (
+            onStopTeam ? (
+              <Button type="button" onClick={onStopTeam} disabled={stoppingTeam}>
+                {stoppingTeam ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : null}
+                {t('detail.addMember.stopAndEdit')}
+              </Button>
+            ) : null
+          ) : (
+            <Button type="button" disabled={adding || !hasValidMembers} onClick={handleSubmit}>
+              {adding ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : null}
+              {memberCount > 1
+                ? t('detail.addMember.addMany', { count: memberCount })
+                : t('detail.addMember.addOne')}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
