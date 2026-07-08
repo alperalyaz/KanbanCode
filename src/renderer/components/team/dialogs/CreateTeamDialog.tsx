@@ -1080,11 +1080,28 @@ export const CreateTeamDialog = ({
       }
     }
 
-    const loadingProviderIds = selectedMemberProviders.filter((providerId) =>
-      runtimeProviderLoadingById.get(providerId)
+    // OpenCode's full 200+ model catalog can take minutes to hydrate on a slow
+    // connection, but the SELECTED model can be validated directly via the CLI
+    // as soon as OpenCode is installed. So once the OpenCode CLI is present
+    // (supported), run the selected-model prepare diagnostics immediately
+    // instead of blocking team readiness on the whole catalog — the catalog
+    // keeps hydrating in the background for the model picker. The raw loading
+    // flag (runtimeProviderLoadingById) is left untouched, so model-error
+    // suppression still hides any transient "model unavailable" noise.
+    const canPrepareWhileCatalogLoads = (providerId: TeamProviderId): boolean => {
+      if (providerId !== 'opencode') {
+        return false;
+      }
+      const status = runtimeProviderStatusById.get(providerId);
+      return status?.backend?.kind === 'opencode-cli' && status?.supported === true;
+    };
+    const loadingProviderIds = selectedMemberProviders.filter(
+      (providerId) =>
+        runtimeProviderLoadingById.get(providerId) && !canPrepareWhileCatalogLoads(providerId)
     );
     const readyProviderIds = selectedMemberProviders.filter(
-      (providerId) => !runtimeProviderLoadingById.get(providerId)
+      (providerId) =>
+        !runtimeProviderLoadingById.get(providerId) || canPrepareWhileCatalogLoads(providerId)
     );
     const providerPlans = buildProviderPreparePlans({
       cwd: effectiveCwd,
