@@ -3319,6 +3319,7 @@ export default interface Resources {
       };
       addMember: {
         failed: 'Could not add the member. Please try again.';
+        liveRosterUnsupported: "You can't add or remove members while an OpenCode-led team is running. Stop the team, edit the roster, then relaunch.";
       };
       context: {
         closePanel: 'Close {{team}} context panel';

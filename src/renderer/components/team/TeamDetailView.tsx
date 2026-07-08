@@ -2937,10 +2937,16 @@ export const TeamDetailView = memo(function TeamDetailView({
                       } catch (error) {
                         // Surface the failure (e.g. a running OpenCode-led team blocks
                         // live roster edits) instead of silently spinning to no effect.
+                        // The backend limitation message is English; show a translated,
+                        // friendlier version for that known case, else the raw message.
+                        const rawMessage =
+                          error instanceof Error && error.message ? error.message : '';
+                        const isLiveRosterLimitation =
+                          /roster/i.test(rawMessage) && /relaunch/i.test(rawMessage);
                         setAddMemberError(
-                          error instanceof Error && error.message
-                            ? error.message
-                            : t('detail.addMember.failed')
+                          isLiveRosterLimitation
+                            ? t('detail.addMember.liveRosterUnsupported')
+                            : rawMessage || t('detail.addMember.failed')
                         );
                       } finally {
                         setAddingMemberLoading(false);

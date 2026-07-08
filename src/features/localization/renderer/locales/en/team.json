@@ -373,7 +373,8 @@
       "reconciling": "Last launch is still reconciling"
     },
     "addMember": {
-      "failed": "Could not add the member. Please try again."
+      "failed": "Could not add the member. Please try again.",
+      "liveRosterUnsupported": "You can't add or remove members while an OpenCode-led team is running. Stop the team, edit the roster, then relaunch."
     },
     "previous": "Previous: {{paths}}",
     "removeMember": {

@@ -373,7 +373,8 @@
       "reconciling": "Son başlatma hâlâ uzlaştırılıyor"
     },
     "addMember": {
-      "failed": "Üye eklenemedi. Lütfen tekrar deneyin."
+      "failed": "Üye eklenemedi. Lütfen tekrar deneyin.",
+      "liveRosterUnsupported": "Çalışan bir OpenCode-liderli ekipte üye ekleyip çıkaramazsın. Ekibi durdur, üyeleri düzenle, sonra yeniden başlat."
     },
     "previous": "Önceki: {{paths}}",
     "removeMember": {
