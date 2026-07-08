@@ -1796,7 +1796,11 @@ export const CreateTeamDialog = ({
 
   const sanitizedTeamName = sanitizeTeamName(teamName.trim());
   const teamNameInlineError = validateTeamNameInline(teamName, t);
-  const isNameTakenByExistingTeam = existingTeamNames.includes(sanitizedTeamName);
+  // Once we hit Create, our own team gets registered under this name and would
+  // then match existingTeamNames — that is us, not a conflict. Suppress the
+  // "name already exists" warning while this dialog is submitting.
+  const isNameTakenByExistingTeam =
+    !isSubmitting && existingTeamNames.includes(sanitizedTeamName);
   // While this dialog is itself submitting, the name it just launched shows up in
   // provisioningTeamNames — that is our own team, not a conflict, so don't warn on it.
   const isNameProvisioning =
