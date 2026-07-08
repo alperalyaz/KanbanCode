@@ -18,34 +18,10 @@ interface ActionModeSelectorProps {
   disabled?: boolean;
 }
 
-// "Do" is intentionally NOT a selectable chip. It is the silent default: the
-// lead automatically does what it can (small ops directly) and delegates the
-// rest. "Ask" (read-only) and "Delegate" (force full delegation) remain as
-// explicit opt-in overrides — when neither is active, the composer is in the
-// default auto/do mode.
-const MODE_CONFIG: {
-  mode: ActionMode;
-  label: string;
-  tooltip: string;
-  activeClass: string;
-  tooltipClass: string;
-}[] = [
-  {
-    mode: 'ask',
-    label: 'Ask',
-    tooltip: 'Read-only discussion mode - no code/state changes or commands',
-    activeClass: 'bg-blue-600 text-white',
-    tooltipClass: 'bg-blue-600 border-blue-700 text-white',
-  },
-  {
-    mode: 'delegate',
-    label: 'Delegate',
-    tooltip: 'Lead-only orchestration - delegate everything, do not execute yourself',
-    activeClass: 'bg-amber-500/80 text-white',
-    tooltipClass: 'bg-amber-500/80 border-amber-600 text-white',
-  },
-];
-
+// "Do" is intentionally NOT a selectable chip. For a team, Delegate is the
+// active default (the composer flips 'do' -> 'delegate' when teammates exist),
+// and within Delegate mode the lead still auto-handles trivial one-step tasks
+// itself. "Ask" (read-only) and "Delegate" are the two visible modes.
 export const ActionModeSelector = ({
   value,
   onChange,
@@ -53,7 +29,29 @@ export const ActionModeSelector = ({
   disabled = false,
 }: ActionModeSelectorProps): React.JSX.Element => {
   const { t } = useAppTranslation('team');
-  const modes = showDelegate ? MODE_CONFIG : MODE_CONFIG.filter((m) => m.mode !== 'delegate');
+  const modeConfig: {
+    mode: ActionMode;
+    label: string;
+    tooltip: string;
+    activeClass: string;
+    tooltipClass: string;
+  }[] = [
+    {
+      mode: 'ask',
+      label: t('messages.actionMode.ask'),
+      tooltip: t('messages.actionMode.askTooltip'),
+      activeClass: 'bg-blue-600 text-white',
+      tooltipClass: 'bg-blue-600 border-blue-700 text-white',
+    },
+    {
+      mode: 'delegate',
+      label: t('messages.actionMode.delegate'),
+      tooltip: t('messages.actionMode.delegateTooltip'),
+      activeClass: 'bg-amber-500/80 text-white',
+      tooltipClass: 'bg-amber-500/80 border-amber-600 text-white',
+    },
+  ];
+  const modes = showDelegate ? modeConfig : modeConfig.filter((m) => m.mode !== 'delegate');
 
   return (
     <TooltipProvider delayDuration={0} skipDelayDuration={300}>

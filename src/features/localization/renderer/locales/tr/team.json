@@ -775,7 +775,11 @@
       "title": "Durum"
     },
     "actionMode": {
-      "label": "Eylem modu"
+      "label": "Eylem modu",
+      "ask": "Sor",
+      "delegate": "Devret",
+      "askTooltip": "Salt-okunur tartışma — kod/durum değişikliği veya komut yok",
+      "delegateTooltip": "Takıma devret — lider yönetir, ufak işleri yine kendisi halleder"
     },
     "search": {
       "placeholder": "Ara..."

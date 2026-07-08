@@ -400,13 +400,17 @@ export const MessageComposer = ({
     }
   }, [actionMode, focusComposerTextarea]);
 
-  // "Do" is the default: the lead auto-does what it can and delegates the rest,
-  // so we no longer force delegate-mode when messaging the lead. Delegate is now
-  // an explicit opt-in; if it becomes unavailable, fall back to the default.
+  // A team with teammates DELEGATES by default: a chip is always active (Ask or
+  // Delegate) instead of a silent limbo where the lead quietly does everything.
+  // 'do' is never a resting UI state for teams — the lead still auto-decides to
+  // do trivial, not-worth-delegating tasks itself from within delegate mode.
+  // Solo (no delegation target) falls back to 'do'.
   useEffect(() => {
     if (!draftLoaded) return;
     if (!canDelegate && actionMode === 'delegate') {
       setActionMode('do');
+    } else if (canDelegate && actionMode === 'do') {
+      setActionMode('delegate');
     }
   }, [actionMode, canDelegate, draftLoaded, setActionMode]);
   // NOTE: lead context ring disabled — usage formula is inaccurate

@@ -4079,6 +4079,10 @@ export default interface Resources {
     messages: {
       actionMode: {
         label: 'Action mode';
+        ask: 'Ask';
+        delegate: 'Delegate';
+        askTooltip: 'Read-only discussion — no code/state changes or commands';
+        delegateTooltip: 'Delegate to the team — the lead orchestrates and still handles trivial tasks itself';
       };
       actions: {
         bottomSheetActions: 'Message bottom sheet actions';
