@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
@@ -56,6 +56,11 @@ interface LeadModelRowProps {
   showAnthropicContextLimit?: boolean;
   disableAnthropicContextLimit?: boolean;
   onOpenProviderSettings?: (providerId: TeamProviderId) => void;
+  /**
+   * When this token changes, collapse the expanded model catalog so newly
+   * added teammate rows (rendered below) are not buried under the panel.
+   */
+  collapseModelToken?: number;
 }
 
 export const LeadModelRow = ({
@@ -80,11 +85,13 @@ export const LeadModelRow = ({
   showAnthropicContextLimit = providerId === 'anthropic',
   disableAnthropicContextLimit,
   onOpenProviderSettings,
+  collapseModelToken,
 }: LeadModelRowProps): React.JSX.Element => {
   const { t } = useAppTranslation('team');
   const { isLight } = useTheme();
   const hasActiveProviderNotice = Boolean(providerNoticeById?.[providerId]);
   const [modelExpanded, setModelExpanded] = useState(hasActiveProviderNotice);
+  const lastCollapseModelTokenRef = useRef(collapseModelToken);
   const leadColorSet = getTeamColorSet(resolveTeamLeadColorName());
   const modelButtonLabel = model.trim()
     ? getProviderScopedTeamModelLabel(providerId, model.trim())
@@ -127,6 +134,17 @@ export const LeadModelRow = ({
       setModelExpanded(true);
     }
   }, [hasActiveProviderNotice, modelExpanded]);
+
+  useEffect(() => {
+    if (collapseModelToken == null) {
+      return;
+    }
+    if (lastCollapseModelTokenRef.current === collapseModelToken) {
+      return;
+    }
+    lastCollapseModelTokenRef.current = collapseModelToken;
+    setModelExpanded(false);
+  }, [collapseModelToken]);
 
   return (
     <div

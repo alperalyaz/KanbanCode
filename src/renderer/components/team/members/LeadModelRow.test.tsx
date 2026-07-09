@@ -308,4 +308,48 @@ describe('LeadModelRow', () => {
       root.unmount();
     });
   });
+
+  it('collapses the expanded model catalog when collapseModelToken changes', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    const render = (collapseModelToken?: number): void => {
+      root.render(
+        React.createElement(LeadModelRow, {
+          providerId: 'opencode',
+          model: 'big-pickle',
+          limitContext: false,
+          onProviderChange: () => undefined,
+          onModelChange: () => undefined,
+          onEffortChange: () => undefined,
+          onLimitContextChange: () => undefined,
+          syncModelsWithTeammates: true,
+          onSyncModelsWithTeammatesChange: () => undefined,
+          collapseModelToken,
+        })
+      );
+    };
+
+    act(() => {
+      render(0);
+    });
+
+    const modelButton = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="opencode provider, big-pickle"]'
+    )!;
+    act(() => {
+      modelButton.click();
+    });
+    expect(host.textContent).toContain('team-model-selector');
+
+    act(() => {
+      render(1);
+    });
+    expect(host.textContent).not.toContain('team-model-selector');
+
+    act(() => {
+      root.unmount();
+    });
+  });
 });

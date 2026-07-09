@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { Button } from '@renderer/components/ui/button';
@@ -109,6 +109,8 @@ export interface MembersEditorSectionProps {
   /** Extra classes for the scrollable member-row container (e.g. fixed max height). */
   memberListClassName?: string;
   onOpenProviderSettings?: (providerId: TeamProviderId) => void;
+  /** Fired when a member is added so parents can collapse bulky chrome (e.g. model catalog). */
+  onMemberAdded?: (memberId: string) => void;
 }
 
 export const MembersEditorSection = ({
@@ -154,6 +156,7 @@ export const MembersEditorSection = ({
   onTeammateWorktreeDefaultChange,
   memberListClassName,
   onOpenProviderSettings,
+  onMemberAdded,
 }: MembersEditorSectionProps): React.JSX.Element => {
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
@@ -161,6 +164,8 @@ export const MembersEditorSection = ({
   const previousMcpPolicyByMemberIdRef = useRef<Map<string, MemberDraft['mcpPolicy']>>(new Map());
   const memberListRef = useRef<HTMLDivElement>(null);
   const pendingScrollMemberIdRef = useRef<string | null>(null);
+  const [highlightedMemberId, setHighlightedMemberId] = useState<string | null>(null);
+  const highlightClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const emitMembersChange = (nextMembers: MemberDraft[]): void => {
     onChange(
@@ -168,8 +173,9 @@ export const MembersEditorSection = ({
     );
   };
 
-  // After "Add member", the new row often lands below the fold in create-team's
-  // constrained roster list / dialog scroll. Bring it into view and focus the name.
+  // After "Add member", the new row often lands below the fold — under the expanded
+  // lead model catalog and/or outside the dialog scrollport. Center it, focus the
+  // name field, and briefly highlight so the click clearly "did something".
   useLayoutEffect(() => {
     const memberId = pendingScrollMemberIdRef.current;
     if (!memberId) {
@@ -184,10 +190,32 @@ export const MembersEditorSection = ({
     }
 
     pendingScrollMemberIdRef.current = null;
-    row.scrollIntoView({ block: 'nearest', behavior: 'smooth', inline: 'nearest' });
-    const nameInput = row.querySelector<HTMLInputElement>('input:not([type="checkbox"])');
-    nameInput?.focus({ preventScroll: true });
+    setHighlightedMemberId(memberId);
+    if (highlightClearTimeoutRef.current) {
+      clearTimeout(highlightClearTimeoutRef.current);
+    }
+    highlightClearTimeoutRef.current = setTimeout(() => {
+      setHighlightedMemberId((current) => (current === memberId ? null : current));
+      highlightClearTimeoutRef.current = null;
+    }, 1600);
+
+    // Double rAF: wait for parent collapse (lead model panel) + layout settle.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        row.scrollIntoView({ block: 'center', behavior: 'smooth', inline: 'nearest' });
+        const nameInput = row.querySelector<HTMLInputElement>('input:not([type="checkbox"])');
+        nameInput?.focus({ preventScroll: true });
+      });
+    });
   }, [members]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightClearTimeoutRef.current) {
+        clearTimeout(highlightClearTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const updateMemberName = (memberId: string, name: string): void => {
     emitMembersChange(members.map((c) => (c.id === memberId ? { ...c, name } : c)));
@@ -378,6 +406,7 @@ export const MembersEditorSection = ({
     );
     pendingScrollMemberIdRef.current = nextMember.id;
     emitMembersChange([...members, nextMember]);
+    onMemberAdded?.(nextMember.id);
   };
 
   const names = activeMembers.map((m) => m.name.trim().toLocaleLowerCase('tr')).filter(Boolean);
@@ -491,6 +520,11 @@ export const MembersEditorSection = ({
                   key={member.id}
                   data-member-draft-id={member.id}
                   data-testid={`member-draft-row-${member.id}`}
+                  className={cn(
+                    'rounded-md transition-[box-shadow,background-color] duration-500',
+                    highlightedMemberId === member.id &&
+                      'bg-sky-500/10 ring-2 ring-sky-500/45 ring-offset-2 ring-offset-[var(--color-surface)]'
+                  )}
                 >
                   <MemberDraftRow
                     member={member}

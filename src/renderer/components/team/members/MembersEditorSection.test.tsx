@@ -450,7 +450,7 @@ describe('MembersEditorSection Agent Teams MCP master checkbox', () => {
 });
 
 describe('MembersEditorSection add-member visibility', () => {
-  it('scrolls the newly added member into view and focuses its name field', () => {
+  it('scrolls the newly added member into view, highlights it, and focuses its name field', async () => {
     const scrollIntoView = vi.fn();
     HTMLElement.prototype.scrollIntoView = scrollIntoView;
 
@@ -474,7 +474,19 @@ describe('MembersEditorSection add-member visibility', () => {
 
     const row = host.querySelector(`[data-member-draft-id="${added.id}"]`);
     expect(row).not.toBeNull();
-    expect(scrollIntoView).toHaveBeenCalled();
+    expect(row?.className).toContain('ring-sky-500');
+
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
+    });
+
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ block: 'center', behavior: 'smooth' })
+    );
 
     const focusedInput = row?.querySelector('input:not([type="checkbox"])');
     expect(document.activeElement).toBe(focusedInput);
