@@ -295,7 +295,13 @@ const MessagesTimelineSection = memo(function MessagesTimelineSection({
   bottomAnchored,
 }: MessagesTimelineSectionProps): React.JSX.Element {
   const { t } = useAppTranslation('team');
-  const loadOlderButton = hasMore ? (
+  // The timeline already owns a "show more older" control for client-side
+  // pagination. Keep the server "load older" button for after that local
+  // window is fully revealed, so the stream isn't two stacked older-message
+  // controls fighting for attention.
+  const [clientHasHiddenOlder, setClientHasHiddenOlder] = useState(false);
+  const showServerLoadOlder = hasMore && !clientHasHiddenOlder;
+  const loadOlderButton = showServerLoadOlder ? (
     <div className="flex justify-center py-2">
       <Button
         variant="ghost"
@@ -341,6 +347,7 @@ const MessagesTimelineSection = memo(function MessagesTimelineSection({
         onExpandContent={onExpandContent}
         viewport={viewport}
         bottomAnchored={bottomAnchored}
+        onHiddenOlderChange={setClientHasHiddenOlder}
       />
       {bottomAnchored ? null : loadOlderButton}
       <MessageExpandDialog
@@ -905,7 +912,9 @@ export const MessagesPanel = memo(function MessagesPanel({
       const time = new Date(m.timestamp).toLocaleString();
       const from = displayMemberName(m.from ?? '');
       const to = m.to ? ` → ${displayMemberName(m.to)}` : '';
-      const text = getSanitizedInboxMessageText(m).replace(/[ \t]+\n/g, '\n').trim();
+      const text = getSanitizedInboxMessageText(m)
+        .replace(/[ \t]+\n/g, '\n')
+        .trim();
       return `[${time}] ${from}${to}:\n${text}`;
     });
     const payload = lines.join('\n\n');
@@ -1588,7 +1597,7 @@ export const MessagesPanel = memo(function MessagesPanel({
                     <DropdownMenuContent align="end" side="top" className="w-48">
                       {messagesUnreadCount > 0 && (
                         <DropdownMenuItem
-                          className="text-blue-700 dark:text-blue-400 focus:text-blue-800 dark:focus:text-blue-300"
+                          className="text-blue-700 focus:text-blue-800 dark:text-blue-400 dark:focus:text-blue-300"
                           onSelect={handleMarkAllRead}
                         >
                           <CheckCheck size={14} className="shrink-0" />
