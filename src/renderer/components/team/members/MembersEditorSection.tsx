@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { Button } from '@renderer/components/ui/button';
@@ -13,9 +13,9 @@ import { GitBranch, Plug, Plus } from 'lucide-react';
 
 import { MemberDraftRow } from './MemberDraftRow';
 import {
+  canonicalizeThemedMemberName,
   getNextSuggestedMemberName,
   resolveMemberNameLocale,
-  canonicalizeThemedMemberName,
 } from './memberNameSets';
 import {
   buildMemberDraftColorMap,
@@ -159,12 +159,35 @@ export const MembersEditorSection = ({
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
   const [agentTeamsMcpLockedForAll, setAgentTeamsMcpLockedForAll] = useState(false);
   const previousMcpPolicyByMemberIdRef = useRef<Map<string, MemberDraft['mcpPolicy']>>(new Map());
+  const memberListRef = useRef<HTMLDivElement>(null);
+  const pendingScrollMemberIdRef = useRef<string | null>(null);
 
   const emitMembersChange = (nextMembers: MemberDraft[]): void => {
     onChange(
       agentTeamsMcpLockedForAll ? forceActiveMembersToAgentTeamsMcp(nextMembers) : nextMembers
     );
   };
+
+  // After "Add member", the new row often lands below the fold in create-team's
+  // constrained roster list / dialog scroll. Bring it into view and focus the name.
+  useLayoutEffect(() => {
+    const memberId = pendingScrollMemberIdRef.current;
+    if (!memberId) {
+      return;
+    }
+
+    const row = memberListRef.current?.querySelector<HTMLElement>(
+      `[data-member-draft-id="${CSS.escape(memberId)}"]`
+    );
+    if (!row) {
+      return;
+    }
+
+    pendingScrollMemberIdRef.current = null;
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth', inline: 'nearest' });
+    const nameInput = row.querySelector<HTMLInputElement>('input:not([type="checkbox"])');
+    nameInput?.focus({ preventScroll: true });
+  }, [members]);
 
   const updateMemberName = (memberId: string, name: string): void => {
     emitMembersChange(members.map((c) => (c.id === memberId ? { ...c, name } : c)));
@@ -341,21 +364,20 @@ export const MembersEditorSection = ({
       members.map((member) => member.name),
       memberNameLocale
     );
-    emitMembersChange([
-      ...members,
-      createMemberDraft(
-        inheritModelSettingsByDefault
-          ? {
-              name: suggestedName,
-              isolation: newMemberUsesWorktree ? 'worktree' : undefined,
-            }
-          : {
-              name: suggestedName,
-              providerId: defaultProviderId,
-              isolation: newMemberUsesWorktree ? 'worktree' : undefined,
-            }
-      ),
-    ]);
+    const nextMember = createMemberDraft(
+      inheritModelSettingsByDefault
+        ? {
+            name: suggestedName,
+            isolation: newMemberUsesWorktree ? 'worktree' : undefined,
+          }
+        : {
+            name: suggestedName,
+            providerId: defaultProviderId,
+            isolation: newMemberUsesWorktree ? 'worktree' : undefined,
+          }
+    );
+    pendingScrollMemberIdRef.current = nextMember.id;
+    emitMembersChange([...members, nextMember]);
   };
 
   const names = activeMembers.map((m) => m.name.trim().toLocaleLowerCase('tr')).filter(Boolean);
@@ -457,6 +479,7 @@ export const MembersEditorSection = ({
               </div>
             ) : null}
             <div
+              ref={memberListRef}
               className={cn(
                 'space-y-2',
                 showWorktreeIsolationControls && 'p-2',
@@ -464,52 +487,59 @@ export const MembersEditorSection = ({
               )}
             >
               {activeMembers.map((member, index) => (
-                <MemberDraftRow
+                <div
                   key={member.id}
-                  member={member}
-                  index={index}
-                  resolvedColor={memberColorMap.get(member.id)}
-                  nameError={validateMemberName?.(member.name) ?? null}
-                  onNameChange={updateMemberName}
-                  onNameBlur={finalizeMemberName}
-                  onRoleChange={updateMemberRole}
-                  onCustomRoleChange={updateMemberCustomRole}
-                  onRemove={removeMember}
-                  showWorkflow={showWorkflow}
-                  onWorkflowChange={showWorkflow ? updateMemberWorkflow : undefined}
-                  onWorkflowChipsChange={showWorkflow ? updateMemberWorkflowChips : undefined}
-                  onProviderChange={updateMemberProvider}
-                  onModelChange={updateMemberModel}
-                  onEffortChange={updateMemberEffort}
-                  showWorktreeIsolationControls={showWorktreeIsolationControls}
-                  worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
-                  onWorktreeIsolationChange={updateMemberIsolation}
-                  onMcpPolicyChange={updateMemberMcpPolicy}
-                  agentTeamsMcpLocked={agentTeamsMcpLockedForAll}
-                  inheritedProviderId={inheritedProviderId}
-                  inheritedModel={inheritedModel}
-                  inheritedEffort={inheritedEffort}
-                  limitContext={limitContext}
-                  forceInheritedModelSettings={forceInheritedModelSettings}
-                  draftKeyPrefix={draftKeyPrefix}
-                  projectPath={projectPath}
-                  mentionSuggestions={mentionSuggestions}
-                  taskSuggestions={taskSuggestions}
-                  teamSuggestions={teamSuggestions}
-                  onWorkflowSuggestionsNeeded={onWorkflowSuggestionsNeeded}
-                  lockProviderModel={lockProviderModel}
-                  lockIdentity={lockExistingMemberIdentity && Boolean(member.originalName?.trim())}
-                  identityLockReason={identityLockReason}
-                  modelLockReason={modelLockReason}
-                  warningText={memberWarningById?.[member.id] ?? null}
-                  infoText={memberInfoById?.[member.id] ?? null}
-                  disableGeminiOption={disableGeminiOption}
-                  modelIssueText={memberModelIssueById?.[member.id] ?? null}
-                  modelAdvisoryReasonByProvider={modelAdvisoryReasonByProvider}
-                  modelIssueReasonByProvider={modelIssueReasonByProvider}
-                  modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
-                  onOpenProviderSettings={onOpenProviderSettings}
-                />
+                  data-member-draft-id={member.id}
+                  data-testid={`member-draft-row-${member.id}`}
+                >
+                  <MemberDraftRow
+                    member={member}
+                    index={index}
+                    resolvedColor={memberColorMap.get(member.id)}
+                    nameError={validateMemberName?.(member.name) ?? null}
+                    onNameChange={updateMemberName}
+                    onNameBlur={finalizeMemberName}
+                    onRoleChange={updateMemberRole}
+                    onCustomRoleChange={updateMemberCustomRole}
+                    onRemove={removeMember}
+                    showWorkflow={showWorkflow}
+                    onWorkflowChange={showWorkflow ? updateMemberWorkflow : undefined}
+                    onWorkflowChipsChange={showWorkflow ? updateMemberWorkflowChips : undefined}
+                    onProviderChange={updateMemberProvider}
+                    onModelChange={updateMemberModel}
+                    onEffortChange={updateMemberEffort}
+                    showWorktreeIsolationControls={showWorktreeIsolationControls}
+                    worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
+                    onWorktreeIsolationChange={updateMemberIsolation}
+                    onMcpPolicyChange={updateMemberMcpPolicy}
+                    agentTeamsMcpLocked={agentTeamsMcpLockedForAll}
+                    inheritedProviderId={inheritedProviderId}
+                    inheritedModel={inheritedModel}
+                    inheritedEffort={inheritedEffort}
+                    limitContext={limitContext}
+                    forceInheritedModelSettings={forceInheritedModelSettings}
+                    draftKeyPrefix={draftKeyPrefix}
+                    projectPath={projectPath}
+                    mentionSuggestions={mentionSuggestions}
+                    taskSuggestions={taskSuggestions}
+                    teamSuggestions={teamSuggestions}
+                    onWorkflowSuggestionsNeeded={onWorkflowSuggestionsNeeded}
+                    lockProviderModel={lockProviderModel}
+                    lockIdentity={
+                      lockExistingMemberIdentity && Boolean(member.originalName?.trim())
+                    }
+                    identityLockReason={identityLockReason}
+                    modelLockReason={modelLockReason}
+                    warningText={memberWarningById?.[member.id] ?? null}
+                    infoText={memberInfoById?.[member.id] ?? null}
+                    disableGeminiOption={disableGeminiOption}
+                    modelIssueText={memberModelIssueById?.[member.id] ?? null}
+                    modelAdvisoryReasonByProvider={modelAdvisoryReasonByProvider}
+                    modelIssueReasonByProvider={modelIssueReasonByProvider}
+                    modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
+                    onOpenProviderSettings={onOpenProviderSettings}
+                  />
+                </div>
               ))}
               {softDeleteMembers && removedMembers.length > 0 ? (
                 <div className="pt-2">

@@ -75,6 +75,10 @@ vi.mock('./MemberDraftRow', () => ({
     React.createElement(
       'div',
       null,
+      React.createElement('input', {
+        'aria-label': `Member ${member.name}`,
+        defaultValue: member.name,
+      }),
       React.createElement(
         'button',
         {
@@ -442,5 +446,37 @@ describe('MembersEditorSection Agent Teams MCP master checkbox', () => {
     expect(restoredAfterUnlock.find((member) => member.id === 'bob')?.mcpPolicy).toEqual(
       originalMembers[1].mcpPolicy
     );
+  });
+});
+
+describe('MembersEditorSection add-member visibility', () => {
+  it('scrolls the newly added member into view and focuses its name field', () => {
+    const scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    const initialMembers = [createMemberDraft({ id: 'lead', name: 'lead' })];
+    const { host, onChange, rerender } = renderMembersEditor({
+      members: initialMembers,
+    });
+
+    act(() => {
+      addMemberButton(host).click();
+    });
+
+    const nextMembers = onChange.mock.calls[0]?.[0] as MemberDraft[];
+    expect(nextMembers).toHaveLength(2);
+    const added = nextMembers[1];
+    expect(added?.id).toBeTruthy();
+
+    act(() => {
+      rerender(nextMembers);
+    });
+
+    const row = host.querySelector(`[data-member-draft-id="${added.id}"]`);
+    expect(row).not.toBeNull();
+    expect(scrollIntoView).toHaveBeenCalled();
+
+    const focusedInput = row?.querySelector('input:not([type="checkbox"])');
+    expect(document.activeElement).toBe(focusedInput);
   });
 });
