@@ -6001,4 +6001,42 @@ describe('teamSlice actions', () => {
       ).toBeNull();
     });
   });
+
+  describe('cancelProvisioning', () => {
+    it('marks the run cancelled in the store before IPC resolves', async () => {
+      let resolveIpc: (() => void) | undefined;
+      hoisted.cancelProvisioning.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveIpc = resolve;
+          })
+      );
+
+      const store = createSliceStore();
+      store.setState({
+        currentProvisioningRunIdByTeam: { 'my-team': 'run-1' },
+        provisioningRuns: {
+          'run-1': {
+            runId: 'run-1',
+            teamName: 'my-team',
+            state: 'spawning',
+            message: 'Starting OpenCode sessions through runtime adapter',
+            startedAt: '2026-03-12T10:00:00.000Z',
+            updatedAt: '2026-03-12T10:00:00.000Z',
+          },
+        },
+      });
+
+      const cancelPromise = store.getState().cancelProvisioning('run-1');
+
+      expect(store.getState().provisioningRuns['run-1']?.state).toBe('cancelled');
+      expect(store.getState().provisioningRuns['run-1']?.message).toBe(
+        'Provisioning cancelled by user'
+      );
+      expect(hoisted.cancelProvisioning).toHaveBeenCalledWith('run-1');
+
+      resolveIpc?.();
+      await expect(cancelPromise).resolves.toBeUndefined();
+    });
+  });
 });

@@ -3449,6 +3449,15 @@ export class TeamProvisioningService {
     }
   >();
   private readonly cancelledRuntimeAdapterRunIds = new Set<string>();
+  /**
+   * Progress listeners for OpenCode runtime-adapter launches. Pure runtime-adapter
+   * runs do not keep a `ProvisioningRun`, so cancel must reuse the launch-time
+   * `onProgress` callback to push `cancelled` to the renderer immediately.
+   */
+  private readonly runtimeAdapterProgressListenersByRunId = new Map<
+    string,
+    (progress: TeamProvisioningProgress) => void
+  >();
   private stopAllTeamsGeneration = 0;
   private readonly transientProbeProcesses = new Set<ReturnType<typeof spawn>>();
   private readonly secondaryRuntimeRunByTeam = new Map<
@@ -10792,7 +10801,20 @@ export class TeamProvisioningService {
   ): TeamProvisioningProgress {
     const nextProgress = this.enrichRuntimeAdapterProgressTrace(progress);
     this.runtimeAdapterProgressByRunId.set(nextProgress.runId, nextProgress);
-    onProgress?.(nextProgress);
+    if (onProgress) {
+      this.runtimeAdapterProgressListenersByRunId.set(nextProgress.runId, onProgress);
+    }
+    const listener =
+      onProgress ?? this.runtimeAdapterProgressListenersByRunId.get(nextProgress.runId);
+    listener?.(nextProgress);
+    if (
+      nextProgress.state === 'ready' ||
+      nextProgress.state === 'failed' ||
+      nextProgress.state === 'cancelled' ||
+      nextProgress.state === 'disconnected'
+    ) {
+      this.runtimeAdapterProgressListenersByRunId.delete(nextProgress.runId);
+    }
     return nextProgress;
   }
 
@@ -23675,6 +23697,8 @@ export class TeamProvisioningService {
       this.provisioningRunByTeam.delete(teamName);
     }
     this.invalidateRuntimeSnapshotCaches(teamName);
+    // Emit cancelled BEFORE awaiting adapter.stop so the UI can drop the
+    // "team starting" banner immediately. Cleanup continues in the background.
     this.setRuntimeAdapterProgress({
       ...runtimeProgress,
       state: 'cancelled',
@@ -23690,32 +23714,35 @@ export class TeamProvisioningService {
 
     const previousLaunchState = await this.launchStateStore.read(teamName);
     const adapter = this.getOpenCodeRuntimeAdapter();
-    if (adapter) {
-      try {
-        await adapter.stop({
-          runId,
-          laneId: 'primary',
-          teamName,
-          cwd: runtimeRun?.cwd ?? this.readPersistedTeamProjectPath(teamName) ?? undefined,
-          providerId: 'opencode',
-          reason: 'user_requested',
-          previousLaunchState,
-          force: true,
-        });
-      } catch (error) {
-        logger.warn(
-          `[${teamName}] Failed to stop OpenCode runtime adapter launch during cancel: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-      }
-    }
+    const stopPromise = adapter
+      ? adapter
+          .stop({
+            runId,
+            laneId: 'primary',
+            teamName,
+            cwd: runtimeRun?.cwd ?? this.readPersistedTeamProjectPath(teamName) ?? undefined,
+            providerId: 'opencode',
+            reason: 'user_requested',
+            previousLaunchState,
+            force: true,
+          })
+          .catch((error: unknown) => {
+            logger.warn(
+              `[${teamName}] Failed to stop OpenCode runtime adapter launch during cancel: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
+          })
+      : Promise.resolve();
 
-    await clearOpenCodeRuntimeLaneStorage({
+    const clearPromise = clearOpenCodeRuntimeLaneStorage({
       teamsBasePath: getTeamsBasePath(),
       teamName,
       laneId: 'primary',
     }).catch(() => undefined);
+
+    // Do not block the cancel IPC on slow OpenCode teardown — UI already stopped.
+    void Promise.all([stopPromise, clearPromise]);
   }
 
   private getPendingRuntimeAdapterLaunchesForShutdown(): TeamProvisioningProgress[] {

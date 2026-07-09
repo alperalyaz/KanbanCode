@@ -3692,7 +3692,33 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   cancelProvisioning: async (runId: string) => {
-    await unwrapIpc('team:cancelProvisioning', () => api.teams.cancelProvisioning(runId));
+    const existing = get().provisioningRuns[runId];
+    // Optimistic stop: hide the "team starting" banner immediately. OpenCode
+    // adapter teardown can take seconds; waiting for IPC made Cancel feel dead.
+    if (existing && existing.state !== 'cancelled' && existing.state !== 'ready') {
+      get().onProvisioningProgress({
+        ...existing,
+        state: 'cancelled',
+        message: 'Provisioning cancelled by user',
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    try {
+      await unwrapIpc('team:cancelProvisioning', () => api.teams.cancelProvisioning(runId));
+    } catch (error) {
+      // If the run already finished/disappeared, keep the optimistic cancel.
+      // Only rethrow unexpected failures so the UI can surface them.
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        /unknown runid/i.test(message) ||
+        /cannot be cancelled/i.test(message) ||
+        /not found/i.test(message)
+      ) {
+        return;
+      }
+      throw error;
+    }
   },
 
   onProvisioningProgress: (progress: TeamProvisioningProgress) => {
