@@ -774,7 +774,11 @@ const OpenCodeVirtualizedModelGrid = ({
   );
 };
 
-const OpenCodeModelCatalogLoadingSkeleton = (): React.JSX.Element => {
+const OpenCodeModelCatalogLoadingSkeleton = ({
+  hasSelectableFloor,
+}: {
+  hasSelectableFloor?: boolean;
+}): React.JSX.Element => {
   const { t } = useAppTranslation('team');
   return (
     <div
@@ -786,7 +790,9 @@ const OpenCodeModelCatalogLoadingSkeleton = (): React.JSX.Element => {
       <div className="mb-3 flex items-center gap-2">
         <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-blue-400" />
         <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
-          {t('modelSelector.openCode.loadingModels')}
+          {hasSelectableFloor
+            ? t('modelSelector.openCodeCatalogHydrating')
+            : t('modelSelector.openCode.loadingModels')}
         </span>
       </div>
       <div
@@ -2294,15 +2300,20 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                     data-testid="team-model-selector-model-grid"
                     className="space-y-3 rounded-md bg-[var(--color-surface)]"
                   >
-                    {visibleDefaultModelOptions.length > 0 ? (
+                    {/* Keep curated floors (Default + Big Pickle) selectable while the
+                        full catalog hydrates — never strand the user on skeletons only. */}
+                    {visibleModelOptions.length > 0 ? (
                       <div
                         className="grid gap-1.5"
                         style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}
+                        data-testid="team-model-selector-opencode-floor-grid"
                       >
-                        {visibleDefaultModelOptions.map(renderModelOption)}
+                        {visibleModelOptions.map(renderModelOption)}
                       </div>
                     ) : null}
-                    <OpenCodeModelCatalogLoadingSkeleton />
+                    <OpenCodeModelCatalogLoadingSkeleton
+                      hasSelectableFloor={visibleModelOptions.some((option) => option.value.trim())}
+                    />
                   </div>
                 ) : shouldVirtualizeOpenCodeModels ? (
                   <OpenCodeVirtualizedModelGrid

@@ -763,11 +763,20 @@ export const CreateTeamDialog = ({
   }, [effectiveCwd, launchTeam, teamName]);
   const openCodeProviderStatus = runtimeProviderStatusById.get('opencode');
   const firstRunConnectPath = firstRunMode ? getFirstRunConnectPath() : null;
-  const showFirstRunOpenCodeSetupHint =
-    firstRunMode &&
+  const openCodeCatalogStillLoading =
     selectedProviderId === 'opencode' &&
-    (firstRunConnectPath === 'free' ||
-      (!runtimeProviderLoadingById.get('opencode') && !openCodeProviderStatus?.models?.length));
+    (runtimeProviderLoadingById.get('opencode') === true ||
+      openCodeProviderStatus?.modelCatalogRefreshState === 'loading' ||
+      (!openCodeProviderStatus?.modelCatalog &&
+        (openCodeProviderStatus?.runtimeCapabilities?.modelCatalog?.dynamic === true ||
+          openCodeProviderStatus == null)));
+  const showFirstRunOpenCodeSetupHint =
+    selectedProviderId === 'opencode' &&
+    (firstRunMode
+      ? firstRunConnectPath === 'free' ||
+        openCodeCatalogStillLoading ||
+        !openCodeProviderStatus?.models?.length
+      : openCodeCatalogStillLoading);
   const showFirstRunConnectHint =
     firstRunMode &&
     (firstRunConnectPath === 'connect' ||
