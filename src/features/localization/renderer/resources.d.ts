@@ -400,11 +400,13 @@ export default interface Resources {
     };
     notifications: {
       actions: {
+        back: 'Go back';
         clearAll: 'Clear all';
         clearAllNotifications: 'Clear all notifications';
         clearFiltered: 'Clear filtered';
         clearFilteredNotifications: 'Clear filtered notifications';
         clickToConfirm: 'Click to confirm';
+        close: 'Close';
         markAllAsRead: 'Mark all as read';
         markAllRead: 'Mark all read';
         markFilteredAsRead: 'Mark filtered as read';
@@ -434,6 +436,8 @@ export default interface Resources {
       };
       empty: {
         allCaughtUp: "You're all caught up!";
+        autoClosing: 'Closing in {{seconds}}s…';
+        keepOpen: 'Keep open';
         noMatching: 'No matching notifications';
         noNotifications: 'No notifications';
         tryDifferentFilter: 'Try a different filter';

@@ -701,7 +701,9 @@
       "clearAllNotifications": "Clear all notifications",
       "clickToConfirm": "Click to confirm",
       "clearFiltered": "Clear filtered",
-      "clearAll": "Clear all"
+      "clearAll": "Clear all",
+      "close": "Close",
+      "back": "Go back"
     },
     "counts": {
       "unreadInFilter": "{{count}} unread in filter",
@@ -732,7 +734,9 @@
       "noMatching": "No matching notifications",
       "noNotifications": "No notifications",
       "tryDifferentFilter": "Try a different filter",
-      "allCaughtUp": "You're all caught up!"
+      "allCaughtUp": "You're all caught up!",
+      "autoClosing": "Closing in {{seconds}}s…",
+      "keepOpen": "Keep open"
     }
   },
   "updates": {

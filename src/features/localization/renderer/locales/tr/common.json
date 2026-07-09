@@ -701,7 +701,9 @@
       "clearAllNotifications": "Tüm bildirimleri temizle",
       "clickToConfirm": "Onaylamak için tıklayın",
       "clearFiltered": "Filtrelenmişleri temizle",
-      "clearAll": "Tümünü temizle"
+      "clearAll": "Tümünü temizle",
+      "close": "Kapat",
+      "back": "Geri dön"
     },
     "counts": {
       "unreadInFilter": "filtrede {{count}} okunmamış",
@@ -732,7 +734,9 @@
       "noMatching": "Eşleşen bildirim yok",
       "noNotifications": "Bildirim yok",
       "tryDifferentFilter": "Farklı bir filtre deneyin",
-      "allCaughtUp": "Her şeyi gördünüz!"
+      "allCaughtUp": "Her şeyi gördünüz!",
+      "autoClosing": "{{seconds}} sn içinde kapanıyor…",
+      "keepOpen": "Açık tut"
     }
   },
   "updates": {
