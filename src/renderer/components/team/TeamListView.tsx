@@ -542,7 +542,6 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
     fetchTeams,
     openTab,
     openTeamTab,
-    deleteTeam,
     restoreTeam,
     permanentlyDeleteTeam,
     projects,
@@ -563,7 +562,6 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
       fetchTeams: s.fetchTeams,
       openTab: s.openTab,
       openTeamTab: s.openTeamTab,
-      deleteTeam: s.deleteTeam,
       restoreTeam: s.restoreTeam,
       permanentlyDeleteTeam: s.permanentlyDeleteTeam,
       projects: s.projects,
@@ -833,22 +831,23 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
           return;
         }
         const confirmed = await confirm({
-          title: t('list.moveToTrash.title'),
-          message: t('list.moveToTrash.message', { teamName }),
-          confirmLabel: t('list.moveToTrash.confirmLabel'),
-          cancelLabel: t('list.moveToTrash.cancelLabel'),
+          title: t('list.deleteForever.title'),
+          message: t('list.deleteForever.message', { teamName }),
+          confirmLabel: t('list.deleteForever.confirmLabel'),
+          cancelLabel: t('list.deleteForever.cancelLabel'),
           variant: 'danger',
         });
         if (confirmed) {
           try {
-            await deleteTeam(teamName);
+            // Hard delete: card disappears immediately via optimistic store update.
+            await permanentlyDeleteTeam(teamName);
           } catch {
             // error via store
           }
         }
       })();
     },
-    [deleteTeam, t]
+    [permanentlyDeleteTeam, t]
   );
 
   const handleRestoreTeam = useCallback(

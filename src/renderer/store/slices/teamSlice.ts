@@ -321,6 +321,44 @@ function clearTeamScopedTransientState(teamName: string): void {
   clearTeamScopedSelectorCaches(teamName);
 }
 
+/**
+ * Instantly remove a team from list/selection UI before IPC finishes.
+ * Used by soft-delete and hard-delete so stopTeam / disk teardown never
+ * leave the card stuck on screen after the user confirms.
+ */
+function applyOptimisticTeamRemoval(
+  set: (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+  teamName: string
+): void {
+  invalidateTeamLocalStateEpoch(teamName);
+  clearPendingReplyRefreshTimer(teamName);
+  clearPendingReplyRefreshWaits(teamName);
+  clearTeamScopedTransientState(teamName);
+  set((state) => {
+    const nextTeams = state.teams.filter((team) => team.teamName !== teamName);
+    const indexes = buildTeamSummaryIndexes(nextTeams);
+    const clearedState = collectTeamScopedStateRemovals(state, teamName);
+    const tombstones = buildTeamScopedProgressTombstones(state, teamName, nowIso());
+    const base: Partial<AppState> = {
+      teams: nextTeams,
+      teamByName: indexes.teamByName,
+      teamBySessionId: indexes.teamBySessionId,
+      ...clearedState,
+      ...tombstones,
+    };
+    if (state.selectedTeamName === teamName) {
+      return {
+        ...base,
+        selectedTeamName: null,
+        selectedTeamData: null,
+        selectedTeamLoading: false,
+        selectedTeamError: null,
+      };
+    }
+    return base;
+  });
+}
+
 function beginInFlightTeamDataRefresh(teamName: string): symbol {
   const token = Symbol(teamName);
   const existing = inFlightRefreshTeamDataCalls.get(teamName);
@@ -3153,31 +3191,15 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   deleteTeam: async (teamName: string) => {
-    await unwrapIpc('team:deleteTeam', () => api.teams.deleteTeam(teamName));
-    invalidateTeamLocalStateEpoch(teamName);
-    clearPendingReplyRefreshTimer(teamName);
-    clearPendingReplyRefreshWaits(teamName);
-    clearTeamScopedTransientState(teamName);
-    set((state) => {
-      const clearedState = collectTeamScopedStateRemovals(state, teamName);
-      const tombstones = buildTeamScopedProgressTombstones(state, teamName, nowIso());
-      if (state.selectedTeamName === teamName) {
-        return {
-          selectedTeamName: null,
-          selectedTeamData: null,
-          selectedTeamLoading: false,
-          selectedTeamError: null,
-          ...clearedState,
-          ...tombstones,
-        };
-      }
-      return {
-        ...clearedState,
-        ...tombstones,
-      };
-    });
-    await get().fetchTeams();
-    await get().fetchAllTasks();
+    // Soft-delete still exists for restore/trash, but drop the card immediately so
+    // stopTeam + disk writes never make "Move to trash" feel dead.
+    applyOptimisticTeamRemoval(set, teamName);
+    try {
+      await unwrapIpc('team:deleteTeam', () => api.teams.deleteTeam(teamName));
+    } finally {
+      void get().fetchTeams();
+      void get().fetchAllTasks();
+    }
   },
 
   restoreTeam: async (teamName: string) => {
@@ -3202,32 +3224,16 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   permanentlyDeleteTeam: async (teamName: string) => {
-    await unwrapIpc('team:permanentlyDeleteTeam', () => api.teams.permanentlyDeleteTeam(teamName));
-    invalidateTeamLocalStateEpoch(teamName);
-    clearPendingReplyRefreshTimer(teamName);
-    clearPendingReplyRefreshWaits(teamName);
-    clearTeamScopedTransientState(teamName);
-    const state = get();
-    const clearedState = collectTeamScopedStateRemovals(state, teamName);
-    const tombstones = buildTeamScopedProgressTombstones(state, teamName, nowIso());
-    if (state.selectedTeamName === teamName) {
-      set({
-        selectedTeamName: null,
-        selectedTeamData: null,
-        selectedTeamError: null,
-        ...clearedState,
-        ...tombstones,
-      });
-    } else if (Object.keys(clearedState).length > 0) {
-      set({
-        ...clearedState,
-        ...tombstones,
-      });
-    } else {
-      set(tombstones);
+    // Hard delete: remove from the list instantly, then tear down processes/files.
+    applyOptimisticTeamRemoval(set, teamName);
+    try {
+      await unwrapIpc('team:permanentlyDeleteTeam', () =>
+        api.teams.permanentlyDeleteTeam(teamName)
+      );
+    } finally {
+      void get().fetchTeams();
+      void get().fetchAllTasks();
     }
-    await get().fetchTeams();
-    await get().fetchAllTasks();
   },
 
   createTeam: async (request: TeamCreateRequest) => {

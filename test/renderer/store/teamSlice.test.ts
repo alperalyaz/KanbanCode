@@ -2973,6 +2973,13 @@ describe('teamSlice actions', () => {
         kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
         processes: [],
       },
+      teams: [
+        {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          memberCount: 1,
+        },
+      ],
       teamDataCacheByName: {
         'my-team': {
           teamName: 'my-team',
@@ -2990,7 +2997,55 @@ describe('teamSlice actions', () => {
     expect(hoisted.deleteTeam).toHaveBeenCalledWith('my-team');
     expect(store.getState().selectedTeamName).toBeNull();
     expect(store.getState().selectedTeamData).toBeNull();
+    expect(store.getState().teams.find((team) => team.teamName === 'my-team')).toBeUndefined();
     expect(store.getState().teamDataCacheByName['my-team']).toBeUndefined();
+  });
+
+  it('removes the team card immediately on hard delete before IPC resolves', async () => {
+    let resolveDelete: (() => void) | undefined;
+    hoisted.permanentlyDeleteTeam.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve;
+        })
+    );
+
+    const store = createSliceStore();
+    store.setState({
+      teams: [
+        {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          memberCount: 1,
+        },
+        {
+          teamName: 'other-team',
+          displayName: 'Other Team',
+          memberCount: 1,
+        },
+      ],
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          memberCount: 1,
+        },
+        'other-team': {
+          teamName: 'other-team',
+          displayName: 'Other Team',
+          memberCount: 1,
+        },
+      },
+    });
+
+    const deletePromise = store.getState().permanentlyDeleteTeam('my-team');
+
+    expect(store.getState().teams.map((team) => team.teamName)).toEqual(['other-team']);
+    expect(store.getState().teamByName['my-team']).toBeUndefined();
+    expect(hoisted.permanentlyDeleteTeam).toHaveBeenCalledWith('my-team');
+
+    resolveDelete?.();
+    await expect(deletePromise).resolves.toBeUndefined();
   });
 
   it('drops stale cache on restore so the next open refetches fresh data', async () => {

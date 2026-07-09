@@ -3352,8 +3352,8 @@ export default interface Resources {
         title: 'Context';
       };
       deleteTeam: {
-        description: 'Delete team "{{team}}"? This action is irreversible. All team data and tasks will be deleted.';
-        title: 'Delete team';
+        description: 'Delete team "{{team}}" permanently? All team data, tasks, and unfinished work will be removed. This cannot be undone.';
+        title: 'Delete team permanently';
       };
       draft: {
         descriptionPrefix: 'This is a draft team -';
@@ -3403,7 +3403,7 @@ export default interface Resources {
         memory: 'Memory';
       };
       tooltips: {
-        deleteTeam: 'Delete team';
+        deleteTeam: 'Delete team permanently';
         editTeam: 'Edit team';
         editUnavailableProvisioning: 'Edit team is unavailable while provisioning is still in progress';
         openTeamUsage: 'Open team usage';
@@ -3668,7 +3668,7 @@ export default interface Resources {
         createTeam: 'Create Team';
         deleteForever: 'Delete forever';
         deletePermanently: 'Delete permanently';
-        deleteTeam: 'Delete team';
+        deleteTeam: 'Delete team permanently';
         launchTeam: 'Launch team';
         launching: 'Launching...';
         relaunchTeam: 'Relaunch team';
@@ -3686,8 +3686,8 @@ export default interface Resources {
       };
       deleteForever: {
         cancelLabel: 'Cancel';
-        confirmLabel: 'Delete forever';
-        message: 'Delete team "{{teamName}}" permanently? All data will be lost.';
+        confirmLabel: 'Yes, delete forever';
+        message: 'Delete team "{{teamName}}" permanently? All team data, tasks, and unfinished work will be removed. This cannot be undone.';
         title: 'Delete permanently';
       };
       electronOnly: {

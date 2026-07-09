@@ -345,8 +345,8 @@
       "summary": "Atanan görev başlamadı"
     },
     "deleteTeam": {
-      "description": "\"{{team}}\" ekibi silinsin mi? Bu işlem geri alınamaz. Tüm ekip verileri ve görevler silinecek.",
-      "title": "Ekibi sil"
+      "description": "\"{{team}}\" ekibi kalıcı olarak silinsin mi? Tüm ekip verileri, görevler ve yarım kalan çalışmalar silinecek. Bu işlem geri alınamaz.",
+      "title": "Ekibi kalıcı sil"
     },
     "draft": {
       "descriptionPrefix": "Bu bir taslak ekip -",
@@ -400,7 +400,7 @@
       "memory": "Bellek"
     },
     "tooltips": {
-      "deleteTeam": "Ekibi sil",
+      "deleteTeam": "Ekibi kalıcı sil",
       "editTeam": "Ekibi düzenle",
       "editUnavailableProvisioning": "Sağlama hâlâ devam ederken ekibi düzenleme kullanılamaz",
       "stopTeam": "Ekibi durdur"
@@ -1279,7 +1279,7 @@
       "createTeam": "Ekip Oluştur",
       "deleteForever": "Kalıcı olarak sil",
       "deletePermanently": "Kalıcı olarak sil",
-      "deleteTeam": "Ekibi sil",
+      "deleteTeam": "Ekibi kalıcı sil",
       "launching": "Başlatılıyor...",
       "launchTeam": "Ekibi başlat",
       "relaunchTeam": "Ekibi yeniden başlat",
@@ -1366,8 +1366,8 @@
     },
     "deleteForever": {
       "title": "Kalıcı olarak sil",
-      "message": "\"{{teamName}}\" ekibi kalıcı olarak silinsin mi? Tüm veriler kaybolacak.",
-      "confirmLabel": "Kalıcı olarak sil",
+      "message": "\"{{teamName}}\" ekibi kalıcı olarak silinsin mi? Tüm ekip verileri, görevler ve yarım kalan çalışmalar silinecek. Bu işlem geri alınamaz.",
+      "confirmLabel": "Evet, kalıcı sil",
       "cancelLabel": "İptal"
     }
   },

@@ -177,14 +177,7 @@ interface TaskDetailDialogHostProps {
 
 const TaskDetailDialogHost = memo(
   forwardRef<TaskDetailDialogHostHandle, TaskDetailDialogHostProps>(function TaskDetailDialogHost(
-    {
-      teamName,
-      kanbanTaskStateByTaskId,
-      taskMap,
-      members,
-      onOwnerChange,
-      onDeleteTask,
-    },
+    { teamName, kanbanTaskStateByTaskId, taskMap, members, onOwnerChange, onDeleteTask },
     ref
   ) {
     const [selectedTask, setSelectedTask] = useState<TeamTaskWithKanban | null>(null);
@@ -1186,7 +1179,7 @@ export const TeamDetailView = memo(function TeamDetailView({
     requestReview,
     createTeamTask,
     startTaskByUser,
-    deleteTeam,
+    permanentlyDeleteTeam,
     openTeamsTab,
     closeTab,
     reviewActionError,
@@ -1230,7 +1223,7 @@ export const TeamDetailView = memo(function TeamDetailView({
       requestReview: s.requestReview,
       createTeamTask: s.createTeamTask,
       startTaskByUser: s.startTaskByUser,
-      deleteTeam: s.deleteTeam,
+      permanentlyDeleteTeam: s.permanentlyDeleteTeam,
       openTeamsTab: s.openTeamsTab,
       closeTab: s.closeTab,
       reviewActionError: s.reviewActionError,
@@ -1628,7 +1621,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     }).catch(() => undefined);
   }, [isThisTabActive, data, isTeamProvisioning, teamName, launchParams, launchTeam]);
 
-
   useEffect(() => {
     if (taskDetailDialogPreloadScheduledRef.current) {
       return;
@@ -1917,7 +1909,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     }
   }, [teamName, refreshTeamData]);
 
-
   const pendingTeamSectionFocus = useStore((s) => s.pendingTeamSectionFocus);
   const clearTeamSectionFocus = useStore((s) => s.clearTeamSectionFocus);
   useEffect(() => {
@@ -2167,14 +2158,14 @@ export const TeamDetailView = memo(function TeamDetailView({
     setDeleteConfirmOpen(false);
     void (async () => {
       try {
-        await deleteTeam(teamName);
+        await permanentlyDeleteTeam(teamName);
         if (tabId) closeTab(tabId);
         openTeamsTab();
       } catch {
         // error is shown via store
       }
     })();
-  }, [teamName, deleteTeam, openTeamsTab, closeTab, tabId]);
+  }, [teamName, permanentlyDeleteTeam, openTeamsTab, closeTab, tabId]);
 
   const handleCreateTask = (
     subject: string,
@@ -2522,9 +2513,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                           <Pencil size={12} />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {t('detail.tooltips.editTeam')}
-                      </TooltipContent>
+                      <TooltipContent side="bottom">{t('detail.tooltips.editTeam')}</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -3012,7 +3001,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                         {t('detail.actions.cancel')}
                       </Button>
                       <Button variant="destructive" size="sm" onClick={confirmDeleteTeam}>
-                        {t('detail.actions.delete')}
+                        {t('list.deleteForever.confirmLabel')}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -3092,7 +3081,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                   }}
                 />
               )}
-
             </div>
             <div
               ref={setMessagesPanelMountPoint}

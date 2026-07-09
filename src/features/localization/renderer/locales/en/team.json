@@ -345,8 +345,8 @@
       "summary": "Assigned task not started"
     },
     "deleteTeam": {
-      "description": "Delete team \"{{team}}\"? This action is irreversible. All team data and tasks will be deleted.",
-      "title": "Delete team"
+      "description": "Delete team \"{{team}}\" permanently? All team data, tasks, and unfinished work will be removed. This cannot be undone.",
+      "title": "Delete team permanently"
     },
     "draft": {
       "descriptionPrefix": "This is a draft team -",
@@ -400,7 +400,7 @@
       "memory": "Memory"
     },
     "tooltips": {
-      "deleteTeam": "Delete team",
+      "deleteTeam": "Delete team permanently",
       "editTeam": "Edit team",
       "editUnavailableProvisioning": "Edit team is unavailable while provisioning is still in progress",
       "openTeamUsage": "Open team usage",
@@ -1280,7 +1280,7 @@
       "createTeam": "Create Team",
       "deleteForever": "Delete forever",
       "deletePermanently": "Delete permanently",
-      "deleteTeam": "Delete team",
+      "deleteTeam": "Delete team permanently",
       "launching": "Launching...",
       "launchTeam": "Launch team",
       "relaunchTeam": "Relaunch team",
@@ -1367,8 +1367,8 @@
     },
     "deleteForever": {
       "title": "Delete permanently",
-      "message": "Delete team \"{{teamName}}\" permanently? All data will be lost.",
-      "confirmLabel": "Delete forever",
+      "message": "Delete team \"{{teamName}}\" permanently? All team data, tasks, and unfinished work will be removed. This cannot be undone.",
+      "confirmLabel": "Yes, delete forever",
       "cancelLabel": "Cancel"
     }
   },

@@ -3569,6 +3569,7 @@ describe('ipc teams handlers', () => {
 
       result = (await permanentlyDeleteHandler({} as never, 'my-team')) as { success: boolean };
       expect(result.success).toBe(true);
+      expect(provisioningService.stopTeam).toHaveBeenCalledWith('my-team');
       expect(service.permanentlyDeleteTeam).toHaveBeenCalledWith('my-team');
       expect(mockTeamDataWorkerClient.invalidateTeamConfig).toHaveBeenCalledWith('my-team');
     });
