@@ -51,6 +51,8 @@ interface TeamRosterEditorSectionProps {
   memberWarningById?: Record<string, string | null | undefined>;
   memberInfoById?: Record<string, string | null | undefined>;
   disableGeminiOption?: boolean;
+  providerDisabledReasonById?: Partial<Record<TeamProviderId, string | null | undefined>>;
+  providerDisabledBadgeLabelById?: Partial<Record<TeamProviderId, string | null | undefined>>;
   leadModelIssueText?: string | null;
   memberModelIssueById?: Record<string, string | null | undefined>;
   modelAdvisoryReasonByProvider?: Partial<
@@ -111,6 +113,8 @@ const TeamRosterEditorSectionImpl = ({
   memberWarningById,
   memberInfoById,
   disableGeminiOption = false,
+  providerDisabledReasonById,
+  providerDisabledBadgeLabelById,
   leadModelIssueText,
   memberModelIssueById,
   modelAdvisoryReasonByProvider,
@@ -181,6 +185,8 @@ const TeamRosterEditorSectionImpl = ({
       modelLockReason={modelLockReason}
       softDeleteMembers={softDeleteMembers}
       disableGeminiOption={disableGeminiOption}
+      providerDisabledReasonById={providerDisabledReasonById}
+      providerDisabledBadgeLabelById={providerDisabledBadgeLabelById}
       memberModelIssueById={memberModelIssueById}
       modelAdvisoryReasonByProvider={modelAdvisoryReasonByProvider}
       modelIssueReasonByProvider={modelIssueReasonByProvider}

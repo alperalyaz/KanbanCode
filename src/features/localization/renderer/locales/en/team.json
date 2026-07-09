@@ -926,6 +926,10 @@
       "pingNotConfirmed": "Ping not confirmed",
       "note": "Note"
     },
+    "openCodeLead": {
+      "teammateProviderDisabled": "OpenCode lead requires every teammate on OpenCode. Switch the lead to Anthropic or Codex to mix providers.",
+      "teammateProviderBadge": "OpenCode only"
+    },
     "placeholders": {
       "customModelId": "openai/gpt-oss-20b"
     },

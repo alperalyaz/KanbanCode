@@ -98,6 +98,8 @@ interface MemberDraftRowProps {
   warningText?: string | null;
   infoText?: string | null;
   disableGeminiOption?: boolean;
+  providerDisabledReasonById?: Partial<Record<TeamProviderId, string | null | undefined>>;
+  providerDisabledBadgeLabelById?: Partial<Record<TeamProviderId, string | null | undefined>>;
   modelIssueText?: string | null;
   modelAdvisoryReasonByProvider?: Partial<
     Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
@@ -161,6 +163,8 @@ export const MemberDraftRow = ({
   warningText,
   infoText,
   disableGeminiOption = false,
+  providerDisabledReasonById,
+  providerDisabledBadgeLabelById,
   modelIssueText,
   modelAdvisoryReasonByProvider,
   modelIssueReasonByProvider,
@@ -889,6 +893,8 @@ export const MemberDraftRow = ({
                 id={`member-${member.id}-model`}
                 disableGeminiOption={disableGeminiOption}
                 onOpenProviderSettings={onOpenProviderSettings}
+                providerDisabledReasonById={providerDisabledReasonById}
+                providerDisabledBadgeLabelById={providerDisabledBadgeLabelById}
                 modelAdvisoryReasonByValue={modelAdvisoryReasonByProvider?.[effectiveProviderId]}
                 modelIssueReasonByValue={{
                   ...(modelIssueReasonByProvider?.[effectiveProviderId] ?? {}),
