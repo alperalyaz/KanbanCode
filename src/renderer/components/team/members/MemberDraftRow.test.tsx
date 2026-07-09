@@ -440,7 +440,9 @@ describe('MemberDraftRow', () => {
 
     expect(host.textContent).toContain(issueText);
     expect(modelButton.getAttribute('aria-describedby')).toContain('member-member-1-model-issue');
-    expect(modelButton.parentElement?.getAttribute('title')).toBe(issueText);
+    // Issue/advisory copy is inline under the button; avoid duplicating it in the
+    // hover tooltip (which also sticks open via focus-within after expand).
+    expect(modelButton.parentElement?.getAttribute('title')).toBeNull();
 
     act(() => {
       modelButton.click();

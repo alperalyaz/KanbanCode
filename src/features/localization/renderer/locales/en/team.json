@@ -924,6 +924,7 @@
     },
     "advisory": {
       "pingNotConfirmed": "Ping not confirmed",
+      "compatibilityPending": "Compatible, deep verification pending",
       "note": "Note"
     },
     "placeholders": {
