@@ -59,13 +59,6 @@ import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import {
-  applyFirstRunCreateTeamDefaults,
-  isFirstRunExperienceActive,
-  markFirstRunComplete,
-  shouldDeferCreatePreflight,
-  shouldShowSimplifiedCreateDialog,
-} from '@renderer/services/firstRunExperience';
-import {
   applyStoredCreateTeamMemberRuntimePreferences,
   getStoredCreateTeamEffort,
   getStoredCreateTeamFastMode as getStoredTeamFastMode,
@@ -83,6 +76,13 @@ import {
   setStoredCreateTeamProvider,
   setStoredCreateTeamSkipPermissions,
 } from '@renderer/services/createTeamPreferences';
+import {
+  applyFirstRunCreateTeamDefaults,
+  getFirstRunConnectPath,
+  markFirstRunComplete,
+  shouldDeferCreatePreflight,
+  shouldShowSimplifiedCreateDialog,
+} from '@renderer/services/firstRunExperience';
 import { useStore } from '@renderer/store';
 import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import { isGeminiUiFrozen } from '@renderer/utils/geminiUiFreeze';
@@ -762,11 +762,17 @@ export const CreateTeamDialog = ({
     return 3;
   }, [effectiveCwd, launchTeam, teamName]);
   const openCodeProviderStatus = runtimeProviderStatusById.get('opencode');
+  const firstRunConnectPath = firstRunMode ? getFirstRunConnectPath() : null;
   const showFirstRunOpenCodeSetupHint =
     firstRunMode &&
     selectedProviderId === 'opencode' &&
-    !runtimeProviderLoadingById.get('opencode') &&
-    !openCodeProviderStatus?.models?.length;
+    (firstRunConnectPath === 'free' ||
+      (!runtimeProviderLoadingById.get('opencode') && !openCodeProviderStatus?.models?.length));
+  const showFirstRunConnectHint =
+    firstRunMode &&
+    (firstRunConnectPath === 'connect' ||
+      selectedProviderId === 'anthropic' ||
+      selectedProviderId === 'codex');
   const selectedProviderBackendId = useMemo(
     () =>
       resolveUiOwnedProviderBackendId(
@@ -1782,8 +1788,7 @@ export const CreateTeamDialog = ({
   // Once we hit Create, our own team gets registered under this name and would
   // then match existingTeamNames — that is us, not a conflict. Suppress the
   // "name already exists" warning while this dialog is submitting.
-  const isNameTakenByExistingTeam =
-    !isSubmitting && existingTeamNames.includes(sanitizedTeamName);
+  const isNameTakenByExistingTeam = !isSubmitting && existingTeamNames.includes(sanitizedTeamName);
   // While this dialog is itself submitting, the name it just launched shows up in
   // provisioningTeamNames — that is our own team, not a conflict, so don't warn on it.
   const isNameProvisioning =
@@ -2379,6 +2384,15 @@ export const CreateTeamDialog = ({
         {showFirstRunOpenCodeSetupHint ? (
           <div className="shrink-0 rounded-md border border-sky-500/25 bg-sky-500/5 px-3 py-2 text-xs text-sky-800 dark:text-sky-200">
             {t('create.firstRun.openCodeSetupHint')}
+          </div>
+        ) : null}
+
+        {showFirstRunConnectHint ? (
+          <div
+            className="shrink-0 rounded-md border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-900 dark:text-amber-100"
+            data-testid="create-team-first-run-connect-hint"
+          >
+            {t('create.firstRun.connectHint')}
           </div>
         ) : null}
 

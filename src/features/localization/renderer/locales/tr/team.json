@@ -146,7 +146,8 @@
       "description": "Ücretsiz big-pickle modeliyle tek kişilik bir OpenCode ekibiyle başlayın.",
       "launchDescription": "Kanban panosunda hemen çalışmaya başlamak için oluşturduktan sonra başlatın.",
       "showAdvanced": "Gelişmiş seçenekleri göster",
-      "openCodeSetupHint": "OpenCode ilk açılışta çalışma zamanı ve model kataloğu yüklenirken bir dakikaya kadar sürebilir."
+      "openCodeSetupHint": "Big Pickle başlatmaya hazır. Tam OpenCode model kataloğu arka planda bir dakikaya kadar yüklenmeye devam edebilir.",
+      "connectHint": "Bu iletişim kutusundan çıkmadan giriş yapmak veya API anahtarı yapıştırmak için aşağıdan Anthropic veya Codex'e geçin."
     },
     "optional": {
       "launchSettingsTitle": "İsteğe bağlı başlatma ayarları",
@@ -823,6 +824,14 @@
     },
     "reason": "Neden: {{reason}}",
     "runtimeModelsSyncing": "Açık modeller geçerli çalışma zamanından yüklenir. Liste senkronize olurken Varsayılan kullanılabilir kalır.",
+    "openCodeCatalogHydrating": "Big Pickle şu an seçilebilir. Katalog yüklenirken diğer OpenCode modelleri de görünecek.",
+    "inlineApiKey": {
+      "title": "Veya API anahtarıyla bağlanın",
+      "hint": "Ekip kurulumundan çıkmadan API faturalandırması için buraya bir anahtar yapıştırın. Yukarıdaki giriş abonelik kimlik doğrulaması için hâlâ çalışır.",
+      "add": "API anahtarı ekle",
+      "update": "API anahtarını güncelle",
+      "openFullSettings": "Tam sağlayıcı ayarlarını aç"
+    },
     "fastMode": {
       "codexLabel": "Hızlı mod (2x kredi)",
       "optionalLabel": "Hızlı mod (isteğe bağlı)",

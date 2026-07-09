@@ -42,6 +42,7 @@ export const ApiKeysPanel = ({
     fetchStorageStatus,
     cliStatus,
     cliStatusLoading,
+    openDashboard,
   } = useStore(
     useShallow((s) => ({
       apiKeys: s.apiKeys,
@@ -52,6 +53,7 @@ export const ApiKeysPanel = ({
       fetchStorageStatus: s.fetchApiKeyStorageStatus,
       cliStatus: s.cliStatus,
       cliStatusLoading: s.cliStatusLoading,
+      openDashboard: s.openDashboard,
     }))
   );
   const loadingCliStatus = useMemo(
@@ -208,6 +210,22 @@ export const ApiKeysPanel = ({
           <Plus className="size-3.5" />
           {t('apiKeys.actions.add')}
         </Button>
+      </div>
+
+      <div
+        className="rounded-md border border-sky-500/25 bg-sky-500/5 px-3 py-2 text-xs text-sky-900 dark:text-sky-100"
+        data-testid="api-keys-provider-settings-hint"
+      >
+        <p>{t('apiKeys.providerSettingsHint')}</p>
+        <button
+          type="button"
+          className="mt-1.5 font-medium underline decoration-dotted underline-offset-2 hover:opacity-90"
+          onClick={() => {
+            openDashboard();
+          }}
+        >
+          {t('apiKeys.openProviderSettings')}
+        </button>
       </div>
 
       {/* Error */}

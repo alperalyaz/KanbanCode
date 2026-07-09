@@ -165,7 +165,16 @@ const TEAM_PROVIDER_MODEL_OPTIONS: Record<SupportedProviderId, readonly TeamProv
         badgeLabel: '2.5-flash-lite',
       },
     ],
-    opencode: [{ value: '', label: 'Default', badgeLabel: 'Default' }],
+    opencode: [
+      { value: '', label: 'Default', badgeLabel: 'Default' },
+      // Optimistic first-run / catalog-pending floor: free built-in model that
+      // does not require provider auth. Runtime catalog still wins when loaded.
+      {
+        value: 'opencode/big-pickle',
+        label: 'Big Pickle',
+        badgeLabel: 'Free',
+      },
+    ],
   };
 
 const TEAM_PROVIDER_MODEL_ORDER: Record<SupportedProviderId, Map<string, number>> = {

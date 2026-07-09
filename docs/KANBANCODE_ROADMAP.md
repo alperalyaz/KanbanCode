@@ -37,6 +37,17 @@ Core to keep: team creation + agent process management + kanban board + messagin
 
 ## Status log
 
+- **2026-07-09 (cloud session)** — **Connect & Go first-run + inline API keys.**
+  (1) Optimistic OpenCode: curated `opencode/big-pickle` floor is selectable before the
+  full model catalog hydrates; checklist treats runtime-ready as model-ready.
+  (2) Dashboard first-run checklist becomes Connect & Go with two paths: Start free vs
+  Connect Claude/Codex. (3) Create-team model selector shows inline API key entry for
+  Anthropic/Codex when unauthenticated (same ApiKeyService + providerConnections auth
+  mode). (4) Provider hydration prioritizes OpenCode first, then remaining providers in
+  parallel with runtime install status. (5) Extension Store API Keys panel deep-links
+  users to Dashboard Manage Providers. Verified: targeted vitest 52 pass; lint:fast
+  clean of new errors; typecheck only pre-existing unrelated test typing issue.
+
 - **2026-07-04 (cloud session)** — **Create-team UX simplification + modal Escape fix (owner requests).**
   (1) Removed the "solo team" ("Tekli ekip") concept entirely. The runtime already
   treats an empty members array as solo (`isSolo = members.length === 0` in

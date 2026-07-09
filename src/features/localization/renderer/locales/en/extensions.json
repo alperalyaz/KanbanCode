@@ -582,6 +582,8 @@
   },
   "apiKeys": {
     "description": "Securely store API keys for auto-filling when installing MCP servers.",
+    "providerSettingsHint": "For Claude and Codex team launches, prefer Manage Providers on the Dashboard — it sets auth mode and injects keys into agent processes.",
+    "openProviderSettings": "Open Manage Providers",
     "storage": {
       "osKeychain": "Keys are encrypted via {{backend}} and stored with restricted file permissions (owner-only).",
       "localEncryption": "OS keychain unavailable - keys are encrypted locally with AES-256. For stronger protection, install a keyring service (gnome-keyring, kwallet)."

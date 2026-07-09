@@ -22,6 +22,7 @@ import {
   GEMINI_UI_DISABLED_REASON,
   isGeminiUiFrozen,
 } from '@renderer/utils/geminiUiFreeze';
+import { requestProviderRuntimeChecks } from '@renderer/utils/requestProviderRuntimeChecks';
 import {
   canUseCustomAnthropicCompatibleModel,
   getAvailableTeamProviderModelOptions,
@@ -64,6 +65,8 @@ import {
   Search,
   Star,
 } from 'lucide-react';
+
+import { InlineProviderApiKeyPanel } from './InlineProviderApiKeyPanel';
 
 import type { CodexRuntimeStatus } from '@features/codex-runtime-installer/contracts';
 import type { CliProviderStatus, OpenCodeRuntimeStatus, TeamProviderId } from '@shared/types';
@@ -1022,10 +1025,19 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
 
     return statusBadge;
   };
+  // Anthropic and OpenCode keep selectable floors while runtime catalogs hydrate.
+  // Codex/Gemini still wait so we do not advertise models the native runtime
+  // has not confirmed yet.
   const shouldAwaitRuntimeModelList =
     effectiveProviderId !== 'anthropic' &&
+    effectiveProviderId !== 'opencode' &&
     (runtimeProviderStatus == null ||
       isTeamProviderModelVerificationPending(effectiveProviderId, runtimeProviderStatus));
+  const openCodeCatalogPending =
+    effectiveProviderId === 'opencode' &&
+    (runtimeProviderStatus == null ||
+      isTeamProviderModelVerificationPending('opencode', runtimeProviderStatus) ||
+      isOpenCodeCatalogHydrating(runtimeProviderStatus));
   const normalizedValue = normalizeTeamModelForUi(
     effectiveProviderId,
     value,
@@ -1975,7 +1987,10 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                             onClick={() => {
                               if (!runtimeProviderStatus) return;
                               setShowLoginFallbackCommand(false);
-                              void loginLauncher.launchLogin(runtimeProviderStatus, loginBinaryPath);
+                              void loginLauncher.launchLogin(
+                                runtimeProviderStatus,
+                                loginBinaryPath
+                              );
                             }}
                             className="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-300/45 bg-amber-300/15 px-2.5 text-[11px] font-medium text-amber-100 transition-colors hover:border-amber-200/60 hover:bg-amber-300/25 disabled:cursor-not-allowed disabled:opacity-60"
                           >
@@ -2020,7 +2035,23 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                               {t('modelSelector.providerAuthStatus.copyFallback')}
                             </button>
                           ) : null}
+                          <InlineProviderApiKeyPanel
+                            providerId={effectiveProviderId}
+                            onOpenFullSettings={onOpenProviderSettings}
+                            onSaved={() => {
+                              void requestProviderRuntimeChecks({ force: true });
+                            }}
+                          />
                         </div>
+                      ) : null}
+                      {isConnectedButUnauthenticatedProvider && !loginBinaryPath ? (
+                        <InlineProviderApiKeyPanel
+                          providerId={effectiveProviderId}
+                          onOpenFullSettings={onOpenProviderSettings}
+                          onSaved={() => {
+                            void requestProviderRuntimeChecks({ force: true });
+                          }}
+                        />
                       ) : null}
                       {activeProviderStatusPanel.actionLabel ? (
                         <button
@@ -2082,10 +2113,12 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                   onClose={() => setShowLoginFallbackCommand(false)}
                 />
               ) : null}
-              {shouldAwaitRuntimeModelList ? (
+              {shouldAwaitRuntimeModelList || openCodeCatalogPending ? (
                 <div className="mb-2 space-y-1.5">
                   <p className="text-[11px] text-[var(--color-text-muted)]">
-                    {t('modelSelector.runtimeModelsSyncing')}
+                    {openCodeCatalogPending
+                      ? t('modelSelector.openCodeCatalogHydrating')
+                      : t('modelSelector.runtimeModelsSyncing')}
                   </p>
                   <ProviderActivityStatusStrip
                     cliStatus={effectiveCliStatus}

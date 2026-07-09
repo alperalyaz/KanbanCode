@@ -245,6 +245,13 @@ function getFallbackTeamProviderModelOptions(
   }));
 }
 
+/** Curated floors only — used when no runtime status exists yet (first-run). */
+function getCuratedTeamProviderModelOptions(
+  providerId: SupportedProviderId
+): TeamRuntimeModelOption[] {
+  return getTeamProviderModelOptions(providerId).map((option) => ({ ...option }));
+}
+
 function hasAnthropicRuntimeCatalog(
   providerStatus?: TeamModelRuntimeProviderStatus | null
 ): boolean {
@@ -713,6 +720,11 @@ export function getAvailableTeamProviderModelOptions(
   }
 
   if (!providerStatus) {
+    // OpenCode keeps a free built-in floor (big-pickle) so first-run / cold
+    // catalog hydration does not strand the model picker on "Default" only.
+    if (providerId === 'opencode') {
+      return getCuratedTeamProviderModelOptions(providerId);
+    }
     return [{ value: '', label: 'Default', badgeLabel: 'Default' }];
   }
 

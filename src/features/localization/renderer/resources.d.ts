@@ -1021,17 +1021,28 @@ export default interface Resources {
       };
     };
     firstRun: {
-      description: 'We will check the free OpenCode runtime, load the default model, and open a simplified team setup flow.';
-      quickStart: 'Quick Start';
+      description: 'Start free with OpenCode Big Pickle, or connect Claude/Codex with a login or API key — then create your first team.';
+      paths: {
+        connect: {
+          description: 'Add an API key or log in while creating your team.';
+          title: 'Connect Claude or Codex';
+        };
+        free: {
+          description: 'Use OpenCode Big Pickle now. No API key or login required.';
+          title: 'Start free';
+        };
+      };
+      quickStart: 'Create team';
       steps: {
         model: 'Default model';
-        modelDetail: 'Load opencode/big-pickle for a free solo session.';
+        modelDetail: 'Big Pickle is ready as soon as OpenCode is installed — full catalog loads in the background.';
+        modelReadyDetail: 'Big Pickle is ready. Full model catalog still loading in the background.';
         runtime: 'OpenCode runtime';
         runtimeDetail: 'Install or verify the local OpenCode CLI.';
         team: 'Create your team';
         teamDetail: 'Pick a project folder and launch your first board.';
       };
-      title: 'Quick start with OpenCode';
+      title: 'Connect & go';
     };
     hero: {
       createTeamDescription: 'Create your first agent team and start working on the kanban board.';
@@ -1144,6 +1155,8 @@ export default interface Resources {
         value: 'Value';
         valuePlaceholder: 'sk-...';
       };
+      openProviderSettings: 'Open Manage Providers';
+      providerSettingsHint: 'For Claude and Codex team launches, prefer Manage Providers on the Dashboard — it sets auth mode and injects keys into agent processes.';
       storage: {
         localEncryption: 'OS keychain unavailable - keys are encrypted locally with AES-256. For stronger protection, install a keyring service (gnome-keyring, kwallet).';
         osKeychain: 'Keys are encrypted via {{backend}} and stored with restricted file permissions (owner-only).';
@@ -3222,10 +3235,11 @@ export default interface Resources {
         teamName: 'Team name';
       };
       firstRun: {
+        connectHint: 'Switch to Anthropic or Codex below to log in or paste an API key without leaving this dialog.';
         description: 'Start with a solo OpenCode team on the free big-pickle model.';
         intro: 'Three quick steps to your first team';
         launchDescription: 'Launch immediately after create so you can start on the kanban board.';
-        openCodeSetupHint: 'OpenCode may take up to a minute on first launch while the runtime and model catalog load.';
+        openCodeSetupHint: 'Big Pickle is ready to launch. The full OpenCode model catalog may keep loading in the background for up to a minute.';
         showAdvanced: 'Show advanced options';
         steps: {
           model: 'Confirm the model';
@@ -3268,7 +3282,7 @@ export default interface Resources {
         checkingProviders: 'Checking selected providers...';
         failed: 'Failed to prepare selected providers';
         preparingEnvironment: 'Preparing environment...';
-        providerStatusLoading: '{{provider}} provider status is still loading. Model checks will start automatically.';
+        providerStatusLoading: "{{provider}} is getting ready — loading its model catalog. The first time can take a few minutes on a slow connection; it's working, not frozen. You can also skip the pre-check and create now.";
         ready: 'All selected providers are ready.';
         readyStatus: 'Ready';
         readyWithNotes: 'All selected providers are ready, with notes.';
@@ -3318,10 +3332,10 @@ export default interface Resources {
         usage: 'Usage';
       };
       addMember: {
+        addMany: 'Add {{count}} members';
+        addOne: 'Add member';
         failed: 'Could not add the member. Please try again.';
         liveRosterUnsupported: "You can't add or remove members while an OpenCode-led team is running. Stop the team, edit the roster, then relaunch.";
-        addOne: 'Add member';
-        addMany: 'Add {{count}} members';
         runningNotice: "This team is running with an OpenCode lead, so members can't be added while it's live. Stop the team first to edit the roster, then relaunch.";
         stopAndEdit: 'Stop team';
       };
@@ -4083,11 +4097,11 @@ export default interface Resources {
     };
     messages: {
       actionMode: {
-        label: 'Action mode';
         ask: 'Ask';
-        delegate: 'Delegate';
         askTooltip: 'Read-only discussion — no code/state changes or commands';
+        delegate: 'Delegate';
         delegateTooltip: 'Delegate to the team — the lead orchestrates and still handles trivial tasks itself';
+        label: 'Action mode';
       };
       actions: {
         bottomSheetActions: 'Message bottom sheet actions';
@@ -4220,6 +4234,13 @@ export default interface Resources {
         optionalLabel: 'Fast mode (optional)';
         runtimeBackedHint: 'Fast mode is runtime-backed and only unlocks when the resolved Anthropic launch model supports it.';
       };
+      inlineApiKey: {
+        add: 'Add API key';
+        hint: 'Paste a key here to use API billing without leaving team setup. Login above still works for subscription auth.';
+        openFullSettings: 'Open full provider settings';
+        title: 'Or connect with an API key';
+        update: 'Update API key';
+      };
       label: 'Model (optional)';
       multimodelOff: 'Multimodel off';
       multimodelRequired: 'Codex and Gemini require Multimodel mode.';
@@ -4239,6 +4260,7 @@ export default interface Resources {
         sourcesCount_one: '{{count}} OpenCode sources';
         sourcesCount_other: '{{count}} OpenCode sources';
       };
+      openCodeCatalogHydrating: 'Big Pickle is selectable now. More OpenCode models appear as the catalog finishes loading.';
       openCodeStatus: {
         badges: {
           check: 'Check';

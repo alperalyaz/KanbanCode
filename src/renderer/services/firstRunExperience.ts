@@ -61,6 +61,41 @@ export function shouldShowSimplifiedCreateDialog(hasCopySource: boolean): boolea
   return isFirstRunExperienceActive() && !hasCopySource;
 }
 
+/**
+ * Free OpenCode default is launchable as soon as the runtime is present.
+ * Do not block first-run on full model-catalog hydration (30–90s cold start).
+ */
+export function isFirstRunFreeModelReady(options: {
+  runtimeReady: boolean;
+  modelListedInCatalog: boolean;
+}): boolean {
+  return options.runtimeReady || options.modelListedInCatalog;
+}
+
+export type FirstRunConnectPath = 'free' | 'connect';
+
+const FIRST_RUN_CONNECT_PATH_KEY = 'kanbancode:firstRunConnectPath';
+
+export function getFirstRunConnectPath(): FirstRunConnectPath | null {
+  try {
+    const value = globalThis.localStorage?.getItem(FIRST_RUN_CONNECT_PATH_KEY);
+    if (value === 'free' || value === 'connect') {
+      return value;
+    }
+  } catch {
+    // Ignore storage failures.
+  }
+  return null;
+}
+
+export function setFirstRunConnectPath(path: FirstRunConnectPath): void {
+  try {
+    globalThis.localStorage?.setItem(FIRST_RUN_CONNECT_PATH_KEY, path);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 export function applyFirstRunCreateTeamDefaults(): void {
   if (readFlag(FIRST_RUN_DEFAULTS_APPLIED_KEY)) {
     return;

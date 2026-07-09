@@ -202,14 +202,25 @@
     "searchDescription": "Filter recent projects or open the command palette with ⌘K."
   },
   "firstRun": {
-    "title": "Quick start with OpenCode",
-    "description": "We will check the free OpenCode runtime, load the default model, and open a simplified team setup flow.",
-    "quickStart": "Quick Start",
+    "title": "Connect & go",
+    "description": "Start free with OpenCode Big Pickle, or connect Claude/Codex with a login or API key — then create your first team.",
+    "quickStart": "Create team",
+    "paths": {
+      "free": {
+        "title": "Start free",
+        "description": "Use OpenCode Big Pickle now. No API key or login required."
+      },
+      "connect": {
+        "title": "Connect Claude or Codex",
+        "description": "Add an API key or log in while creating your team."
+      }
+    },
     "steps": {
       "runtime": "OpenCode runtime",
       "runtimeDetail": "Install or verify the local OpenCode CLI.",
       "model": "Default model",
-      "modelDetail": "Load opencode/big-pickle for a free solo session.",
+      "modelDetail": "Big Pickle is ready as soon as OpenCode is installed — full catalog loads in the background.",
+      "modelReadyDetail": "Big Pickle is ready. Full model catalog still loading in the background.",
       "team": "Create your team",
       "teamDetail": "Pick a project folder and launch your first board."
     }

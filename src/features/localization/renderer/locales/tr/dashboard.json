@@ -202,14 +202,25 @@
     "searchDescription": "Son projeleri filtreleyin veya ⌘K ile komut paletini açın."
   },
   "firstRun": {
-    "title": "OpenCode ile hızlı başlangıç",
-    "description": "Ücretsiz OpenCode çalışma zamanını kontrol eder, varsayılan modeli yükler ve basitleştirilmiş ekip kurulumunu açarız.",
-    "quickStart": "Hızlı Başlangıç",
+    "title": "Bağlan ve başla",
+    "description": "Ücretsiz OpenCode Big Pickle ile başlayın veya Claude/Codex için giriş ya da API anahtarı bağlayın — sonra ilk ekibinizi oluşturun.",
+    "quickStart": "Ekip oluştur",
+    "paths": {
+      "free": {
+        "title": "Ücretsiz başla",
+        "description": "OpenCode Big Pickle'ı hemen kullanın. API anahtarı veya giriş gerekmez."
+      },
+      "connect": {
+        "title": "Claude veya Codex bağla",
+        "description": "Ekip oluştururken API anahtarı ekleyin veya giriş yapın."
+      }
+    },
     "steps": {
       "runtime": "OpenCode çalışma zamanı",
       "runtimeDetail": "Yerel OpenCode CLI'yi kurun veya doğrulayın.",
       "model": "Varsayılan model",
-      "modelDetail": "Ücretsiz solo oturum için opencode/big-pickle yüklenir.",
+      "modelDetail": "OpenCode kurulur kurulmaz Big Pickle hazırdır — tam katalog arka planda yüklenir.",
+      "modelReadyDetail": "Big Pickle hazır. Tam model kataloğu arka planda yüklenmeye devam ediyor.",
       "team": "Ekibinizi oluşturun",
       "teamDetail": "Bir proje klasörü seçin ve ilk panonuzu başlatın."
     }
