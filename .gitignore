@@ -72,7 +72,6 @@ remotion/*
 # Local reference captures
 /agent-teams-reference-fix-*.png
 /.tmp-*
-build/appx/
 
 # Large media / binaries — keep them OUT of git history (host on a CDN, GitHub
 # Releases, or the landing site instead). These bloated .git to 270MB+ before.
