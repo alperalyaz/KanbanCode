@@ -74,6 +74,10 @@
       "user": "kullanıcı",
       "awaitingApproval": "onay bekleniyor"
     },
+    "liveStatus": {
+      "working": "çalışıyor…",
+      "title": "Canlı durum"
+    },
     "reply": {
       "replyingTo": "Şuna yanıt veriliyor:",
       "action": "Yanıtla"
@@ -783,9 +787,9 @@
     "actionMode": {
       "label": "Eylem modu",
       "ask": "Sor",
-      "delegate": "Devret",
-      "askTooltip": "Salt-okunur tartışma — kod/durum değişikliği veya komut yok",
-      "delegateTooltip": "Takıma devret — lider yönetir, ufak işleri yine kendisi halleder"
+      "delegate": "Görevlendir",
+      "askTooltip": "Salt-okunur tartışma — görev oluşturma, kod/durum değişikliği veya komut yok",
+      "delegateTooltip": "Takıma görevlendir — lider işi böler, kanban görevleri oluşturur ve takım arkadaşlarına atar. Küçük tek adımlı işleri kendisi yapabilir"
     },
     "search": {
       "placeholder": "Ara..."
@@ -1415,6 +1419,9 @@
       "teamFallback": "ekip",
       "placeholder": "Bir mesaj yazın... (göndermek için Enter, yeni satır için Shift+Enter)",
       "slashTip": "İpucu: Herhangi bir Claude komutunu çalıştırmak için \"/\" kullanabilirsiniz.",
+      "tipMentions": "İpucu: Üyeler/dosyalar için @, görevler için # kullanın",
+      "tipCreateTask": "İpucu: Kanban'a eklemek için \"görev oluştur\" yazın",
+      "tipDelegate": "İpucu: Ekip işi için Görevlendir modunu seçin — lider görevleri oluşturur ve takım arkadaşlarına atar",
       "charsLeft_few": "{{count}} karakter kaldı",
       "charsLeft_many": "{{count}} karakter kaldı"
     },

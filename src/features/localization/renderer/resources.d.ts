@@ -2993,6 +2993,10 @@ export default interface Resources {
         title: 'Awaiting replies';
         user: 'user';
       };
+      liveStatus: {
+        title: 'Live status';
+        working: 'working…';
+      };
       rawJson: 'Raw JSON';
       reply: {
         action: 'Reply';
@@ -4065,6 +4069,9 @@ export default interface Resources {
         crossTeamPlaceholder: 'Cross-team message to {{team}}...';
         placeholder: 'Write a message... (Enter to send, Shift+Enter for new line)';
         slashTip: 'Tip: You can use "/" to run any Claude commands.';
+        tipMentions: 'Tip: Use @ for members/files and # for tasks';
+        tipCreateTask: 'Tip: Mention "create a task" to add it to the kanban';
+        tipDelegate: 'Tip: For team work, select Delegate — the lead creates kanban tasks and assigns teammates';
         teamFallback: 'team';
         teamLaunchingPlaceholder: 'Team is launching... message will be queued for inbox delivery.';
       };
@@ -4102,9 +4109,9 @@ export default interface Resources {
     messages: {
       actionMode: {
         ask: 'Ask';
-        askTooltip: 'Read-only discussion — no code/state changes or commands';
+        askTooltip: 'Read-only discussion — no task creation, code/state changes, or commands';
         delegate: 'Delegate';
-        delegateTooltip: 'Delegate to the team — the lead orchestrates and still handles trivial tasks itself';
+        delegateTooltip: 'Assign to the team — the lead breaks work into kanban tasks and assigns teammates. Still handles trivial one-step tasks itself';
         label: 'Action mode';
       };
       actions: {

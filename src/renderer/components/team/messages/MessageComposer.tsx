@@ -926,7 +926,7 @@ export const MessageComposer = ({
                   : 'rounded-full'
               )}
             >
-<span className="inline-flex min-w-0 items-center gap-1.5 px-2.5 py-1 text-xs">
+              <span className="inline-flex min-w-0 items-center gap-1.5 px-2.5 py-1 text-xs">
                 {recipient ? (
                   <MemberBadge
                     name={recipient}
@@ -998,7 +998,12 @@ export const MessageComposer = ({
           onModEnter={handleSend}
           onShiftTab={handleCycleActionMode}
           dismissMentionsRef={dismissMentionsRef}
-          extraTips={[t('messageComposer.input.slashTip')]}
+          extraTips={[
+            t('messageComposer.input.tipMentions'),
+            t('messageComposer.input.tipCreateTask'),
+            t('messageComposer.input.tipDelegate'),
+            t('messageComposer.input.slashTip'),
+          ]}
           surfaceClassName="message-composer-shell message-composer-orbit-surface border border-transparent bg-[var(--color-surface-raised)] shadow-[0_8px_24px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.03)]"
           surfaceDecoration={composerIsIdle ? 'orbit-border' : 'none'}
           surfaceFadeColor="var(--color-surface-raised)"
