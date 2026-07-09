@@ -112,7 +112,7 @@
       "loadProjectsFailed": "Projeler yüklenemedi"
     },
     "fields": {
-      "color": "Renk (isteğe bağlı)",
+      "color": "İnsan kullanıcı rengi (isteğe bağlı)",
       "description": "Açıklama (isteğe bağlı)",
       "prompt": "Ekip lideri için komut istemi (isteğe bağlı)",
       "teamName": "Ekip adı"
@@ -215,7 +215,7 @@
       "save": "Kaydet"
     },
     "addMemberLockReason": "Ekip canlıyken yeni takım arkadaşları eklemek için özel Üye ekle iletişim kutusunu kullanın.",
-    "description": "Ekip adını, açıklamasını ve rengini değiştir",
+    "description": "Ekip adını, açıklamasını ve insan kullanıcı rengini değiştir",
     "errors": {
       "changesSavedRefreshFailed": "Ekip değişiklikleri kaydedildi, ancak en son görünüm yenilenemedi: {{message}}",
       "liveRenameBlocked": "Mevcut takım arkadaşları ekip canlıyken yeniden adlandırılamaz. yeniden adlandırılan: {{names}}",
@@ -237,7 +237,8 @@
       "unsupportedMixedPrimaryMutation": "Karışık OpenCode ekiplerinde birincil sahipli takım arkadaşlarında canlı düzenlemeler henüz desteklenmiyor. Ekibi durdurun, kadroyu düzenleyin, ardından yeniden başlatın. Etkilenenler: {{names}}"
     },
     "fields": {
-      "colorOptional": "Renk (isteğe bağlı)",
+      "colorOptional": "İnsan kullanıcı rengi (isteğe bağlı)",
+      "colorHint": "Başlık vurgusu ve senin mesajların için. Ajan noktalarını değiştirmez.",
       "description": "Açıklama",
       "name": "Ad"
     },

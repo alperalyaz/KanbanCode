@@ -42,4 +42,15 @@ describe('buildTeamMemberColorMap', () => {
     );
     expect(resolveTeamLeadColorName()).not.toBe(getMemberColorByName('lead'));
   });
+
+  it('maps the human user to the reserved gray color by default', () => {
+    const colorMap = buildTeamMemberColorMap([{ name: 'alice' }]);
+    expect(colorMap.get('user')).toBe('user');
+  });
+
+  it('maps the human user to the team config color when provided', () => {
+    const colorMap = buildTeamMemberColorMap([{ name: 'alice' }], { userColor: 'blue' });
+    expect(colorMap.get('user')).toBe('blue');
+    expect(colorMap.get('alice')).toBe('blue');
+  });
 });

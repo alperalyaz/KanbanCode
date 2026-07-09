@@ -1708,10 +1708,16 @@ interface MemberAvatarInput {
  * Active members receive colors sequentially from MEMBER_COLOR_PALETTE,
  * which is pre-ordered for maximum visual contrast between consecutive entries.
  * If a member has a stored color that hasn't been assigned yet, it is used instead.
- * Maps "user" to a reserved color.
+ * Maps "user" to the team's chosen color when provided, otherwise the reserved gray.
  */
-export function buildMemberColorMap(members: MemberColorInput[]): Map<string, string> {
-  return buildTeamMemberColorMap(members, { preferProvidedColors: true });
+export function buildMemberColorMap(
+  members: MemberColorInput[],
+  userColor?: string
+): Map<string, string> {
+  return buildTeamMemberColorMap(members, {
+    preferProvidedColors: true,
+    userColor,
+  });
 }
 
 export function buildMemberAvatarMap(members: readonly MemberAvatarInput[]): Map<string, string> {
