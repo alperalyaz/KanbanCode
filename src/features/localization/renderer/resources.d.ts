@@ -4955,6 +4955,44 @@ export default interface Resources {
       };
       title: 'Running Teams';
     };
+    runtimeCompatibility: {
+      details: {
+        codexNative: 'Codex native teammates must run through separate Codex processes.';
+        codexNativeNamed: 'Codex native teammates: {{names}} must run through separate Codex processes.';
+        explicitInProcess: 'Custom CLI args force --teammate-mode in-process.';
+        explicitTmux: 'Custom CLI args force --teammate-mode tmux.';
+        fixInProcess: 'Fix: remove --teammate-mode in-process so teammates can use native process transport.';
+        fixOpenCodeLead: 'Fix: keep the team lead on Anthropic or Codex when mixing OpenCode with other providers.';
+        fixTmux: 'Fix: install tmux/WSL tmux, or remove --teammate-mode tmux so the app can use native process transport.';
+        mixedProviders: 'Mixed providers require teammate processes.';
+        mixedProvidersNamed: 'Mixed providers: {{names}} use a different provider than the {{lead}} lead.';
+        openCodeLedMixed: 'Mixed teams cannot use OpenCode as the lead in this phase.';
+        openCodeLedMixedNamed: 'OpenCode-led mixed team: {{names}} use a non-OpenCode provider.';
+      };
+      member: {
+        codexNative: '{{name}} uses Codex native. Codex native teammates require a separate Codex process.';
+        mixedProvider: '{{name}} uses {{provider}}. This teammate needs a separate process outside the {{lead}} lead.';
+        openCodeLedMixed: '{{name}} uses {{provider}}. While the lead is OpenCode, mixed providers are not supported yet — switch the lead to Anthropic or Codex, or keep every teammate on OpenCode.';
+      };
+      message: {
+        checkingTmux: 'Custom CLI args request tmux teammates. The app is checking whether tmux is available.';
+        inProcessBlocked: 'Some teammates require separate processes. Remove --teammate-mode in-process so the app can use native process transport.';
+        openCodeLedMixed: 'Right now the team lead must stay on Anthropic or Codex when teammates use different providers. OpenCode can still join as a teammate under those leads.';
+        tmuxNotReady: 'Custom CLI args force --teammate-mode tmux, but tmux is not ready. Remove that arg to use native process transport on Windows, or install tmux/WSL tmux.';
+      };
+      providers: {
+        anthropic: 'Anthropic';
+        codex: 'Codex';
+        gemini: 'Gemini';
+        opencode: 'OpenCode';
+      };
+      title: {
+        checkingTmux: 'Checking tmux runtime for explicit teammate mode';
+        inProcessBlocked: 'This team cannot use in-process teammates';
+        openCodeLedMixed: 'OpenCode cannot lead a mixed-provider team';
+        tmuxNotReady: 'tmux is not ready for explicit teammate mode';
+      };
+    };
     sendMessage: {
       attachments: {
         attachFiles: 'Attach files (paste or drag & drop)';

@@ -19,6 +19,7 @@ import { useAppTranslation } from '@features/localization/renderer';
 import { api } from '@renderer/api';
 import { ProviderActivityStatusStrip } from '@renderer/components/common/ProviderActivityStatusStrip';
 import { SkipPermissionsCheckbox } from '@renderer/components/team/dialogs/SkipPermissionsCheckbox';
+import { resolveMemberNameLocale } from '@renderer/components/team/members/memberNameSets';
 import {
   buildMemberDraftColorMap,
   buildMemberDraftSuggestions,
@@ -31,7 +32,6 @@ import {
   normalizeProviderForMode,
   validateMemberNameInline,
 } from '@renderer/components/team/members/MembersEditorSection';
-import { resolveMemberNameLocale } from '@renderer/components/team/members/memberNameSets';
 import { TeamRosterEditorSection } from '@renderer/components/team/members/TeamRosterEditorSection';
 import { Button } from '@renderer/components/ui/button';
 import {
@@ -73,14 +73,7 @@ import { isEphemeralProjectPath } from '@shared/utils/ephemeralProjectPath';
 import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { DEFAULT_PROVIDER_MODEL_SELECTION } from '@shared/utils/providerModelSelection';
 import { isTeamProviderId, normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ExternalLink,
-  Info,
-  Loader2,
-  X,
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ExternalLink, Info, Loader2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { AdvancedCliSection } from './AdvancedCliSection';
@@ -820,6 +813,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         tmuxStatus: tmuxRuntime.status,
         tmuxStatusLoading: tmuxRuntime.loading,
         tmuxStatusError: tmuxRuntime.error,
+        t,
       }),
     [
       customArgs,
@@ -827,6 +821,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       isLaunchMode,
       selectedProviderBackendId,
       selectedProviderId,
+      t,
       tmuxRuntime.error,
       tmuxRuntime.loading,
       tmuxRuntime.status,
@@ -2289,224 +2284,222 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
               Optional settings
               ═══════════════════════════════════════════════════════════════════ */}
           <OptionalSettingsSection
-              title={
-                isRelaunch
-                  ? t('launch.optionalSettings.relaunchTitle')
-                  : t('launch.optionalSettings.title')
-              }
-              description={
-                isRelaunch
-                  ? t('launch.optionalSettings.relaunchDescription')
-                  : t('launch.optionalSettings.description')
-              }
-              summary={launchOptionalSummary}
-            >
-              <div className="space-y-4">
-                {selectedProviderId === 'anthropic' ? (
-                  <div className="space-y-2">
-                    <AnthropicFastModeSelector
-                      value={selectedFastMode}
-                      onValueChange={setSelectedFastMode}
-                      providerFastModeDefault={anthropicProviderFastModeDefault}
-                      model={selectedModel}
-                      limitContext={effectiveAnthropicRuntimeLimitContext}
-                      id="launch-fast-mode"
-                    />
-                    {anthropicRuntimeNotice ? (
-                      <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-                        <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
-                        <p>{anthropicRuntimeNotice}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                {selectedProviderId === 'codex' ? (
-                  <div className="space-y-2">
-                    <CodexFastModeSelector
-                      value={selectedFastMode}
-                      onValueChange={setSelectedFastMode}
-                      model={selectedModel}
-                      providerBackendId={
-                        resolveUiOwnedProviderBackendId(
-                          'codex',
-                          runtimeProviderStatusById.get('codex')
-                        ) ??
-                        migrateProviderBackendId(
-                          'codex',
-                          previousLaunchParams?.providerBackendId ?? savedLaunchProviderBackendId
-                        ) ??
-                        undefined
-                      }
-                      id="launch-fast-mode"
-                    />
-                    {anthropicRuntimeNotice ? (
-                      <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-                        <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
-                        <p>{anthropicRuntimeNotice}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
+            title={
+              isRelaunch
+                ? t('launch.optionalSettings.relaunchTitle')
+                : t('launch.optionalSettings.title')
+            }
+            description={
+              isRelaunch
+                ? t('launch.optionalSettings.relaunchDescription')
+                : t('launch.optionalSettings.description')
+            }
+            summary={launchOptionalSummary}
+          >
+            <div className="space-y-4">
+              {selectedProviderId === 'anthropic' ? (
+                <div className="space-y-2">
+                  <AnthropicFastModeSelector
+                    value={selectedFastMode}
+                    onValueChange={setSelectedFastMode}
+                    providerFastModeDefault={anthropicProviderFastModeDefault}
+                    model={selectedModel}
+                    limitContext={effectiveAnthropicRuntimeLimitContext}
+                    id="launch-fast-mode"
+                  />
+                  {anthropicRuntimeNotice ? (
+                    <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+                      <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
+                      <p>{anthropicRuntimeNotice}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {selectedProviderId === 'codex' ? (
+                <div className="space-y-2">
+                  <CodexFastModeSelector
+                    value={selectedFastMode}
+                    onValueChange={setSelectedFastMode}
+                    model={selectedModel}
+                    providerBackendId={
+                      resolveUiOwnedProviderBackendId(
+                        'codex',
+                        runtimeProviderStatusById.get('codex')
+                      ) ??
+                      migrateProviderBackendId(
+                        'codex',
+                        previousLaunchParams?.providerBackendId ?? savedLaunchProviderBackendId
+                      ) ??
+                      undefined
+                    }
+                    id="launch-fast-mode"
+                  />
+                  {anthropicRuntimeNotice ? (
+                    <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+                      <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
+                      <p>{anthropicRuntimeNotice}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
-                <TeamRosterEditorSection
-                  members={membersDrafts}
-                  onMembersChange={setMembersDrafts}
-                  validateMemberName={validateMemberNameInline}
-                  showWorkflow
-                  draftKeyPrefix={`launchTeam:${effectiveTeamName}`}
+              <TeamRosterEditorSection
+                members={membersDrafts}
+                onMembersChange={setMembersDrafts}
+                validateMemberName={validateMemberNameInline}
+                showWorkflow
+                draftKeyPrefix={`launchTeam:${effectiveTeamName}`}
+                projectPath={effectiveCwd || null}
+                taskSuggestions={taskSuggestions}
+                teamSuggestions={teamMentionSuggestions}
+                existingMembers={members}
+                defaultProviderId={selectedProviderId}
+                inheritedProviderId={selectedProviderId}
+                inheritedModel={selectedModel}
+                inheritedEffort={(selectedEffortForCurrentSelection as EffortLevel) || undefined}
+                inheritModelSettingsByDefault
+                lockProviderModel={syncModelsWithLead}
+                forceInheritedModelSettings={syncModelsWithLead}
+                modelLockReason="This teammate is synced with the lead model. Turn off sync to set a custom provider, model, or effort."
+                providerId={selectedProviderId}
+                model={selectedModel}
+                effort={(selectedEffortForCurrentSelection as EffortLevel) || undefined}
+                limitContext={effectiveAnthropicRuntimeLimitContext}
+                leadProviderNoticeById={teammateRuntimeProviderNoticeById}
+                onProviderChange={setSelectedProviderId}
+                onModelChange={setSelectedModel}
+                onEffortChange={setSelectedEffort}
+                onLimitContextChange={setLimitContext}
+                syncModelsWithTeammates={syncModelsWithLead}
+                onSyncModelsWithTeammatesChange={setSyncModelsWithLead}
+                showWorktreeIsolationControls
+                teammateWorktreeDefault={teammateWorktreeDefault}
+                worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
+                onTeammateWorktreeDefaultChange={setTeammateWorktreeDefault}
+                leadWarningText={leadRuntimeWarningText}
+                memberWarningById={combinedMemberRuntimeWarningById}
+                memberInfoById={memberWorktreeContinuationInfoById}
+                leadModelIssueText={leadModelIssueText}
+                memberModelIssueById={memberModelIssueById}
+                modelAdvisoryReasonByProvider={
+                  shortLivedModelIssueReasons.modelAdvisoryReasonByProvider
+                }
+                modelIssueReasonByProvider={shortLivedModelIssueReasons.modelIssueReasonByProvider}
+                modelUnavailableReasonByProvider={
+                  shortLivedModelIssueReasons.modelUnavailableReasonByProvider
+                }
+                softDeleteMembers
+                disableGeminiOption={isGeminiUiFrozen()}
+                headerBottom={
+                  showRosterTeammateRuntimeCompatibility || hasSelectedWorktreeIsolation ? (
+                    <div className="space-y-2">
+                      {showRosterTeammateRuntimeCompatibility ? (
+                        <TeammateRuntimeCompatibilityNotice
+                          analysis={teammateRuntimeCompatibility}
+                          onOpenDashboard={() => {
+                            closeDialog();
+                            openDashboard();
+                          }}
+                        />
+                      ) : null}
+                      {hasSelectedWorktreeIsolation ? (
+                        <WorktreeGitReadinessBanner state={worktreeGitReadiness} />
+                      ) : null}
+                    </div>
+                  ) : null
+                }
+              />
+
+              <div className="space-y-1.5">
+                <Label htmlFor="dialog-prompt" className="label-optional">
+                  {t('launch.prompt.teamLeadOptional')}
+                </Label>
+                <MentionableTextarea
+                  id="dialog-prompt"
+                  className="min-h-[100px] text-xs"
+                  minRows={4}
+                  maxRows={12}
+                  value={promptDraft.value}
+                  onValueChange={promptDraft.setValue}
+                  suggestions={mentionSuggestions}
                   projectPath={effectiveCwd || null}
-                  taskSuggestions={taskSuggestions}
-                  teamSuggestions={teamMentionSuggestions}
-                  existingMembers={members}
-                  defaultProviderId={selectedProviderId}
-                  inheritedProviderId={selectedProviderId}
-                  inheritedModel={selectedModel}
-                  inheritedEffort={(selectedEffortForCurrentSelection as EffortLevel) || undefined}
-                  inheritModelSettingsByDefault
-                  lockProviderModel={syncModelsWithLead}
-                  forceInheritedModelSettings={syncModelsWithLead}
-                  modelLockReason="This teammate is synced with the lead model. Turn off sync to set a custom provider, model, or effort."
-                  providerId={selectedProviderId}
-                  model={selectedModel}
-                  effort={(selectedEffortForCurrentSelection as EffortLevel) || undefined}
-                  limitContext={effectiveAnthropicRuntimeLimitContext}
-                  leadProviderNoticeById={teammateRuntimeProviderNoticeById}
-                  onProviderChange={setSelectedProviderId}
-                  onModelChange={setSelectedModel}
-                  onEffortChange={setSelectedEffort}
-                  onLimitContextChange={setLimitContext}
-                  syncModelsWithTeammates={syncModelsWithLead}
-                  onSyncModelsWithTeammatesChange={setSyncModelsWithLead}
-                  showWorktreeIsolationControls
-                  teammateWorktreeDefault={teammateWorktreeDefault}
-                  worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
-                  onTeammateWorktreeDefaultChange={setTeammateWorktreeDefault}
-                  leadWarningText={leadRuntimeWarningText}
-                  memberWarningById={combinedMemberRuntimeWarningById}
-                  memberInfoById={memberWorktreeContinuationInfoById}
-                  leadModelIssueText={leadModelIssueText}
-                  memberModelIssueById={memberModelIssueById}
-                  modelAdvisoryReasonByProvider={
-                    shortLivedModelIssueReasons.modelAdvisoryReasonByProvider
-                  }
-                  modelIssueReasonByProvider={
-                    shortLivedModelIssueReasons.modelIssueReasonByProvider
-                  }
-                  modelUnavailableReasonByProvider={
-                    shortLivedModelIssueReasons.modelUnavailableReasonByProvider
-                  }
-                  softDeleteMembers
-                  disableGeminiOption={isGeminiUiFrozen()}
-                  headerBottom={
-                    showRosterTeammateRuntimeCompatibility || hasSelectedWorktreeIsolation ? (
-                      <div className="space-y-2">
-                        {showRosterTeammateRuntimeCompatibility ? (
-                          <TeammateRuntimeCompatibilityNotice
-                            analysis={teammateRuntimeCompatibility}
-                            onOpenDashboard={() => {
-                              closeDialog();
-                              openDashboard();
-                            }}
-                          />
-                        ) : null}
-                        {hasSelectedWorktreeIsolation ? (
-                          <WorktreeGitReadinessBanner state={worktreeGitReadiness} />
-                        ) : null}
-                      </div>
+                  chips={chipDraft.chips}
+                  onChipRemove={chipDraft.removeChip}
+                  onFileChipInsert={chipDraft.addChip}
+                  placeholder={t('launch.prompt.teamLeadPlaceholder')}
+                  footerRight={
+                    promptDraft.isSaved ? (
+                      <span className="text-[10px] text-[var(--color-text-muted)]">
+                        {t('launch.prompt.saved')}
+                      </span>
                     ) : null
                   }
                 />
+              </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="dialog-prompt" className="label-optional">
-                    {t('launch.prompt.teamLeadOptional')}
-                  </Label>
-                  <MentionableTextarea
-                    id="dialog-prompt"
-                    className="min-h-[100px] text-xs"
-                    minRows={4}
-                    maxRows={12}
-                    value={promptDraft.value}
-                    onValueChange={promptDraft.setValue}
-                    suggestions={mentionSuggestions}
-                    projectPath={effectiveCwd || null}
-                    chips={chipDraft.chips}
-                    onChipRemove={chipDraft.removeChip}
-                    onFileChipInsert={chipDraft.addChip}
-                    placeholder={t('launch.prompt.teamLeadPlaceholder')}
-                    footerRight={
-                      promptDraft.isSaved ? (
-                        <span className="text-[10px] text-[var(--color-text-muted)]">
-                          {t('launch.prompt.saved')}
-                        </span>
-                      ) : null
-                    }
-                  />
-                </div>
-
-                <div>
-                  <SkipPermissionsCheckbox
-                    id="dialog-skip-permissions"
-                    checked={skipPermissions}
-                    onCheckedChange={setSkipPermissions}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  {providerChangeForcesFreshLeadContext ? (
-                    // Provider changed: this message is the superset (fresh context
-                    // AND previous session won't resume), so show it alone with the
-                    // warning treatment — no separate "fresh session" banner stacked
-                    // on top saying the same thing.
-                    <div
-                      className="rounded-md border px-3 py-2 text-xs"
-                      style={{
-                        backgroundColor: 'var(--warning-bg)',
-                        borderColor: 'var(--warning-border)',
-                        color: 'var(--warning-text)',
-                      }}
-                    >
-                      <div className="flex items-start gap-2">
-                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                        <p>
-                          {t('launch.providerChanged', {
-                            from: getProviderLabel(previousProviderId!),
-                            to: getProviderLabel(selectedProviderId),
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    // Same provider: just the always-on "fresh session" note, styled
-                    // as neutral info rather than a warning.
-                    <div
-                      className="rounded-md border px-3 py-2 text-xs"
-                      style={{
-                        backgroundColor: 'var(--info-bg)',
-                        borderColor: 'var(--info-border)',
-                        color: 'var(--info-text)',
-                      }}
-                    >
-                      <div className="flex items-start gap-2">
-                        <Info className="mt-0.5 size-3.5 shrink-0" />
-                        <p>{t('launch.relaunchFreshSession')}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <AdvancedCliSection
-                  teamName={effectiveTeamName}
-                  internalArgs={internalArgs}
-                  worktreeEnabled={worktreeEnabled}
-                  onWorktreeEnabledChange={setWorktreeEnabled}
-                  worktreeName={worktreeName}
-                  onWorktreeNameChange={setWorktreeName}
-                  customArgs={customArgs}
-                  onCustomArgsChange={setCustomArgs}
+              <div>
+                <SkipPermissionsCheckbox
+                  id="dialog-skip-permissions"
+                  checked={skipPermissions}
+                  onCheckedChange={setSkipPermissions}
                 />
               </div>
-            </OptionalSettingsSection>
+
+              <div className="space-y-2">
+                {providerChangeForcesFreshLeadContext ? (
+                  // Provider changed: this message is the superset (fresh context
+                  // AND previous session won't resume), so show it alone with the
+                  // warning treatment — no separate "fresh session" banner stacked
+                  // on top saying the same thing.
+                  <div
+                    className="rounded-md border px-3 py-2 text-xs"
+                    style={{
+                      backgroundColor: 'var(--warning-bg)',
+                      borderColor: 'var(--warning-border)',
+                      color: 'var(--warning-text)',
+                    }}
+                  >
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                      <p>
+                        {t('launch.providerChanged', {
+                          from: getProviderLabel(previousProviderId!),
+                          to: getProviderLabel(selectedProviderId),
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  // Same provider: just the always-on "fresh session" note, styled
+                  // as neutral info rather than a warning.
+                  <div
+                    className="rounded-md border px-3 py-2 text-xs"
+                    style={{
+                      backgroundColor: 'var(--info-bg)',
+                      borderColor: 'var(--info-border)',
+                      color: 'var(--info-text)',
+                    }}
+                  >
+                    <div className="flex items-start gap-2">
+                      <Info className="mt-0.5 size-3.5 shrink-0" />
+                      <p>{t('launch.relaunchFreshSession')}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <AdvancedCliSection
+                teamName={effectiveTeamName}
+                internalArgs={internalArgs}
+                worktreeEnabled={worktreeEnabled}
+                onWorktreeEnabledChange={setWorktreeEnabled}
+                worktreeName={worktreeName}
+                onWorktreeNameChange={setWorktreeName}
+                customArgs={customArgs}
+                onCustomArgsChange={setCustomArgs}
+              />
+            </div>
+          </OptionalSettingsSection>
         </div>
 
         {/* Error display */}
@@ -2594,7 +2587,10 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                   {prepareWarnings.length > 0 && prepareChecks.length === 0 ? (
                     <div className="mt-0.5 space-y-0.5 pl-5">
                       {prepareWarnings.map((warning, index) => (
-                        <p key={`${index}:${warning}`} className="text-[11px] text-sky-700 dark:text-sky-300">
+                        <p
+                          key={`${index}:${warning}`}
+                          className="text-[11px] text-sky-700 dark:text-sky-300"
+                        >
                           {warning}
                         </p>
                       ))}

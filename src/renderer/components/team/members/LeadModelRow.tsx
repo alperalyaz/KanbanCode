@@ -221,8 +221,15 @@ export const LeadModelRow = ({
       </div>
       {hasWarnings ? (
         <div className="md:col-span-3">
-          <div className="bg-amber-500/8 ml-3 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-            <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
+          <div
+            className="ml-3 flex items-start gap-2 rounded-md border px-3 py-2 text-[11px] leading-relaxed"
+            style={{
+              backgroundColor: 'var(--warning-bg)',
+              borderColor: 'var(--warning-border)',
+              color: 'var(--warning-text)',
+            }}
+          >
+            <Info className="mt-0.5 size-3.5 shrink-0" style={{ color: 'var(--warning-text)' }} />
             <div className="space-y-1">
               {warningMessages.map((message) => (
                 <p key={message}>{message}</p>

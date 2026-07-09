@@ -2291,6 +2291,44 @@
       "badge": "İsteğe bağlı"
     }
   },
+  "runtimeCompatibility": {
+    "providers": {
+      "anthropic": "Anthropic",
+      "codex": "Codex",
+      "gemini": "Gemini",
+      "opencode": "OpenCode"
+    },
+    "title": {
+      "checkingTmux": "Açık takım arkadaşı modu için tmux kontrol ediliyor",
+      "openCodeLedMixed": "OpenCode karışık sağlayıcılı ekibe liderlik edemez",
+      "inProcessBlocked": "Bu ekip süreç-içi takım arkadaşları kullanamaz",
+      "tmuxNotReady": "Açık takım arkadaşı modu için tmux hazır değil"
+    },
+    "message": {
+      "checkingTmux": "Özel CLI argümanları tmux takım arkadaşları istiyor. Uygulama tmux'un hazır olup olmadığını kontrol ediyor.",
+      "openCodeLedMixed": "Şu an takım arkadaşları farklı sağlayıcı kullanıyorsa lider Anthropic veya Codex olmalı. OpenCode yine de bu liderlerin altında takım arkadaşı olarak katılabilir.",
+      "inProcessBlocked": "Bazı takım arkadaşları ayrı süreç gerektirir. Uygulamanın yerel süreç taşımasını kullanabilmesi için --teammate-mode in-process argümanını kaldırın.",
+      "tmuxNotReady": "Özel CLI argümanları --teammate-mode tmux zorluyor ama tmux hazır değil. Windows'ta yerel süreç taşıması için bu argümanı kaldırın veya tmux/WSL tmux kurun."
+    },
+    "details": {
+      "mixedProviders": "Karışık sağlayıcılar takım arkadaşı süreçleri gerektirir.",
+      "mixedProvidersNamed": "Karışık sağlayıcılar: {{names}}, {{lead}} liderinden farklı bir sağlayıcı kullanıyor.",
+      "openCodeLedMixed": "Bu aşamada karışık ekiplerde lider OpenCode olamaz.",
+      "openCodeLedMixedNamed": "OpenCode liderli karışık ekip: {{names}} OpenCode dışı bir sağlayıcı kullanıyor.",
+      "codexNative": "Codex native takım arkadaşları ayrı Codex süreçlerinde çalışmalıdır.",
+      "codexNativeNamed": "Codex native takım arkadaşları: {{names}} ayrı Codex süreçlerinde çalışmalıdır.",
+      "explicitTmux": "Özel CLI argümanları --teammate-mode tmux zorluyor.",
+      "explicitInProcess": "Özel CLI argümanları --teammate-mode in-process zorluyor.",
+      "fixOpenCodeLead": "Çözüm: OpenCode ile diğer sağlayıcıları karıştırırken lideri Anthropic veya Codex'te tutun.",
+      "fixInProcess": "Çözüm: Takım arkadaşlarının yerel süreç taşımasını kullanabilmesi için --teammate-mode in-process argümanını kaldırın.",
+      "fixTmux": "Çözüm: tmux/WSL tmux kurun veya uygulamanın yerel süreç taşımasını kullanabilmesi için --teammate-mode tmux argümanını kaldırın."
+    },
+    "member": {
+      "mixedProvider": "{{name}} {{provider}} kullanıyor. Bu takım arkadaşı {{lead}} liderinin dışında ayrı bir süreç gerektirir.",
+      "codexNative": "{{name}} Codex native kullanıyor. Codex native takım arkadaşları ayrı bir Codex süreci gerektirir.",
+      "openCodeLedMixed": "{{name}} {{provider}} kullanıyor. Lider OpenCode iken karışık sağlayıcılar henüz desteklenmiyor — lideri Anthropic veya Codex yapın ya da tüm takım arkadaşlarını OpenCode'da tutun."
+    }
+  },
   "runningTeams": {
     "title": "Çalışan Ekipler",
     "status": {

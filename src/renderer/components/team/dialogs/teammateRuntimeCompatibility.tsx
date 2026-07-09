@@ -42,6 +42,8 @@ export interface TeammateRuntimeCompatibility {
   memberWarningById: Record<string, string>;
 }
 
+type RuntimeCompatibilityTranslate = (key: string, options?: Record<string, unknown>) => string;
+
 interface AnalyzeTeammateRuntimeCompatibilityInput {
   leadProviderId: TeamProviderId;
   leadProviderBackendId?: string | null;
@@ -51,6 +53,8 @@ interface AnalyzeTeammateRuntimeCompatibilityInput {
   tmuxStatus: TmuxStatus | null;
   tmuxStatusLoading: boolean;
   tmuxStatusError: string | null;
+  /** i18n translator scoped to the `team` namespace (e.g. useAppTranslation('team').t). */
+  t: RuntimeCompatibilityTranslate;
 }
 
 export interface TmuxRuntimeReadiness {
@@ -60,15 +64,15 @@ export interface TmuxRuntimeReadiness {
   refresh: () => Promise<void>;
 }
 
-const PROVIDER_LABELS: Record<TeamProviderId, string> = {
-  anthropic: 'Anthropic',
-  codex: 'Codex',
-  gemini: 'Gemini',
-  opencode: 'OpenCode',
+const PROVIDER_LABEL_KEYS: Record<TeamProviderId, string> = {
+  anthropic: 'runtimeCompatibility.providers.anthropic',
+  codex: 'runtimeCompatibility.providers.codex',
+  gemini: 'runtimeCompatibility.providers.gemini',
+  opencode: 'runtimeCompatibility.providers.opencode',
 };
 
-function getProviderLabel(providerId: TeamProviderId): string {
-  return PROVIDER_LABELS[providerId] ?? providerId;
+function getProviderLabel(t: RuntimeCompatibilityTranslate, providerId: TeamProviderId): string {
+  return t(PROVIDER_LABEL_KEYS[providerId] ?? providerId);
 }
 
 function getExplicitTeammateMode(
@@ -115,7 +119,7 @@ function summarizeIssueNames(
   if (names.length <= 3) {
     return names.join(', ');
   }
-  return `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+  return `${names.slice(0, 3).join(', ')} +${names.length - 3}`;
 }
 
 export function analyzeTeammateRuntimeCompatibility({
@@ -127,6 +131,7 @@ export function analyzeTeammateRuntimeCompatibility({
   tmuxStatus,
   tmuxStatusLoading,
   tmuxStatusError,
+  t,
 }: AnalyzeTeammateRuntimeCompatibilityInput): TeammateRuntimeCompatibility {
   const activeMembers = soloTeam
     ? []
@@ -244,66 +249,69 @@ export function analyzeTeammateRuntimeCompatibility({
   const hasCodexNative = issues.some((issue) => issue.reason === 'codex-native-runtime');
   const details: string[] = [];
   const memberWarningById: Record<string, string> = {};
+  const leadLabel = getProviderLabel(t, leadProviderId);
 
   if (hasMixedProviders) {
     const names = summarizeIssueNames(issues, 'mixed-provider');
     details.push(
       names
-        ? `Mixed providers: ${names} use a different provider than the ${getProviderLabel(leadProviderId)} lead.`
-        : 'Mixed providers require teammate processes.'
+        ? t('runtimeCompatibility.details.mixedProvidersNamed', {
+            names,
+            lead: leadLabel,
+          })
+        : t('runtimeCompatibility.details.mixedProviders')
     );
   }
   if (hasOpenCodeLeadMixedUnsupported) {
     const names = summarizeIssueNames(issues, 'opencode-led-mixed-unsupported');
     details.push(
       names
-        ? `OpenCode-led mixed team: ${names} use a non-OpenCode provider.`
-        : 'Mixed teams cannot use OpenCode as the lead in this phase.'
+        ? t('runtimeCompatibility.details.openCodeLedMixedNamed', { names })
+        : t('runtimeCompatibility.details.openCodeLedMixed')
     );
   }
   if (hasCodexNative) {
     const names = summarizeIssueNames(issues, 'codex-native-runtime');
     details.push(
       names
-        ? `Codex native teammates: ${names} must run through separate Codex processes.`
-        : 'Codex native teammates must run through separate Codex processes.'
+        ? t('runtimeCompatibility.details.codexNativeNamed', { names })
+        : t('runtimeCompatibility.details.codexNative')
     );
   }
   if (hasExplicitTmux) {
-    details.push('Custom CLI args force --teammate-mode tmux.');
+    details.push(t('runtimeCompatibility.details.explicitTmux'));
   }
   if (hasExplicitInProcess) {
-    details.push('Custom CLI args force --teammate-mode in-process.');
+    details.push(t('runtimeCompatibility.details.explicitInProcess'));
   }
   if (hasOpenCodeLeadMixedUnsupported) {
-    details.push(
-      'Fix: keep the team lead on Anthropic or Codex when mixing OpenCode with other providers.'
-    );
+    details.push(t('runtimeCompatibility.details.fixOpenCodeLead'));
   } else if (hasExplicitInProcess) {
-    details.push(
-      'Fix: remove --teammate-mode in-process so teammates can use native process transport.'
-    );
+    details.push(t('runtimeCompatibility.details.fixInProcess'));
   } else {
-    details.push(
-      'Fix: install tmux/WSL tmux, or remove --teammate-mode tmux so the app can use native process transport.'
-    );
+    details.push(t('runtimeCompatibility.details.fixTmux'));
   }
 
   for (const issue of issues) {
     if (!issue.memberId || !issue.memberName) {
       continue;
     }
+    const memberProviderLabel = getProviderLabel(t, issue.memberProviderId ?? leadProviderId);
     if (issue.reason === 'mixed-provider') {
-      memberWarningById[issue.memberId] =
-        `${issue.memberName} uses ${getProviderLabel(issue.memberProviderId ?? leadProviderId)}. ` +
-        `This teammate requires a separate process outside the ${getProviderLabel(leadProviderId)} lead.`;
+      memberWarningById[issue.memberId] = t('runtimeCompatibility.member.mixedProvider', {
+        name: issue.memberName,
+        provider: memberProviderLabel,
+        lead: leadLabel,
+      });
     } else if (issue.reason === 'codex-native-runtime') {
-      memberWarningById[issue.memberId] =
-        `${issue.memberName} uses Codex native. Codex native teammates require a separate Codex process.`;
+      memberWarningById[issue.memberId] = t('runtimeCompatibility.member.codexNative', {
+        name: issue.memberName,
+      });
     } else if (issue.reason === 'opencode-led-mixed-unsupported') {
-      memberWarningById[issue.memberId] =
-        `${issue.memberName} uses ${getProviderLabel(issue.memberProviderId ?? leadProviderId)}. ` +
-        'OpenCode cannot be the team lead when mixing providers in this phase.';
+      memberWarningById[issue.memberId] = t('runtimeCompatibility.member.openCodeLedMixed', {
+        name: issue.memberName,
+        provider: memberProviderLabel,
+      });
     }
   }
 
@@ -313,19 +321,19 @@ export function analyzeTeammateRuntimeCompatibility({
     checking,
     providerNoticeProviderId: hasOpenCodeLeadMixedUnsupported ? 'opencode' : null,
     title: checking
-      ? 'Checking tmux runtime for explicit teammate mode'
+      ? t('runtimeCompatibility.title.checkingTmux')
       : hasOpenCodeLeadMixedUnsupported
-        ? 'OpenCode cannot lead mixed-provider teams'
+        ? t('runtimeCompatibility.title.openCodeLedMixed')
         : hasExplicitInProcess
-          ? 'This team cannot use in-process teammates'
-          : 'tmux is not ready for explicit teammate mode',
+          ? t('runtimeCompatibility.title.inProcessBlocked')
+          : t('runtimeCompatibility.title.tmuxNotReady'),
     message: checking
-      ? 'Custom CLI args request tmux teammates. The app is checking whether tmux is available.'
+      ? t('runtimeCompatibility.message.checkingTmux')
       : hasOpenCodeLeadMixedUnsupported
-        ? 'OpenCode can be added as a teammate under an Anthropic or Codex lead, but mixed teams cannot use OpenCode as the lead in this phase.'
+        ? t('runtimeCompatibility.message.openCodeLedMixed')
         : hasExplicitInProcess
-          ? 'Some teammates require separate processes. Remove --teammate-mode in-process so the app can use native process transport.'
-          : 'Custom CLI args force --teammate-mode tmux, but tmux is not ready. Remove that arg to use native process transport on Windows, or install tmux/WSL tmux.',
+          ? t('runtimeCompatibility.message.inProcessBlocked')
+          : t('runtimeCompatibility.message.tmuxNotReady'),
     details,
     tmuxDetail: hasOpenCodeLeadMixedUnsupported ? null : getTmuxDetail(tmuxStatus, tmuxStatusError),
     memberWarningById,

@@ -1622,6 +1622,7 @@ export const CreateTeamDialog = ({
         tmuxStatus: tmuxRuntime.status,
         tmuxStatusLoading: tmuxRuntime.loading,
         tmuxStatusError: tmuxRuntime.error,
+        t,
       }),
     [
       customArgs,
@@ -1631,6 +1632,7 @@ export const CreateTeamDialog = ({
       selectedProviderBackendId,
       selectedProviderId,
       isSolo,
+      t,
       tmuxRuntime.error,
       tmuxRuntime.loading,
       tmuxRuntime.status,
