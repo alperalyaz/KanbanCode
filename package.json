@@ -1,7 +1,7 @@
 {
   "name": "kanbancode",
   "type": "module",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "description": "KanbanCode - light multi-agent kanban desktop app (fork of Agent Teams AI by 777genius)",
   "license": "AGPL-3.0",
   "author": {
