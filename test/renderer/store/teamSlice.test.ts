@@ -2973,6 +2973,13 @@ describe('teamSlice actions', () => {
         kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
         processes: [],
       },
+      teams: [
+        {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          memberCount: 1,
+        },
+      ],
       teamDataCacheByName: {
         'my-team': {
           teamName: 'my-team',
@@ -2990,7 +2997,55 @@ describe('teamSlice actions', () => {
     expect(hoisted.deleteTeam).toHaveBeenCalledWith('my-team');
     expect(store.getState().selectedTeamName).toBeNull();
     expect(store.getState().selectedTeamData).toBeNull();
+    expect(store.getState().teams.find((team) => team.teamName === 'my-team')).toBeUndefined();
     expect(store.getState().teamDataCacheByName['my-team']).toBeUndefined();
+  });
+
+  it('removes the team card immediately on hard delete before IPC resolves', async () => {
+    let resolveDelete: (() => void) | undefined;
+    hoisted.permanentlyDeleteTeam.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve;
+        })
+    );
+
+    const store = createSliceStore();
+    store.setState({
+      teams: [
+        {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          memberCount: 1,
+        },
+        {
+          teamName: 'other-team',
+          displayName: 'Other Team',
+          memberCount: 1,
+        },
+      ],
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          memberCount: 1,
+        },
+        'other-team': {
+          teamName: 'other-team',
+          displayName: 'Other Team',
+          memberCount: 1,
+        },
+      },
+    });
+
+    const deletePromise = store.getState().permanentlyDeleteTeam('my-team');
+
+    expect(store.getState().teams.map((team) => team.teamName)).toEqual(['other-team']);
+    expect(store.getState().teamByName['my-team']).toBeUndefined();
+    expect(hoisted.permanentlyDeleteTeam).toHaveBeenCalledWith('my-team');
+
+    resolveDelete?.();
+    await expect(deletePromise).resolves.toBeUndefined();
   });
 
   it('drops stale cache on restore so the next open refetches fresh data', async () => {
@@ -5999,6 +6054,44 @@ describe('teamSlice actions', () => {
           'my-team'
         )
       ).toBeNull();
+    });
+  });
+
+  describe('cancelProvisioning', () => {
+    it('marks the run cancelled in the store before IPC resolves', async () => {
+      let resolveIpc: (() => void) | undefined;
+      hoisted.cancelProvisioning.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveIpc = resolve;
+          })
+      );
+
+      const store = createSliceStore();
+      store.setState({
+        currentProvisioningRunIdByTeam: { 'my-team': 'run-1' },
+        provisioningRuns: {
+          'run-1': {
+            runId: 'run-1',
+            teamName: 'my-team',
+            state: 'spawning',
+            message: 'Starting OpenCode sessions through runtime adapter',
+            startedAt: '2026-03-12T10:00:00.000Z',
+            updatedAt: '2026-03-12T10:00:00.000Z',
+          },
+        },
+      });
+
+      const cancelPromise = store.getState().cancelProvisioning('run-1');
+
+      expect(store.getState().provisioningRuns['run-1']?.state).toBe('cancelled');
+      expect(store.getState().provisioningRuns['run-1']?.message).toBe(
+        'Provisioning cancelled by user'
+      );
+      expect(hoisted.cancelProvisioning).toHaveBeenCalledWith('run-1');
+
+      resolveIpc?.();
+      await expect(cancelPromise).resolves.toBeUndefined();
     });
   });
 });

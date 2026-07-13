@@ -71,6 +71,7 @@ export const ConfirmDialog = (): React.JSX.Element | null => {
   const { t } = useAppTranslation('common');
   const [state, setState] = useState<ConfirmDialogState>(initialState);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const closingRef = useRef(false);
 
   // Register singleton setter
   useEffect(() => {
@@ -81,11 +82,18 @@ export const ConfirmDialog = (): React.JSX.Element | null => {
   }, []);
 
   const close = useCallback((confirmed: boolean) => {
-    if (globalResolver) {
-      globalResolver(confirmed);
-      globalResolver = null;
+    if (closingRef.current) {
+      return;
     }
+    closingRef.current = true;
+    // Close the dialog first so the click feels instant; resolve after paint.
     setState(initialState);
+    const resolver = globalResolver;
+    globalResolver = null;
+    queueMicrotask(() => {
+      resolver?.(confirmed);
+      closingRef.current = false;
+    });
   }, []);
 
   // Escape key closes
@@ -151,6 +159,7 @@ export const ConfirmDialog = (): React.JSX.Element | null => {
         {/* Actions */}
         <div className="mt-5 flex justify-end gap-3">
           <button
+            type="button"
             onClick={() => close(false)}
             className="rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-white/5"
             style={{
@@ -161,6 +170,7 @@ export const ConfirmDialog = (): React.JSX.Element | null => {
             {state.cancelLabel ?? 'Cancel'}
           </button>
           <button
+            type="button"
             data-confirm-btn
             onClick={() => close(true)}
             className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${

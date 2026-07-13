@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { Button } from '@renderer/components/ui/button';
@@ -13,9 +13,9 @@ import { GitBranch, Plug, Plus } from 'lucide-react';
 
 import { MemberDraftRow } from './MemberDraftRow';
 import {
+  canonicalizeThemedMemberName,
   getNextSuggestedMemberName,
   resolveMemberNameLocale,
-  canonicalizeThemedMemberName,
 } from './memberNameSets';
 import {
   buildMemberDraftColorMap,
@@ -109,6 +109,8 @@ export interface MembersEditorSectionProps {
   /** Extra classes for the scrollable member-row container (e.g. fixed max height). */
   memberListClassName?: string;
   onOpenProviderSettings?: (providerId: TeamProviderId) => void;
+  /** Fired when a member is added so parents can collapse bulky chrome (e.g. model catalog). */
+  onMemberAdded?: (memberId: string) => void;
 }
 
 export const MembersEditorSection = ({
@@ -154,17 +156,66 @@ export const MembersEditorSection = ({
   onTeammateWorktreeDefaultChange,
   memberListClassName,
   onOpenProviderSettings,
+  onMemberAdded,
 }: MembersEditorSectionProps): React.JSX.Element => {
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
   const [agentTeamsMcpLockedForAll, setAgentTeamsMcpLockedForAll] = useState(false);
   const previousMcpPolicyByMemberIdRef = useRef<Map<string, MemberDraft['mcpPolicy']>>(new Map());
+  const memberListRef = useRef<HTMLDivElement>(null);
+  const pendingScrollMemberIdRef = useRef<string | null>(null);
+  const [highlightedMemberId, setHighlightedMemberId] = useState<string | null>(null);
+  const highlightClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const emitMembersChange = (nextMembers: MemberDraft[]): void => {
     onChange(
       agentTeamsMcpLockedForAll ? forceActiveMembersToAgentTeamsMcp(nextMembers) : nextMembers
     );
   };
+
+  // After "Add member", the new row often lands below the fold — under the expanded
+  // lead model catalog and/or outside the dialog scrollport. Center it, focus the
+  // name field, and briefly highlight so the click clearly "did something".
+  useLayoutEffect(() => {
+    const memberId = pendingScrollMemberIdRef.current;
+    if (!memberId) {
+      return;
+    }
+
+    const row = memberListRef.current?.querySelector<HTMLElement>(
+      `[data-member-draft-id="${CSS.escape(memberId)}"]`
+    );
+    if (!row) {
+      return;
+    }
+
+    pendingScrollMemberIdRef.current = null;
+    setHighlightedMemberId(memberId);
+    if (highlightClearTimeoutRef.current) {
+      clearTimeout(highlightClearTimeoutRef.current);
+    }
+    highlightClearTimeoutRef.current = setTimeout(() => {
+      setHighlightedMemberId((current) => (current === memberId ? null : current));
+      highlightClearTimeoutRef.current = null;
+    }, 1600);
+
+    // Double rAF: wait for parent collapse (lead model panel) + layout settle.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        row.scrollIntoView({ block: 'center', behavior: 'smooth', inline: 'nearest' });
+        const nameInput = row.querySelector<HTMLInputElement>('input:not([type="checkbox"])');
+        nameInput?.focus({ preventScroll: true });
+      });
+    });
+  }, [members]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightClearTimeoutRef.current) {
+        clearTimeout(highlightClearTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const updateMemberName = (memberId: string, name: string): void => {
     emitMembersChange(members.map((c) => (c.id === memberId ? { ...c, name } : c)));
@@ -341,21 +392,21 @@ export const MembersEditorSection = ({
       members.map((member) => member.name),
       memberNameLocale
     );
-    emitMembersChange([
-      ...members,
-      createMemberDraft(
-        inheritModelSettingsByDefault
-          ? {
-              name: suggestedName,
-              isolation: newMemberUsesWorktree ? 'worktree' : undefined,
-            }
-          : {
-              name: suggestedName,
-              providerId: defaultProviderId,
-              isolation: newMemberUsesWorktree ? 'worktree' : undefined,
-            }
-      ),
-    ]);
+    const nextMember = createMemberDraft(
+      inheritModelSettingsByDefault
+        ? {
+            name: suggestedName,
+            isolation: newMemberUsesWorktree ? 'worktree' : undefined,
+          }
+        : {
+            name: suggestedName,
+            providerId: defaultProviderId,
+            isolation: newMemberUsesWorktree ? 'worktree' : undefined,
+          }
+    );
+    pendingScrollMemberIdRef.current = nextMember.id;
+    emitMembersChange([...members, nextMember]);
+    onMemberAdded?.(nextMember.id);
   };
 
   const names = activeMembers.map((m) => m.name.trim().toLocaleLowerCase('tr')).filter(Boolean);
@@ -457,6 +508,7 @@ export const MembersEditorSection = ({
               </div>
             ) : null}
             <div
+              ref={memberListRef}
               className={cn(
                 'space-y-2',
                 showWorktreeIsolationControls && 'p-2',
@@ -464,52 +516,64 @@ export const MembersEditorSection = ({
               )}
             >
               {activeMembers.map((member, index) => (
-                <MemberDraftRow
+                <div
                   key={member.id}
-                  member={member}
-                  index={index}
-                  resolvedColor={memberColorMap.get(member.id)}
-                  nameError={validateMemberName?.(member.name) ?? null}
-                  onNameChange={updateMemberName}
-                  onNameBlur={finalizeMemberName}
-                  onRoleChange={updateMemberRole}
-                  onCustomRoleChange={updateMemberCustomRole}
-                  onRemove={removeMember}
-                  showWorkflow={showWorkflow}
-                  onWorkflowChange={showWorkflow ? updateMemberWorkflow : undefined}
-                  onWorkflowChipsChange={showWorkflow ? updateMemberWorkflowChips : undefined}
-                  onProviderChange={updateMemberProvider}
-                  onModelChange={updateMemberModel}
-                  onEffortChange={updateMemberEffort}
-                  showWorktreeIsolationControls={showWorktreeIsolationControls}
-                  worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
-                  onWorktreeIsolationChange={updateMemberIsolation}
-                  onMcpPolicyChange={updateMemberMcpPolicy}
-                  agentTeamsMcpLocked={agentTeamsMcpLockedForAll}
-                  inheritedProviderId={inheritedProviderId}
-                  inheritedModel={inheritedModel}
-                  inheritedEffort={inheritedEffort}
-                  limitContext={limitContext}
-                  forceInheritedModelSettings={forceInheritedModelSettings}
-                  draftKeyPrefix={draftKeyPrefix}
-                  projectPath={projectPath}
-                  mentionSuggestions={mentionSuggestions}
-                  taskSuggestions={taskSuggestions}
-                  teamSuggestions={teamSuggestions}
-                  onWorkflowSuggestionsNeeded={onWorkflowSuggestionsNeeded}
-                  lockProviderModel={lockProviderModel}
-                  lockIdentity={lockExistingMemberIdentity && Boolean(member.originalName?.trim())}
-                  identityLockReason={identityLockReason}
-                  modelLockReason={modelLockReason}
-                  warningText={memberWarningById?.[member.id] ?? null}
-                  infoText={memberInfoById?.[member.id] ?? null}
-                  disableGeminiOption={disableGeminiOption}
-                  modelIssueText={memberModelIssueById?.[member.id] ?? null}
-                  modelAdvisoryReasonByProvider={modelAdvisoryReasonByProvider}
-                  modelIssueReasonByProvider={modelIssueReasonByProvider}
-                  modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
-                  onOpenProviderSettings={onOpenProviderSettings}
-                />
+                  data-member-draft-id={member.id}
+                  data-testid={`member-draft-row-${member.id}`}
+                  className={cn(
+                    'rounded-md transition-[box-shadow,background-color] duration-500',
+                    highlightedMemberId === member.id &&
+                      'bg-sky-500/10 ring-2 ring-sky-500/45 ring-offset-2 ring-offset-[var(--color-surface)]'
+                  )}
+                >
+                  <MemberDraftRow
+                    member={member}
+                    index={index}
+                    resolvedColor={memberColorMap.get(member.id)}
+                    nameError={validateMemberName?.(member.name) ?? null}
+                    onNameChange={updateMemberName}
+                    onNameBlur={finalizeMemberName}
+                    onRoleChange={updateMemberRole}
+                    onCustomRoleChange={updateMemberCustomRole}
+                    onRemove={removeMember}
+                    showWorkflow={showWorkflow}
+                    onWorkflowChange={showWorkflow ? updateMemberWorkflow : undefined}
+                    onWorkflowChipsChange={showWorkflow ? updateMemberWorkflowChips : undefined}
+                    onProviderChange={updateMemberProvider}
+                    onModelChange={updateMemberModel}
+                    onEffortChange={updateMemberEffort}
+                    showWorktreeIsolationControls={showWorktreeIsolationControls}
+                    worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
+                    onWorktreeIsolationChange={updateMemberIsolation}
+                    onMcpPolicyChange={updateMemberMcpPolicy}
+                    agentTeamsMcpLocked={agentTeamsMcpLockedForAll}
+                    inheritedProviderId={inheritedProviderId}
+                    inheritedModel={inheritedModel}
+                    inheritedEffort={inheritedEffort}
+                    limitContext={limitContext}
+                    forceInheritedModelSettings={forceInheritedModelSettings}
+                    draftKeyPrefix={draftKeyPrefix}
+                    projectPath={projectPath}
+                    mentionSuggestions={mentionSuggestions}
+                    taskSuggestions={taskSuggestions}
+                    teamSuggestions={teamSuggestions}
+                    onWorkflowSuggestionsNeeded={onWorkflowSuggestionsNeeded}
+                    lockProviderModel={lockProviderModel}
+                    lockIdentity={
+                      lockExistingMemberIdentity && Boolean(member.originalName?.trim())
+                    }
+                    identityLockReason={identityLockReason}
+                    modelLockReason={modelLockReason}
+                    warningText={memberWarningById?.[member.id] ?? null}
+                    infoText={memberInfoById?.[member.id] ?? null}
+                    disableGeminiOption={disableGeminiOption}
+                    modelIssueText={memberModelIssueById?.[member.id] ?? null}
+                    modelAdvisoryReasonByProvider={modelAdvisoryReasonByProvider}
+                    modelIssueReasonByProvider={modelIssueReasonByProvider}
+                    modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
+                    onOpenProviderSettings={onOpenProviderSettings}
+                  />
+                </div>
               ))}
               {softDeleteMembers && removedMembers.length > 0 ? (
                 <div className="pt-2">

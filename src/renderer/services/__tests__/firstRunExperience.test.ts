@@ -1,21 +1,24 @@
 import {
+  getStoredCreateTeamModel,
+  getStoredCreateTeamProvider,
+  getStoredCreateTeamSkipPermissions,
+} from '@renderer/services/createTeamPreferences';
+import {
   applyFirstRunCreateTeamDefaults,
   bootstrapFirstRunExperience,
   FIRST_RUN_DEFAULT_MODEL,
   FIRST_RUN_DEFAULT_PROVIDER,
+  getFirstRunConnectPath,
   hasCompletedFirstRun,
   isFirstRunExperienceActive,
+  isFirstRunFreeModelReady,
   markFirstRunComplete,
+  setFirstRunConnectPath,
   shouldDeferCreatePreflight,
   shouldExpandProviderBannerOnDashboard,
   shouldShowFirstRunOnboarding,
   shouldShowSimplifiedCreateDialog,
 } from '@renderer/services/firstRunExperience';
-import {
-  getStoredCreateTeamModel,
-  getStoredCreateTeamProvider,
-  getStoredCreateTeamSkipPermissions,
-} from '@renderer/services/createTeamPreferences';
 import { afterEach, describe, expect, it } from 'vitest';
 
 describe('firstRunExperience', () => {
@@ -50,6 +53,26 @@ describe('firstRunExperience', () => {
     applyFirstRunCreateTeamDefaults();
 
     expect(getStoredCreateTeamProvider()).toBe('anthropic');
+  });
+
+  it('treats free model as ready when OpenCode runtime is present', () => {
+    expect(isFirstRunFreeModelReady({ runtimeReady: true, modelListedInCatalog: false })).toBe(
+      true
+    );
+    expect(isFirstRunFreeModelReady({ runtimeReady: false, modelListedInCatalog: true })).toBe(
+      true
+    );
+    expect(isFirstRunFreeModelReady({ runtimeReady: false, modelListedInCatalog: false })).toBe(
+      false
+    );
+  });
+
+  it('persists connect-and-go path selection', () => {
+    expect(getFirstRunConnectPath()).toBeNull();
+    setFirstRunConnectPath('connect');
+    expect(getFirstRunConnectPath()).toBe('connect');
+    setFirstRunConnectPath('free');
+    expect(getFirstRunConnectPath()).toBe('free');
   });
 
   it('marks first run complete when teams already exist', () => {

@@ -1438,6 +1438,11 @@ async function handlePermanentlyDeleteTeam(
   }
   return wrapTeamHandler('permanentlyDeleteTeam', async () => {
     getAutoResumeService().cancelPendingAutoResume(validated.value!);
+    // Stop processes first (best-effort) so hard-delete never leaves a live team
+    // after the UI already removed the card.
+    await getTeamProvisioningService()
+      .stopTeam(validated.value!)
+      .catch(() => undefined);
     await getTeamDataService().permanentlyDeleteTeam(validated.value!);
     getTeamDataWorkerClient().invalidateTeamConfig(validated.value!);
     // Clean up app-owned data (attachments, task-attachments) that lives outside ~/.claude/

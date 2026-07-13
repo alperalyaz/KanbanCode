@@ -150,6 +150,11 @@ const TeamRosterEditorSectionImpl = ({
     isAnthropicHaikuTeamModel(model) &&
     !hasMemberAnthropicRuntimeWithContextChoice;
 
+  const [collapseModelToken, setCollapseModelToken] = React.useState(0);
+  const handleMemberAdded = React.useCallback(() => {
+    setCollapseModelToken((token) => token + 1);
+  }, []);
+
   return (
     <MembersEditorSection
       members={members}
@@ -186,6 +191,7 @@ const TeamRosterEditorSectionImpl = ({
       onTeammateWorktreeDefaultChange={onTeammateWorktreeDefaultChange}
       memberListClassName={memberListClassName}
       onOpenProviderSettings={onOpenProviderSettings}
+      onMemberAdded={handleMemberAdded}
       headerExtra={
         <div className="space-y-3">
           {headerTop}
@@ -211,6 +217,7 @@ const TeamRosterEditorSectionImpl = ({
             showAnthropicContextLimit={hasAnthropicRuntime}
             disableAnthropicContextLimit={disableAnthropicContextLimit}
             onOpenProviderSettings={onOpenProviderSettings}
+            collapseModelToken={collapseModelToken}
           />
           {headerBottom}
         </div>

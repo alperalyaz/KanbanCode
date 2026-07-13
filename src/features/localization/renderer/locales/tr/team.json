@@ -146,7 +146,8 @@
       "description": "Ücretsiz big-pickle modeliyle tek kişilik bir OpenCode ekibiyle başlayın.",
       "launchDescription": "Kanban panosunda hemen çalışmaya başlamak için oluşturduktan sonra başlatın.",
       "showAdvanced": "Gelişmiş seçenekleri göster",
-      "openCodeSetupHint": "OpenCode ilk açılışta çalışma zamanı ve model kataloğu yüklenirken bir dakikaya kadar sürebilir."
+      "openCodeSetupHint": "Big Pickle başlatmaya hazır. Tam OpenCode model kataloğu arka planda bir dakikaya kadar yüklenmeye devam edebilir.",
+      "connectHint": "Bu iletişim kutusundan çıkmadan giriş yapmak veya API anahtarı yapıştırmak için aşağıdan Anthropic veya Codex'e geçin."
     },
     "optional": {
       "launchSettingsTitle": "İsteğe bağlı başlatma ayarları",
@@ -344,8 +345,8 @@
       "summary": "Atanan görev başlamadı"
     },
     "deleteTeam": {
-      "description": "\"{{team}}\" ekibi silinsin mi? Bu işlem geri alınamaz. Tüm ekip verileri ve görevler silinecek.",
-      "title": "Ekibi sil"
+      "description": "\"{{team}}\" ekibi kalıcı olarak silinsin mi? Tüm ekip verileri, görevler ve yarım kalan çalışmalar silinecek. Bu işlem geri alınamaz.",
+      "title": "Ekibi kalıcı sil"
     },
     "draft": {
       "descriptionPrefix": "Bu bir taslak ekip -",
@@ -399,7 +400,7 @@
       "memory": "Bellek"
     },
     "tooltips": {
-      "deleteTeam": "Ekibi sil",
+      "deleteTeam": "Ekibi kalıcı sil",
       "editTeam": "Ekibi düzenle",
       "editUnavailableProvisioning": "Sağlama hâlâ devam ederken ekibi düzenleme kullanılamaz",
       "stopTeam": "Ekibi durdur"
@@ -823,6 +824,14 @@
     },
     "reason": "Neden: {{reason}}",
     "runtimeModelsSyncing": "Açık modeller geçerli çalışma zamanından yüklenir. Liste senkronize olurken Varsayılan kullanılabilir kalır.",
+    "openCodeCatalogHydrating": "Big Pickle şu an seçilebilir. Katalog yüklenirken diğer OpenCode modelleri de görünecek.",
+    "inlineApiKey": {
+      "title": "Veya API anahtarıyla bağlanın",
+      "hint": "Ekip kurulumundan çıkmadan API faturalandırması için buraya bir anahtar yapıştırın. Yukarıdaki giriş abonelik kimlik doğrulaması için hâlâ çalışır.",
+      "add": "API anahtarı ekle",
+      "update": "API anahtarını güncelle",
+      "openFullSettings": "Tam sağlayıcı ayarlarını aç"
+    },
     "fastMode": {
       "codexLabel": "Hızlı mod (2x kredi)",
       "optionalLabel": "Hızlı mod (isteğe bağlı)",
@@ -1270,7 +1279,7 @@
       "createTeam": "Ekip Oluştur",
       "deleteForever": "Kalıcı olarak sil",
       "deletePermanently": "Kalıcı olarak sil",
-      "deleteTeam": "Ekibi sil",
+      "deleteTeam": "Ekibi kalıcı sil",
       "launching": "Başlatılıyor...",
       "launchTeam": "Ekibi başlat",
       "relaunchTeam": "Ekibi yeniden başlat",
@@ -1357,8 +1366,8 @@
     },
     "deleteForever": {
       "title": "Kalıcı olarak sil",
-      "message": "\"{{teamName}}\" ekibi kalıcı olarak silinsin mi? Tüm veriler kaybolacak.",
-      "confirmLabel": "Kalıcı olarak sil",
+      "message": "\"{{teamName}}\" ekibi kalıcı olarak silinsin mi? Tüm ekip verileri, görevler ve yarım kalan çalışmalar silinecek. Bu işlem geri alınamaz.",
+      "confirmLabel": "Evet, kalıcı sil",
       "cancelLabel": "İptal"
     }
   },
@@ -2280,6 +2289,44 @@
     },
     "optional": {
       "badge": "İsteğe bağlı"
+    }
+  },
+  "runtimeCompatibility": {
+    "providers": {
+      "anthropic": "Anthropic",
+      "codex": "Codex",
+      "gemini": "Gemini",
+      "opencode": "OpenCode"
+    },
+    "title": {
+      "checkingTmux": "Açık takım arkadaşı modu için tmux kontrol ediliyor",
+      "openCodeLedMixed": "OpenCode karışık sağlayıcılı ekibe liderlik edemez",
+      "inProcessBlocked": "Bu ekip süreç-içi takım arkadaşları kullanamaz",
+      "tmuxNotReady": "Açık takım arkadaşı modu için tmux hazır değil"
+    },
+    "message": {
+      "checkingTmux": "Özel CLI argümanları tmux takım arkadaşları istiyor. Uygulama tmux'un hazır olup olmadığını kontrol ediyor.",
+      "openCodeLedMixed": "Şu an takım arkadaşları farklı sağlayıcı kullanıyorsa lider Anthropic veya Codex olmalı. OpenCode yine de bu liderlerin altında takım arkadaşı olarak katılabilir.",
+      "inProcessBlocked": "Bazı takım arkadaşları ayrı süreç gerektirir. Uygulamanın yerel süreç taşımasını kullanabilmesi için --teammate-mode in-process argümanını kaldırın.",
+      "tmuxNotReady": "Özel CLI argümanları --teammate-mode tmux zorluyor ama tmux hazır değil. Windows'ta yerel süreç taşıması için bu argümanı kaldırın veya tmux/WSL tmux kurun."
+    },
+    "details": {
+      "mixedProviders": "Karışık sağlayıcılar takım arkadaşı süreçleri gerektirir.",
+      "mixedProvidersNamed": "Karışık sağlayıcılar: {{names}}, {{lead}} liderinden farklı bir sağlayıcı kullanıyor.",
+      "openCodeLedMixed": "Bu aşamada karışık ekiplerde lider OpenCode olamaz.",
+      "openCodeLedMixedNamed": "OpenCode liderli karışık ekip: {{names}} OpenCode dışı bir sağlayıcı kullanıyor.",
+      "codexNative": "Codex native takım arkadaşları ayrı Codex süreçlerinde çalışmalıdır.",
+      "codexNativeNamed": "Codex native takım arkadaşları: {{names}} ayrı Codex süreçlerinde çalışmalıdır.",
+      "explicitTmux": "Özel CLI argümanları --teammate-mode tmux zorluyor.",
+      "explicitInProcess": "Özel CLI argümanları --teammate-mode in-process zorluyor.",
+      "fixOpenCodeLead": "Çözüm: OpenCode ile diğer sağlayıcıları karıştırırken lideri Anthropic veya Codex'te tutun.",
+      "fixInProcess": "Çözüm: Takım arkadaşlarının yerel süreç taşımasını kullanabilmesi için --teammate-mode in-process argümanını kaldırın.",
+      "fixTmux": "Çözüm: tmux/WSL tmux kurun veya uygulamanın yerel süreç taşımasını kullanabilmesi için --teammate-mode tmux argümanını kaldırın."
+    },
+    "member": {
+      "mixedProvider": "{{name}} {{provider}} kullanıyor. Bu takım arkadaşı {{lead}} liderinin dışında ayrı bir süreç gerektirir.",
+      "codexNative": "{{name}} Codex native kullanıyor. Codex native takım arkadaşları ayrı bir Codex süreci gerektirir.",
+      "openCodeLedMixed": "{{name}} {{provider}} kullanıyor. Lider OpenCode iken karışık sağlayıcılar henüz desteklenmiyor — lideri Anthropic veya Codex yapın ya da tüm takım arkadaşlarını OpenCode'da tutun."
     }
   },
   "runningTeams": {

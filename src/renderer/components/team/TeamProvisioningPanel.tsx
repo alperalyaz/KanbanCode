@@ -57,6 +57,7 @@ export const TeamProvisioningPanel = memo(function TeamProvisioningPanel({
     runInstanceKey,
   } = useTeamProvisioningPresentation(teamName);
   const [dismissed, setDismissed] = useState(false);
+  const [cancelRequested, setCancelRequested] = useState(false);
   const [retryingOpenCode, setRetryingOpenCode] = useState(false);
   const [openCodeRetryMessage, setOpenCodeRetryMessage] = useState<string | null>(null);
   const [openCodeRetryError, setOpenCodeRetryError] = useState<string | null>(null);
@@ -64,6 +65,7 @@ export const TeamProvisioningPanel = memo(function TeamProvisioningPanel({
 
   useEffect(() => {
     setDismissed(false);
+    setCancelRequested(false);
     setRetryingOpenCode(false);
     setOpenCodeRetryMessage(null);
     setOpenCodeRetryError(null);
@@ -90,7 +92,8 @@ export const TeamProvisioningPanel = memo(function TeamProvisioningPanel({
     }
   }, [hasPresentation, isReady]);
 
-  if (!presentation || dismissed) {
+  // Cancel should feel instant: drop the banner on click while IPC/teardown continues.
+  if (!presentation || dismissed || cancelRequested) {
     return null;
   }
 
@@ -173,6 +176,7 @@ export const TeamProvisioningPanel = memo(function TeamProvisioningPanel({
       onCancel={
         presentation.canCancel && cancelProvisioning
           ? () => {
+              setCancelRequested(true);
               void cancelProvisioning(presentation.progress.runId);
             }
           : null

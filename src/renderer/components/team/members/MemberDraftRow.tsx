@@ -675,8 +675,15 @@ export const MemberDraftRow = ({
       </div>
       {!isRemoved && hasWarnings ? (
         <div className="md:col-span-3">
-          <div className="bg-amber-500/8 ml-3 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-            <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
+          <div
+            className="ml-3 flex items-start gap-2 rounded-md border px-3 py-2 text-[11px] leading-relaxed"
+            style={{
+              backgroundColor: 'var(--warning-bg)',
+              borderColor: 'var(--warning-border)',
+              color: 'var(--warning-text)',
+            }}
+          >
+            <Info className="mt-0.5 size-3.5 shrink-0" style={{ color: 'var(--warning-text)' }} />
             <div className="space-y-1">
               {warningMessages.map((message) => (
                 <p key={message}>{message}</p>
@@ -688,7 +695,7 @@ export const MemberDraftRow = ({
       ) : null}
       {!isRemoved && infoText ? (
         <div className="md:col-span-3">
-          <div className="ml-3 flex items-start gap-2 rounded-md border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-[11px] leading-relaxed text-sky-100">
+          <div className="ml-3 flex items-start gap-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[11px] leading-relaxed text-sky-900 dark:text-sky-100">
             <Info className="mt-0.5 size-3.5 shrink-0 text-sky-700 dark:text-sky-300" />
             <p className="min-w-0 whitespace-pre-wrap break-words">{infoText}</p>
           </div>

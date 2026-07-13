@@ -582,6 +582,8 @@
   },
   "apiKeys": {
     "description": "MCP sunucularını kurarken otomatik doldurmak için API anahtarlarını güvenli şekilde saklayın.",
+    "providerSettingsHint": "Claude ve Codex ekip başlatmaları için Dashboard'daki Sağlayıcıları Yönet'i tercih edin — kimlik doğrulama modunu ayarlar ve anahtarları ajan süreçlerine enjekte eder.",
+    "openProviderSettings": "Sağlayıcıları Yönet'i aç",
     "storage": {
       "osKeychain": "Anahtarlar {{backend}} aracılığıyla şifrelenir ve kısıtlı dosya izinleriyle (yalnızca sahip) saklanır.",
       "localEncryption": "İşletim sistemi anahtarlığı kullanılamıyor - anahtarlar AES-256 ile yerel olarak şifrelenir. Daha güçlü koruma için bir anahtarlık hizmeti kurun (gnome-keyring, kwallet)."

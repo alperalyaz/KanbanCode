@@ -235,6 +235,19 @@ describe('teamModelAvailability', () => {
     ]);
   });
 
+  it('exposes OpenCode big-pickle floor before runtime catalog arrives', () => {
+    expect(getAvailableTeamProviderModelOptions('opencode', null)).toEqual(
+      expect.arrayContaining([
+        { value: '', label: 'Default', badgeLabel: 'Default' },
+        expect.objectContaining({
+          value: 'opencode/big-pickle',
+          label: 'Big Pickle',
+          badgeLabel: 'Free',
+        }),
+      ])
+    );
+  });
+
   it('keeps OpenCode raw ids intact while exposing readable labels and source badges', () => {
     const providerStatus = createOpenCodeProviderStatus([
       'openai/gpt-5.4',

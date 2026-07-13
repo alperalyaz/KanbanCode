@@ -1,15 +1,19 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { Button } from '@renderer/components/ui/button';
 import {
   FIRST_RUN_DEFAULT_MODEL,
   FIRST_RUN_DEFAULT_PROVIDER,
+  type FirstRunConnectPath,
+  getFirstRunConnectPath,
   isFirstRunExperienceActive,
+  isFirstRunFreeModelReady,
+  setFirstRunConnectPath,
 } from '@renderer/services/firstRunExperience';
 import { useStore } from '@renderer/store';
 import { requestProviderRuntimeChecks } from '@renderer/utils/requestProviderRuntimeChecks';
-import { CheckCircle2, Circle, Loader2, Rocket, Sparkles } from 'lucide-react';
+import { CheckCircle2, Circle, KeyRound, Loader2, Rocket, Sparkles } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 interface ChecklistStep {
@@ -24,9 +28,9 @@ interface FirstRunOnboardingChecklistProps {
   hasTeams: boolean;
 }
 
-export function FirstRunOnboardingChecklist({
+export const FirstRunOnboardingChecklist = ({
   hasTeams,
-}: Readonly<FirstRunOnboardingChecklistProps>): React.JSX.Element | null {
+}: Readonly<FirstRunOnboardingChecklistProps>): React.JSX.Element | null => {
   const { t } = useAppTranslation('dashboard');
   const {
     cliStatus,
@@ -43,6 +47,9 @@ export function FirstRunOnboardingChecklist({
       openTeamsTabAndCreate: state.openTeamsTabAndCreate,
     }))
   );
+  const [connectPath, setConnectPath] = useState<FirstRunConnectPath | null>(() =>
+    getFirstRunConnectPath()
+  );
 
   const show = isFirstRunExperienceActive() && !hasTeams;
   const openCodeProvider = cliStatus?.providers.find(
@@ -52,10 +59,14 @@ export function FirstRunOnboardingChecklist({
     openCodeRuntimeStatus?.installed === true ||
     openCodeProvider?.backend?.kind === 'opencode-cli' ||
     Boolean(openCodeProvider?.models?.length);
-  const openCodeModelReady = Boolean(
+  const openCodeModelListed = Boolean(
     openCodeProvider?.models?.includes(FIRST_RUN_DEFAULT_MODEL) ||
     openCodeProvider?.modelCatalog?.models.some((model) => model.id === FIRST_RUN_DEFAULT_MODEL)
   );
+  const openCodeModelReady = isFirstRunFreeModelReady({
+    runtimeReady: openCodeRuntimeReady,
+    modelListedInCatalog: openCodeModelListed,
+  });
   const providerChecksLoading =
     cliStatusLoading ||
     cliProviderStatusLoading[FIRST_RUN_DEFAULT_PROVIDER] === true ||
@@ -73,9 +84,11 @@ export function FirstRunOnboardingChecklist({
       {
         id: 'model',
         label: t('firstRun.steps.model'),
-        detail: t('firstRun.steps.modelDetail'),
+        detail: openCodeRuntimeReady
+          ? t('firstRun.steps.modelReadyDetail')
+          : t('firstRun.steps.modelDetail'),
         done: openCodeModelReady,
-        loading: providerChecksLoading && openCodeRuntimeReady && !openCodeModelReady,
+        loading: providerChecksLoading && !openCodeModelReady && !openCodeRuntimeReady,
       },
       {
         id: 'team',
@@ -91,8 +104,18 @@ export function FirstRunOnboardingChecklist({
     return null;
   }
 
+  const startCreate = (path: FirstRunConnectPath): void => {
+    setFirstRunConnectPath(path);
+    setConnectPath(path);
+    void requestProviderRuntimeChecks({ force: true });
+    openTeamsTabAndCreate();
+  };
+
   return (
-    <section className="mb-5 rounded-xl border border-indigo-500/25 bg-indigo-500/5 p-5 shadow-sm">
+    <section
+      className="mb-5 rounded-xl border border-indigo-500/25 bg-indigo-500/5 p-5 shadow-sm"
+      data-testid="first-run-onboarding-checklist"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 space-y-2">
           <div className="flex items-center gap-2 text-sm font-semibold text-indigo-800 dark:text-indigo-200">
@@ -103,17 +126,45 @@ export function FirstRunOnboardingChecklist({
             {t('firstRun.description')}
           </p>
         </div>
-        <Button
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <button
           type="button"
-          className="shrink-0"
-          onClick={() => {
-            void requestProviderRuntimeChecks({ force: true });
-            openTeamsTabAndCreate();
-          }}
+          data-testid="first-run-path-free"
+          onClick={() => startCreate('free')}
+          className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+            connectPath === 'free'
+              ? 'border-emerald-500/45 bg-emerald-500/10'
+              : 'border-border/80 bg-surface-raised/70 hover:border-emerald-500/35'
+          }`}
         >
-          <Rocket className="mr-2 size-4" />
-          {t('firstRun.quickStart')}
-        </Button>
+          <div className="flex items-center gap-2 text-sm font-semibold text-text">
+            <Rocket className="size-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
+            {t('firstRun.paths.free.title')}
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
+            {t('firstRun.paths.free.description')}
+          </p>
+        </button>
+        <button
+          type="button"
+          data-testid="first-run-path-connect"
+          onClick={() => startCreate('connect')}
+          className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+            connectPath === 'connect'
+              ? 'border-amber-500/45 bg-amber-500/10'
+              : 'border-border/80 bg-surface-raised/70 hover:border-amber-500/35'
+          }`}
+        >
+          <div className="flex items-center gap-2 text-sm font-semibold text-text">
+            <KeyRound className="size-4 shrink-0 text-amber-600 dark:text-amber-300" />
+            {t('firstRun.paths.connect.title')}
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
+            {t('firstRun.paths.connect.description')}
+          </p>
+        </button>
       </div>
 
       <ol className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -140,6 +191,24 @@ export function FirstRunOnboardingChecklist({
           </li>
         ))}
       </ol>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          onClick={() => startCreate(connectPath ?? 'free')}
+          data-testid="first-run-quick-start"
+        >
+          <Rocket className="mr-2 size-4" />
+          {t('firstRun.quickStart')}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void requestProviderRuntimeChecks({ force: true })}
+        >
+          {t('cliStatus.actions.checkNow')}
+        </Button>
+      </div>
     </section>
   );
-}
+};

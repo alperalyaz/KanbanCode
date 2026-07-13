@@ -699,7 +699,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
   });
 
-  it('shows an OpenCode catalog loading skeleton instead of the transient big-pickle placeholder', async () => {
+  it('keeps Big Pickle selectable while the OpenCode catalog loading skeleton runs', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliStatus = {
       flavor: 'agent_teams_orchestrator',
@@ -741,7 +741,7 @@ describe('TeamModelSelector disabled Codex models', () => {
         React.createElement(TeamModelSelector, {
           providerId: 'opencode',
           onProviderChange: () => undefined,
-          value: '',
+          value: 'opencode/big-pickle',
           onValueChange: () => undefined,
         })
       );
@@ -751,9 +751,14 @@ describe('TeamModelSelector disabled Codex models', () => {
     expect(
       host.querySelector('[data-testid="team-model-selector-opencode-loading-skeleton"]')
     ).not.toBeNull();
+    expect(
+      host.querySelector('[data-testid="team-model-selector-opencode-floor-grid"]')
+    ).not.toBeNull();
     expect(host.textContent).toContain('Default');
-    expect(host.textContent).toContain('Loading OpenCode models...');
-    expect(host.textContent).not.toContain('big-pickle');
+    expect(host.textContent).toMatch(/Big Pickle|big-pickle/i);
+    expect(host.textContent).toContain(
+      'Big Pickle is selectable now. More OpenCode models appear as the catalog finishes loading.'
+    );
     expect(host.textContent).not.toContain('Recommended only');
 
     await act(async () => {

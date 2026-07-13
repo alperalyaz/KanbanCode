@@ -2,15 +2,20 @@
  * NotificationsView - Linear Inbox-style notifications page.
  * Single list showing all notifications with unread indicator.
  * Includes a filter chip bar to filter by trigger name.
+ *
+ * Empty-state UX: always show a clear Close action, and gently auto-close
+ * the tab after a short delay when there is nothing to review — so users
+ * are never stranded on a dead-end screen.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
+import { Button } from '@renderer/components/ui/button';
 import { useStore } from '@renderer/store';
 import { getTriggerColorDef } from '@shared/constants/triggerColors';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { CheckCheck, Inbox, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCheck, Inbox, Loader2, Trash2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { NotificationRow } from './NotificationRow';
@@ -20,6 +25,9 @@ import type { DetectedError } from '@renderer/types/data';
 // Virtual list constants
 const ROW_HEIGHT = 56;
 const OVERSCAN = 5;
+
+/** Auto-close empty inbox after load so the screen is not a dead end. */
+const EMPTY_AUTO_CLOSE_MS = 2500;
 
 /** Label used for notifications without a triggerName */
 const OTHER_LABEL = '__other__';
@@ -41,6 +49,8 @@ export const NotificationsView = (): React.JSX.Element => {
     deleteNotification,
     clearNotifications,
     navigateToError,
+    closeNotificationsTab,
+    openDashboard,
   } = useStore(
     useShallow((s) => ({
       notifications: s.notifications,
@@ -51,6 +61,8 @@ export const NotificationsView = (): React.JSX.Element => {
       deleteNotification: s.deleteNotification,
       clearNotifications: s.clearNotifications,
       navigateToError: s.navigateToError,
+      closeNotificationsTab: s.closeNotificationsTab,
+      openDashboard: s.openDashboard,
     }))
   );
 
@@ -58,6 +70,8 @@ export const NotificationsView = (): React.JSX.Element => {
   const [isLoading, setIsLoading] = useState(true);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [autoCloseCancelled, setAutoCloseCancelled] = useState(false);
+  const [autoCloseSecondsLeft, setAutoCloseSecondsLeft] = useState<number | null>(null);
 
   // Fetch notifications on mount
   useEffect(() => {
@@ -113,6 +127,47 @@ export const NotificationsView = (): React.JSX.Element => {
       return label === activeFilter;
     });
   }, [sortedNotifications, activeFilter]);
+
+  const isTrulyEmpty = !isLoading && notifications.length === 0 && activeFilter === null;
+
+  const handleClose = useCallback((): void => {
+    closeNotificationsTab();
+    // If closing left the workspace with no active surface, land on dashboard.
+    const state = useStore.getState();
+    if (!state.getActiveTab()) {
+      openDashboard();
+    }
+  }, [closeNotificationsTab, openDashboard]);
+
+  const cancelAutoClose = useCallback((): void => {
+    setAutoCloseCancelled(true);
+    setAutoCloseSecondsLeft(null);
+  }, []);
+
+  // Gentle auto-close when the inbox is empty — cancel if the user opts to stay.
+  useEffect(() => {
+    if (!isTrulyEmpty || autoCloseCancelled) {
+      setAutoCloseSecondsLeft(null);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setAutoCloseSecondsLeft(Math.ceil(EMPTY_AUTO_CLOSE_MS / 1000));
+
+    const tickId = window.setInterval(() => {
+      const remainingMs = EMPTY_AUTO_CLOSE_MS - (Date.now() - startedAt);
+      setAutoCloseSecondsLeft(Math.max(0, Math.ceil(remainingMs / 1000)));
+    }, 200);
+
+    const closeId = window.setTimeout(() => {
+      handleClose();
+    }, EMPTY_AUTO_CLOSE_MS);
+
+    return () => {
+      window.clearInterval(tickId);
+      window.clearTimeout(closeId);
+    };
+  }, [autoCloseCancelled, handleClose, isTrulyEmpty]);
 
   // Estimate item size
   const estimateSize = useCallback(() => ROW_HEIGHT, []);
@@ -201,6 +256,7 @@ export const NotificationsView = (): React.JSX.Element => {
     <div
       className="flex flex-1 flex-col overflow-hidden"
       style={{ backgroundColor: 'var(--color-surface)' }}
+      data-testid="notifications-view"
     >
       {/* Header */}
       <div className="shrink-0 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
@@ -224,55 +280,69 @@ export const NotificationsView = (): React.JSX.Element => {
             )}
           </div>
 
-          {/* Action Buttons */}
-          {notifications.length > 0 && (
-            <div className="flex items-center gap-1">
-              {/* Mark all/filtered read */}
-              {filteredUnreadCount > 0 && (
+          {/* Action Buttons — Close is always visible so this is never a dead end */}
+          <div className="flex items-center gap-1">
+            {notifications.length > 0 && (
+              <>
+                {/* Mark all/filtered read */}
+                {filteredUnreadCount > 0 && (
+                  <button
+                    onClick={handleMarkAllRead}
+                    className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:opacity-80"
+                    style={{ color: 'var(--color-text-muted)' }}
+                    title={
+                      activeFilter !== null
+                        ? t('notifications.actions.markFilteredAsRead')
+                        : t('notifications.actions.markAllAsRead')
+                    }
+                  >
+                    <CheckCheck className="size-4" />
+                    <span className="hidden sm:inline">
+                      {activeFilter !== null
+                        ? t('notifications.actions.markFilteredRead')
+                        : t('notifications.actions.markAllRead')}
+                    </span>
+                  </button>
+                )}
+                {/* Clear all/filtered */}
                 <button
-                  onClick={handleMarkAllRead}
-                  className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:opacity-80"
-                  style={{ color: 'var(--color-text-muted)' }}
+                  onClick={handleClearAll}
+                  className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors ${
+                    showClearConfirm
+                      ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                      : 'hover:opacity-80'
+                  }`}
+                  style={showClearConfirm ? undefined : { color: 'var(--color-text-muted)' }}
                   title={
                     activeFilter !== null
-                      ? t('notifications.actions.markFilteredAsRead')
-                      : t('notifications.actions.markAllAsRead')
+                      ? t('notifications.actions.clearFilteredNotifications')
+                      : t('notifications.actions.clearAllNotifications')
                   }
                 >
-                  <CheckCheck className="size-4" />
+                  <Trash2 className="size-4" />
                   <span className="hidden sm:inline">
-                    {activeFilter !== null
-                      ? t('notifications.actions.markFilteredRead')
-                      : t('notifications.actions.markAllRead')}
+                    {showClearConfirm
+                      ? t('notifications.actions.clickToConfirm')
+                      : activeFilter !== null
+                        ? t('notifications.actions.clearFiltered')
+                        : t('notifications.actions.clearAll')}
                   </span>
                 </button>
-              )}
-              {/* Clear all/filtered */}
-              <button
-                onClick={handleClearAll}
-                className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors ${
-                  showClearConfirm
-                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                    : 'hover:opacity-80'
-                }`}
-                style={showClearConfirm ? undefined : { color: 'var(--color-text-muted)' }}
-                title={
-                  activeFilter !== null
-                    ? t('notifications.actions.clearFilteredNotifications')
-                    : t('notifications.actions.clearAllNotifications')
-                }
-              >
-                <Trash2 className="size-4" />
-                <span className="hidden sm:inline">
-                  {showClearConfirm
-                    ? t('notifications.actions.clickToConfirm')
-                    : activeFilter !== null
-                      ? t('notifications.actions.clearFiltered')
-                      : t('notifications.actions.clearAll')}
-                </span>
-              </button>
-            </div>
-          )}
+              </>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleClose}
+              data-testid="notifications-close"
+              className="gap-1.5"
+              title={t('notifications.actions.close')}
+            >
+              <X className="size-3.5" />
+              {t('notifications.actions.close')}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -329,20 +399,54 @@ export const NotificationsView = (): React.JSX.Element => {
       <div ref={parentRef} className="flex-1 overflow-y-auto">
         {filteredNotifications.length === 0 ? (
           <div
-            className="flex flex-col items-center justify-center py-16"
+            className="flex flex-col items-center justify-center px-4 py-16"
             style={{ color: 'var(--color-text-muted)' }}
+            data-testid="notifications-empty-state"
           >
             <Inbox className="mb-3 size-10 opacity-30" />
-            <p className="mb-1 text-sm font-medium">
+            <p className="mb-1 text-sm font-medium" style={{ color: 'var(--color-text)' }}>
               {activeFilter !== null
                 ? t('notifications.empty.noMatching')
                 : t('notifications.empty.noNotifications')}
             </p>
-            <p className="text-xs opacity-70">
+            <p className="mb-4 text-xs opacity-70">
               {activeFilter !== null
                 ? t('notifications.empty.tryDifferentFilter')
                 : t('notifications.empty.allCaughtUp')}
             </p>
+
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleClose}
+                data-testid="notifications-empty-close"
+                className="gap-1.5"
+              >
+                <ArrowLeft className="size-3.5" />
+                {t('notifications.actions.back')}
+              </Button>
+              {isTrulyEmpty && !autoCloseCancelled && autoCloseSecondsLeft !== null ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={cancelAutoClose}
+                  data-testid="notifications-keep-open"
+                >
+                  {t('notifications.empty.keepOpen')}
+                </Button>
+              ) : null}
+            </div>
+
+            {isTrulyEmpty && !autoCloseCancelled && autoCloseSecondsLeft !== null ? (
+              <p
+                className="mt-3 text-[11px] opacity-70"
+                data-testid="notifications-auto-close-hint"
+              >
+                {t('notifications.empty.autoClosing', { seconds: autoCloseSecondsLeft })}
+              </p>
+            ) : null}
           </div>
         ) : (
           <div

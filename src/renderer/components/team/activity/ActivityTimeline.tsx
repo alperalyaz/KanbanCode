@@ -150,6 +150,8 @@ interface ActivityTimelineProps {
    * `flex-col-reverse` used to flip the newest-first row list).
    */
   bottomAnchored?: boolean;
+  /** Notifies the host when client-side older-message pagination still has hidden rows. */
+  onHiddenOlderChange?: (hasHiddenOlder: boolean) => void;
 }
 
 const VIEWPORT_THRESHOLD = 0.15;
@@ -481,6 +483,7 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
   loading = false,
   viewport,
   bottomAnchored = false,
+  onHiddenOlderChange,
 }: ActivityTimelineProps): React.JSX.Element {
   const { t } = useAppTranslation('team');
   const observerRoot = viewport?.observerRoot ?? viewport?.scrollElementRef;
@@ -539,6 +542,8 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
       if (!isLeadThought(messages[i])) {
         significantSeen++;
         if (significantSeen > visibleCount) {
+          // `i` is the first hidden significant message — keep it out of the
+          // visible window. Do not also count it again when totaling hidden rows.
           cutoff = i;
           break;
         }
@@ -546,14 +551,20 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
     }
 
     const significantTotal =
-      significantSeen +
-      (cutoff < total ? messages.slice(cutoff).filter((m) => !isLeadThought(m)).length : 0);
+      cutoff < total
+        ? // significantSeen already includes the first hidden row at `cutoff`.
+          significantSeen - 1 + messages.slice(cutoff).filter((m) => !isLeadThought(m)).length
+        : significantSeen;
     const hidden = Math.max(0, significantTotal - visibleCount);
     return {
       visibleMessages: cutoff < total ? messages.slice(0, cutoff) : messages,
       hiddenCount: hidden,
     };
   }, [messages, visibleCount]);
+
+  useEffect(() => {
+    onHiddenOlderChange?.(hiddenCount > 0);
+  }, [hiddenCount, onHiddenOlderChange]);
 
   // Group consecutive lead thoughts into collapsible blocks.
   const timelineItems = useMemo(() => groupTimelineItems(visibleMessages), [visibleMessages]);
@@ -932,100 +943,135 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
     );
   }
 
-  return (
-    <div
-      ref={rootRef}
-      className={bottomAnchored ? 'flex flex-col-reverse space-y-1 space-y-reverse' : 'space-y-1'}
-    >
-      {shouldVirtualize ? (
+  const revealCount = Math.min(MESSAGES_PAGE_SIZE, hiddenCount);
+  // When one click reveals everything left, the "+N older" label duplicates the
+  // action text ("+14 older | Show 14 more"). Keep a single primary action then.
+  const showRemainingCountLabel = hiddenCount > MESSAGES_PAGE_SIZE;
+  const olderMessagesControl =
+    hiddenCount > 0 ? (
+      <div
+        className={
+          bottomAnchored
+            ? 'relative z-[1] flex justify-center pb-2 pt-1'
+            : 'relative flex justify-center pb-3 pt-1'
+        }
+        data-testid="activity-timeline-older-control"
+      >
+        {/* Soft fade toward the message stream — never paint over the first card. */}
         <div
+          aria-hidden="true"
+          className={
+            bottomAnchored
+              ? 'pointer-events-none absolute inset-x-0 top-full h-6'
+              : 'pointer-events-none absolute inset-x-0 bottom-full h-10'
+          }
           style={{
-            height: `${rowVirtualizer.getTotalSize()}px`,
-            width: '100%',
-            position: 'relative',
+            background: bottomAnchored
+              ? 'linear-gradient(to bottom, color-mix(in srgb, var(--color-surface-sidebar) 72%, transparent) 0%, transparent 100%)'
+              : 'linear-gradient(to top, color-mix(in srgb, var(--color-surface-sidebar) 72%, transparent) 0%, transparent 100%)',
+          }}
+        />
+        <div
+          className="relative flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-full px-3 py-1.5"
+          style={{
+            backgroundColor: 'var(--color-surface-raised)',
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.12)',
+            border: '1px solid var(--color-border-emphasis)',
           }}
         >
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const row = renderRows[virtualRow.index];
-            if (!row) return null;
-            return (
-              <div
-                key={virtualRow.key}
-                // `measureElement` swaps each row's estimated height for its
-                // real rendered height as it mounts, so the virtualizer can
-                // correct totalSize and downstream row positions. The wrapper
-                // div carries no padding/margin, so its bounding box matches
-                // the inner row's bounding box — this is why a merged ref
-                // callback between the observer and `measureElement` isn't
-                // needed here.
-                ref={rowVirtualizer.measureElement}
-                data-index={virtualRow.index}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  // `translateY` is offset by scrollMargin so the virtualizer
-                  // positions rows relative to the timeline's own origin,
-                  // not the scroll container's top — otherwise rows would
-                  // overlap the composer / status block at the top.
-                  transform: `translateY(${virtualRow.start - rowVirtualizer.options.scrollMargin}px)`,
-                }}
+          {showRemainingCountLabel ? (
+            <>
+              <span className="px-1 text-[11px] tabular-nums text-[var(--color-text-muted)]">
+                {t('activity.timeline.olderCount', { count: hiddenCount })}
+              </span>
+              <span
+                aria-hidden="true"
+                className="h-3 w-px shrink-0 bg-[var(--color-border-emphasis)]"
+              />
+            </>
+          ) : null}
+          <button
+            type="button"
+            onClick={handleShowMore}
+            className="rounded-full px-2.5 py-0.5 text-[11px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-text)]"
+          >
+            {t('activity.timeline.showMore', { count: revealCount })}
+          </button>
+          {showRemainingCountLabel ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="h-3 w-px shrink-0 bg-[var(--color-border-emphasis)]"
+              />
+              <button
+                type="button"
+                onClick={handleShowAll}
+                className="rounded-full px-2.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-text-secondary)]"
               >
-                {renderTimelineRow(row, { suppressEntryAnimation: true })}
-              </div>
-            );
-          })}
+                {t('activity.timeline.showAll')}
+              </button>
+            </>
+          ) : null}
         </div>
-      ) : (
-        renderRows.map((row) => renderTimelineRow(row))
-      )}
-      {hiddenCount > 0 && (
-        <div className="relative flex justify-center pb-3 pt-1">
-          {/* Bottom-up shadow gradient: darkest at bottom edge, fades upward */}
+      </div>
+    ) : null;
+
+  const timelineRows = shouldVirtualize ? (
+    <div
+      style={{
+        height: `${rowVirtualizer.getTotalSize()}px`,
+        width: '100%',
+        position: 'relative',
+      }}
+    >
+      {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+        const row = renderRows[virtualRow.index];
+        if (!row) return null;
+        return (
           <div
-            className="pointer-events-none absolute inset-x-0 -top-24"
+            key={virtualRow.key}
+            // `measureElement` swaps each row's estimated height for its
+            // real rendered height as it mounts, so the virtualizer can
+            // correct totalSize and downstream row positions. The wrapper
+            // div carries no padding/margin, so its bounding box matches
+            // the inner row's bounding box — this is why a merged ref
+            // callback between the observer and `measureElement` isn't
+            // needed here.
+            ref={rowVirtualizer.measureElement}
+            data-index={virtualRow.index}
             style={{
-              bottom: '-1.6rem',
-              background:
-                'linear-gradient(to top, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.25) 25%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.03) 75%, transparent 100%)',
-            }}
-          />
-          <div
-            className="relative z-[1] flex items-center gap-3 rounded-full px-4 py-1.5"
-            style={{
-              backgroundColor: 'var(--color-surface-raised)',
-              boxShadow:
-                '0 0 12px 4px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.04)',
-              border: '1px solid var(--color-border-emphasis)',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              // `translateY` is offset by scrollMargin so the virtualizer
+              // positions rows relative to the timeline's own origin,
+              // not the scroll container's top — otherwise rows would
+              // overlap the composer / status block at the top.
+              transform: `translateY(${virtualRow.start - rowVirtualizer.options.scrollMargin}px)`,
             }}
           >
-            <span className="text-[11px] tabular-nums text-[var(--color-text-muted)]">
-              {t('activity.timeline.olderCount', { count: hiddenCount })}
-            </span>
-            <span className="h-3 w-px bg-blue-600/30 dark:bg-blue-400/30" />
-            <button
-              onClick={handleShowMore}
-              className="rounded-full px-2.5 py-0.5 text-[11px] font-medium text-[var(--color-text-secondary)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-[var(--color-text)]"
-            >
-              {t('activity.timeline.showMore', {
-                count: Math.min(MESSAGES_PAGE_SIZE, hiddenCount),
-              })}
-            </button>
-            {hiddenCount > MESSAGES_PAGE_SIZE && (
-              <>
-                <span className="h-3 w-px bg-blue-600/30 dark:bg-blue-400/30" />
-                <button
-                  onClick={handleShowAll}
-                  className="rounded-full px-2.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-[var(--color-text-secondary)]"
-                >
-                  {t('activity.timeline.showAll')}
-                </button>
-              </>
-            )}
+            {renderTimelineRow(row, { suppressEntryAnimation: true })}
           </div>
-        </div>
-      )}
+        );
+      })}
+    </div>
+  ) : (
+    renderRows.map((row) => renderTimelineRow(row))
+  );
+
+  // Keep the older-messages control outside `flex-col-reverse`. Reversing it
+  // with the rows flipped the bottom-designed gradient over the first card and
+  // made the control look broken in chat/sidebar layouts.
+  return (
+    <div ref={rootRef} className="space-y-1">
+      {bottomAnchored ? olderMessagesControl : null}
+      <div
+        className={bottomAnchored ? 'flex flex-col-reverse space-y-1 space-y-reverse' : 'space-y-1'}
+      >
+        {timelineRows}
+      </div>
+      {bottomAnchored ? null : olderMessagesControl}
     </div>
   );
 });

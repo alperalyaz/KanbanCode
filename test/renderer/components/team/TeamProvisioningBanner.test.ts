@@ -68,12 +68,14 @@ vi.mock('@renderer/components/team/ProvisioningProgressBlock', () => ({
     message,
     successMessage,
     successMessageSeverity,
+    onCancel,
   }: {
     currentStepIndex: number;
     loading?: boolean;
     message?: string | null;
     successMessage?: string | null;
     successMessageSeverity?: string;
+    onCancel?: (() => void) | null;
   }) =>
     React.createElement(
       'div',
@@ -83,7 +85,22 @@ vi.mock('@renderer/components/team/ProvisioningProgressBlock', () => ({
         'data-loading': loading ? 'true' : 'false',
         'data-success-severity': successMessageSeverity ?? '',
       },
-      [successMessage, message].filter(Boolean).join(' ')
+      React.createElement(
+        React.Fragment,
+        null,
+        [successMessage, message].filter(Boolean).join(' '),
+        onCancel
+          ? React.createElement(
+              'button',
+              {
+                type: 'button',
+                'data-testid': 'cancel-provisioning',
+                onClick: onCancel,
+              },
+              'Cancel'
+            )
+          : null
+      )
     ),
 }));
 
@@ -631,6 +648,68 @@ describe('TeamProvisioningBanner launch-step alignment', () => {
     expect(block?.textContent).toContain('1 teammate still joining');
 
     await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('hides the banner immediately when Cancel is clicked', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    let resolveCancel: (() => void) | undefined;
+    storeState.cancelProvisioning.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCancel = resolve;
+        })
+    );
+    storeState.progress = {
+      runId: 'run-cancel',
+      teamName: 'northstar-core',
+      state: 'spawning',
+      startedAt: '2026-04-08T16:00:00.000Z',
+      message: 'Starting OpenCode sessions through runtime adapter',
+      messageSeverity: undefined,
+      pid: undefined,
+      cliLogsTail: '',
+      assistantOutput: '',
+    };
+    storeState.memberSpawnSnapshotsByTeam['northstar-core'] = {
+      runId: 'run-cancel',
+      expectedMembers: ['alice', 'bob', 'jack'],
+      statuses: {},
+      summary: {
+        confirmedCount: 0,
+        pendingCount: 3,
+        failedCount: 0,
+        runtimeAlivePendingCount: 0,
+      },
+      source: 'merged',
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(TeamProvisioningBanner, { teamName: 'northstar-core' }));
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="progress-block"]')).not.toBeNull();
+    const cancelButton = host.querySelector<HTMLButtonElement>('[data-testid="cancel-provisioning"]');
+    expect(cancelButton).not.toBeNull();
+
+    await act(async () => {
+      cancelButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="progress-block"]')).toBeNull();
+    expect(storeState.cancelProvisioning).toHaveBeenCalledWith('run-cancel');
+
+    await act(async () => {
+      resolveCancel?.();
+      await Promise.resolve();
       root.unmount();
       await Promise.resolve();
     });

@@ -146,7 +146,8 @@
       "description": "Start with a solo OpenCode team on the free big-pickle model.",
       "launchDescription": "Launch immediately after create so you can start on the kanban board.",
       "showAdvanced": "Show advanced options",
-      "openCodeSetupHint": "OpenCode may take up to a minute on first launch while the runtime and model catalog load."
+      "openCodeSetupHint": "Big Pickle is ready to launch. The full OpenCode model catalog may keep loading in the background for up to a minute.",
+      "connectHint": "Switch to Anthropic or Codex below to log in or paste an API key without leaving this dialog."
     },
     "optional": {
       "launchSettingsTitle": "Optional launch settings",
@@ -344,8 +345,8 @@
       "summary": "Assigned task not started"
     },
     "deleteTeam": {
-      "description": "Delete team \"{{team}}\"? This action is irreversible. All team data and tasks will be deleted.",
-      "title": "Delete team"
+      "description": "Delete team \"{{team}}\" permanently? All team data, tasks, and unfinished work will be removed. This cannot be undone.",
+      "title": "Delete team permanently"
     },
     "draft": {
       "descriptionPrefix": "This is a draft team -",
@@ -399,7 +400,7 @@
       "memory": "Memory"
     },
     "tooltips": {
-      "deleteTeam": "Delete team",
+      "deleteTeam": "Delete team permanently",
       "editTeam": "Edit team",
       "editUnavailableProvisioning": "Edit team is unavailable while provisioning is still in progress",
       "openTeamUsage": "Open team usage",
@@ -824,6 +825,14 @@
     },
     "reason": "Reason: {{reason}}",
     "runtimeModelsSyncing": "Explicit models load from the current runtime. Default remains available while the list is syncing.",
+    "openCodeCatalogHydrating": "Big Pickle is selectable now. More OpenCode models appear as the catalog finishes loading.",
+    "inlineApiKey": {
+      "title": "Or connect with an API key",
+      "hint": "Paste a key here to use API billing without leaving team setup. Login above still works for subscription auth.",
+      "add": "Add API key",
+      "update": "Update API key",
+      "openFullSettings": "Open full provider settings"
+    },
     "fastMode": {
       "codexLabel": "Fast mode (2x credits)",
       "optionalLabel": "Fast mode (optional)",
@@ -1271,7 +1280,7 @@
       "createTeam": "Create Team",
       "deleteForever": "Delete forever",
       "deletePermanently": "Delete permanently",
-      "deleteTeam": "Delete team",
+      "deleteTeam": "Delete team permanently",
       "launching": "Launching...",
       "launchTeam": "Launch team",
       "relaunchTeam": "Relaunch team",
@@ -1358,8 +1367,8 @@
     },
     "deleteForever": {
       "title": "Delete permanently",
-      "message": "Delete team \"{{teamName}}\" permanently? All data will be lost.",
-      "confirmLabel": "Delete forever",
+      "message": "Delete team \"{{teamName}}\" permanently? All team data, tasks, and unfinished work will be removed. This cannot be undone.",
+      "confirmLabel": "Yes, delete forever",
       "cancelLabel": "Cancel"
     }
   },
@@ -2281,6 +2290,44 @@
     },
     "optional": {
       "badge": "Optional"
+    }
+  },
+  "runtimeCompatibility": {
+    "providers": {
+      "anthropic": "Anthropic",
+      "codex": "Codex",
+      "gemini": "Gemini",
+      "opencode": "OpenCode"
+    },
+    "title": {
+      "checkingTmux": "Checking tmux runtime for explicit teammate mode",
+      "openCodeLedMixed": "OpenCode cannot lead a mixed-provider team",
+      "inProcessBlocked": "This team cannot use in-process teammates",
+      "tmuxNotReady": "tmux is not ready for explicit teammate mode"
+    },
+    "message": {
+      "checkingTmux": "Custom CLI args request tmux teammates. The app is checking whether tmux is available.",
+      "openCodeLedMixed": "Right now the team lead must stay on Anthropic or Codex when teammates use different providers. OpenCode can still join as a teammate under those leads.",
+      "inProcessBlocked": "Some teammates require separate processes. Remove --teammate-mode in-process so the app can use native process transport.",
+      "tmuxNotReady": "Custom CLI args force --teammate-mode tmux, but tmux is not ready. Remove that arg to use native process transport on Windows, or install tmux/WSL tmux."
+    },
+    "details": {
+      "mixedProviders": "Mixed providers require teammate processes.",
+      "mixedProvidersNamed": "Mixed providers: {{names}} use a different provider than the {{lead}} lead.",
+      "openCodeLedMixed": "Mixed teams cannot use OpenCode as the lead in this phase.",
+      "openCodeLedMixedNamed": "OpenCode-led mixed team: {{names}} use a non-OpenCode provider.",
+      "codexNative": "Codex native teammates must run through separate Codex processes.",
+      "codexNativeNamed": "Codex native teammates: {{names}} must run through separate Codex processes.",
+      "explicitTmux": "Custom CLI args force --teammate-mode tmux.",
+      "explicitInProcess": "Custom CLI args force --teammate-mode in-process.",
+      "fixOpenCodeLead": "Fix: keep the team lead on Anthropic or Codex when mixing OpenCode with other providers.",
+      "fixInProcess": "Fix: remove --teammate-mode in-process so teammates can use native process transport.",
+      "fixTmux": "Fix: install tmux/WSL tmux, or remove --teammate-mode tmux so the app can use native process transport."
+    },
+    "member": {
+      "mixedProvider": "{{name}} uses {{provider}}. This teammate needs a separate process outside the {{lead}} lead.",
+      "codexNative": "{{name}} uses Codex native. Codex native teammates require a separate Codex process.",
+      "openCodeLedMixed": "{{name}} uses {{provider}}. While the lead is OpenCode, mixed providers are not supported yet — switch the lead to Anthropic or Codex, or keep every teammate on OpenCode."
     }
   },
   "runningTeams": {

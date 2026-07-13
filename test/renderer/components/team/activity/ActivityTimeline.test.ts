@@ -1,6 +1,7 @@
 import React from 'react';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { InboxMessage } from '@shared/types';
@@ -623,5 +624,108 @@ describe('ActivityTimeline virtualization threshold', () => {
       root.unmount();
     });
     scrollHost.remove();
+  });
+});
+
+describe('ActivityTimeline older-messages control', () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    container.remove();
+    document.body.innerHTML = '';
+    vi.unstubAllGlobals();
+  });
+
+  function buildMany(count: number): InboxMessage[] {
+    return Array.from({ length: count }, (_, index) =>
+      makeMessage({
+        messageId: `message-${index}`,
+        text: `message ${index}`,
+        timestamp: `2026-04-18T13:${String(index).padStart(2, '0')}:00.000Z`,
+      })
+    );
+  }
+
+  it('omits the redundant "+N older" label when one click reveals every remaining row', async () => {
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityTimeline, {
+          messages: buildMany(44),
+          teamName: 'demo-team',
+          bottomAnchored: true,
+        })
+      );
+    });
+
+    const control = container.querySelector('[data-testid="activity-timeline-older-control"]');
+    expect(control).not.toBeNull();
+    expect(control?.textContent).toContain('Show 14 more');
+    expect(control?.textContent).not.toMatch(/\+14/);
+    expect(control?.textContent).not.toContain('Show all');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('keeps the older control outside flex-col-reverse so it stays above the stream', async () => {
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityTimeline, {
+          messages: buildMany(44),
+          teamName: 'demo-team',
+          bottomAnchored: true,
+        })
+      );
+    });
+
+    const rootEl = container.firstElementChild as HTMLElement | null;
+    const control = container.querySelector('[data-testid="activity-timeline-older-control"]');
+    expect(rootEl).not.toBeNull();
+    expect(control).not.toBeNull();
+    expect(rootEl?.firstElementChild).toBe(control);
+    expect(rootEl?.className).not.toContain('flex-col-reverse');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('notifies the host when client-side older rows are still hidden', async () => {
+    const onHiddenOlderChange = vi.fn();
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityTimeline, {
+          messages: buildMany(44),
+          teamName: 'demo-team',
+          onHiddenOlderChange,
+        })
+      );
+    });
+
+    expect(onHiddenOlderChange).toHaveBeenCalledWith(true);
+
+    const showMoreButton = [...container.querySelectorAll('button')].find((button) =>
+      /show 14 more/i.test(button.textContent ?? '')
+    );
+    expect(showMoreButton).toBeDefined();
+    await act(async () => {
+      showMoreButton?.click();
+    });
+
+    expect(onHiddenOlderChange).toHaveBeenLastCalledWith(false);
+
+    await act(async () => {
+      root.unmount();
+    });
   });
 });

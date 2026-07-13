@@ -70,6 +70,22 @@ describe('notificationSlice', () => {
     });
   });
 
+  describe('closeNotificationsTab', () => {
+    it('closes the focused notifications tab', () => {
+      store.getState().openTab({
+        type: 'notifications',
+        label: 'Notifications',
+      });
+
+      expect(store.getState().getActiveTab()?.type).toBe('notifications');
+
+      store.getState().closeNotificationsTab();
+
+      expect(store.getState().getActiveTab()?.type).not.toBe('notifications');
+      expect(store.getState().openTabs.some((tab) => tab.type === 'notifications')).toBe(false);
+    });
+  });
+
   describe('scoped markAllNotificationsRead', () => {
     const makeNotification = (
       id: string,

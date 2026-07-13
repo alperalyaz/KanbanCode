@@ -1944,6 +1944,7 @@ describe('Team agent launch matrix safe e2e', () => {
     const adapter = new BlockingStopOpenCodeRuntimeAdapter();
     const svc = new TeamProvisioningService();
     svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const progressEvents: Array<{ state: string; message?: string }> = [];
 
     const createPromise = svc.createTeam(
       {
@@ -1954,14 +1955,18 @@ describe('Team agent launch matrix safe e2e', () => {
         skipPermissions: true,
         members: [{ name: 'alice', role: 'Developer', providerId: 'opencode' }],
       },
-      () => undefined
+      (progress) => {
+        progressEvents.push({ state: progress.state, message: progress.message });
+      }
     );
     await waitForCondition(() => adapter.pendingLaunchInputs.length === 1);
     const runId = adapter.pendingLaunchInputs[0]?.runId;
     expect(runId).toBeTruthy();
 
-    const cancelPromise = svc.cancelProvisioning(runId!);
+    // Cancel must resolve without waiting for the slow OpenCode adapter.stop().
+    await expect(svc.cancelProvisioning(runId!)).resolves.toBeUndefined();
 
+    expect(progressEvents.some((event) => event.state === 'cancelled')).toBe(true);
     await waitForCondition(() => adapter.stopInputs.length === 1);
     expect(adapter.stopInputs[0]).toMatchObject({
       runId,
@@ -1989,12 +1994,10 @@ describe('Team agent launch matrix safe e2e', () => {
     });
 
     adapter.releaseStops();
-    await expect(cancelPromise).resolves.toBeUndefined();
-    await expect(readOpenCodeRuntimeLaneIndex(getTeamsBasePath(), teamName)).resolves.toMatchObject(
-      {
-        lanes: {},
-      }
-    );
+    await waitForCondition(async () => {
+      const index = await readOpenCodeRuntimeLaneIndex(getTeamsBasePath(), teamName);
+      return Object.keys(index.lanes ?? {}).length === 0;
+    });
     expect(svc.getAliveTeams()).not.toContain(teamName);
   });
 

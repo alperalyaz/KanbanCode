@@ -118,6 +118,7 @@ export interface NotificationSlice {
   clearNotifications: (triggerName?: string) => Promise<void>;
   navigateToError: (error: DetectedError) => void;
   openNotificationsTab: () => void;
+  closeNotificationsTab: () => void;
 }
 
 // =============================================================================
@@ -361,5 +362,20 @@ export const createNotificationSlice: StateCreator<AppState, [], [], Notificatio
       type: 'notifications',
       label: 'Notifications',
     });
+  },
+
+  closeNotificationsTab: () => {
+    const state = get();
+    const focusedPane = state.paneLayout.panes.find((p) => p.id === state.paneLayout.focusedPaneId);
+    const notificationsTab = focusedPane?.tabs.find((t) => t.type === 'notifications');
+    if (notificationsTab) {
+      state.closeTab(notificationsTab.id);
+      return;
+    }
+
+    const activeTab = state.getActiveTab();
+    if (activeTab?.type === 'notifications') {
+      state.closeTab(activeTab.id);
+    }
   },
 });
