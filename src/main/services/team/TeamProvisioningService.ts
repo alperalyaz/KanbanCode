@@ -1330,6 +1330,27 @@ function assertAppDeterministicBootstrapEnabled(): void {
   }
 }
 
+/**
+ * Fast Boot (experimental, opt-in via KANBANCODE_FAST_BOOT=1): treat a native
+ * (Claude/Codex) teammate as online/confirmed the moment the deterministic
+ * bootstrap runner reports its spawn was ACCEPTED, instead of blocking the
+ * roster on the CLI's private bootstrap check-in model turn (which costs a
+ * full LLM round-trip per member and minutes-to-hours when providers are slow,
+ * rate-limited, or the check-in response gets rejected and retried).
+ *
+ * This mirrors the existing OpenCode "app-managed bootstrap" precedent, where
+ * the app commits bootstrap evidence itself without waiting for a model
+ * readiness reply. Honesty is preserved by the layers that still run:
+ * - a later spawn/bootstrap FAILURE from the CLI flips the member to 'error'
+ *   (hardFailure overrides the optimistic confirm), and
+ * - the independent runtime liveness resolver marks dead processes as
+ *   stale_runtime regardless of launchState.
+ * So a broken member still surfaces — it just no longer freezes the launch.
+ */
+function isFastBootOptimisticConfirmEnabled(): boolean {
+  return process.env.KANBANCODE_FAST_BOOT === '1';
+}
+
 function classifyDeterministicBootstrapFailure(reason: string): {
   title: string;
   normalizedReason: string;
@@ -33606,6 +33627,20 @@ export class TeamProvisioningService {
           'already_running requires strong runtime verification'
         );
         void this.reevaluateMemberLaunchStatus(run, memberName);
+        return true;
+      }
+
+      if (isFastBootOptimisticConfirmEnabled()) {
+        // Fast Boot: spawn accepted == usable teammate. Confirm now (green,
+        // dispatchable) instead of holding the roster hostage to the CLI's
+        // private check-in model turn; failures still override via 'error'
+        // events and the liveness resolver (see isFastBootOptimisticConfirmEnabled).
+        this.setMemberSpawnStatus(run, memberName, 'online', undefined, 'heartbeat');
+        this.appendMemberBootstrapDiagnostic(
+          run,
+          memberName,
+          'fast boot: spawn accepted, optimistically confirmed without waiting for check-in'
+        );
         return true;
       }
 
