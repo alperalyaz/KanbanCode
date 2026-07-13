@@ -799,7 +799,7 @@ export const KanbanBoard = memo(function KanbanBoard({
         />
       ) : (
         <div className="w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden px-1 pb-6 pr-4 pt-2">
-          <div className="flex min-w-max items-start pr-1">
+          <div className="flex w-full items-start pr-1">
             {visibleColumns.map((column, index) => {
               const columnTasks = groupedOrdered.get(column.id) ?? [];
               const accent = COLUMN_ACCENTS[column.id];
@@ -808,8 +808,17 @@ export const KanbanBoard = memo(function KanbanBoard({
               const isColumnExpanded = expandedColumns.has(column.id);
               const canToggleColumn = columnTasks.length > COLUMN_COLLAPSE_THRESHOLD;
               return (
-                <div key={column.id} className="flex shrink-0">
-                  <div style={{ width }}>
+                <div
+                  key={column.id}
+                  className="flex min-w-0"
+                  // Columns share the full board width: the persisted/resized width
+                  // acts as the flex-basis (so drag-resize still shifts proportions),
+                  // and flex-grow stretches them to fill the window instead of
+                  // leaving dead space on the right. minWidth keeps narrow windows
+                  // scrollable via the outer overflow-x container.
+                  style={{ flexGrow: 1, flexBasis: width, minWidth: 220 }}
+                >
+                  <div className="min-w-0 flex-1">
                     <KanbanColumn
                       title={t(column.titleKey)}
                       count={columnTasks.length}
