@@ -60,7 +60,7 @@ Repo working instructions live in [CLAUDE.md](CLAUDE.md).
 You do **not** need a local Windows machine to ship Store/installer builds.
 
 1. Open **Actions → Release → Run workflow**.
-2. Leave `release_tag` **empty** — it uses the version in `package.json` automatically (currently `2.1.5` → tag `v2.1.5`).
+2. Leave `release_tag` **empty** — it uses the version in `package.json` automatically (currently `2.1.6` → tag `v2.1.6`).
 3. Leave `publish_release` as `false` for a draft, or set `true` to publish immediately.
 4. When the run finishes, the draft/public GitHub Release contains:
    - `KanbanCode.Setup.<version>.exe` — sideload / direct install
