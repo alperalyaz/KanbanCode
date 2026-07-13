@@ -3,6 +3,9 @@ name: Release
 # KanbanCode Windows release: NSIS installer (.exe) + Microsoft Store package (.appx).
 # Trigger from Actions → Release → Run workflow. No local Windows toolchain required.
 #
+# Version comes from package.json automatically. Leave release_tag empty unless you
+# intentionally want a different tag.
+#
 # Runtime binaries are downloaded from the public upstream tag pinned in
 # runtime.lock.json (not from this fork's release tag).
 
@@ -10,9 +13,10 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to build into a draft, for example v2.1.5
-        required: true
+        description: Optional override. Leave empty to use package.json (e.g. 2.1.5 → v2.1.5)
+        required: false
         type: string
+        default: ''
       publish_release:
         description: Publish the release after assets are uploaded (otherwise leave as draft)
         required: true
@@ -23,11 +27,10 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ inputs.release_tag }}
+  group: release-windows
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: ${{ inputs.release_tag }}
   PUBLISH_RELEASE: ${{ inputs.publish_release }}
 
 jobs:
@@ -39,17 +42,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Validate release tag
+      - name: Resolve release tag from package.json
+        id: meta
         shell: bash
         run: |
           set -euo pipefail
-          case "${RELEASE_TAG:-}" in
-            v[0-9]*) ;;
-            *)
-              echo "release_tag must start with v and include a numeric version, got '${RELEASE_TAG:-<empty>}'" >&2
-              exit 1
-              ;;
-          esac
+          INPUT_TAG="${{ inputs.release_tag }}"
+          INPUT_TAG="$(echo "$INPUT_TAG" | xargs)"
+          if [ -n "$INPUT_TAG" ]; then
+            case "$INPUT_TAG" in
+              v[0-9]*) TAG="$INPUT_TAG" ;;
+              [0-9]*) TAG="v$INPUT_TAG" ;;
+              *)
+                echo "release_tag must look like v2.1.5 (or leave empty), got '$INPUT_TAG'" >&2
+                exit 1
+                ;;
+            esac
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+            TAG="v${VERSION}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Using release tag $TAG (version $VERSION)"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -79,12 +95,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Set version from release tag
+      - name: Align package.json version with release tag
         shell: bash
         run: |
-          VERSION="${RELEASE_TAG#v}"
-          pnpm pkg set version="$VERSION"
-          echo "Building KanbanCode $VERSION"
+          set -euo pipefail
+          CURRENT="$(node -p "require('./package.json').version")"
+          TARGET="${{ steps.meta.outputs.version }}"
+          if [ "$CURRENT" != "$TARGET" ]; then
+            pnpm pkg set version="$TARGET"
+            echo "Updated package.json version $CURRENT → $TARGET"
+          else
+            echo "package.json already at $TARGET"
+          fi
 
       - name: Create draft GitHub Release
         shell: bash
@@ -92,7 +114,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${RELEASE_TAG}"
+          TAG="${{ steps.meta.outputs.tag }}"
           existing_is_draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
           if [ -n "$existing_is_draft" ]; then
             if [ "${PUBLISH_RELEASE}" != "true" ] && [ "$existing_is_draft" != "true" ]; then
@@ -105,7 +127,7 @@ jobs:
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "KanbanCode ${TAG#v}" \
+            --title "KanbanCode ${{ steps.meta.outputs.version }}" \
             --generate-notes \
             --draft=true
 
@@ -167,7 +189,7 @@ jobs:
       - name: Upload build artifacts to Actions
         uses: actions/upload-artifact@v7
         with:
-          name: kanbancode-windows-${{ inputs.release_tag }}
+          name: kanbancode-windows-${{ steps.meta.outputs.tag }}
           path: |
             release/*.exe
             release/*.appx
@@ -181,7 +203,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${RELEASE_TAG}"
+          TAG="${{ steps.meta.outputs.tag }}"
           for f in release/*.exe release/*.appx release/*.blockmap; do
             [ -f "$f" ] || continue
             echo "Uploading: $f"
@@ -196,9 +218,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release edit "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest
+          gh release edit "${{ steps.meta.outputs.tag }}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest
 
       - name: Keep release as draft
         if: ${{ !inputs.publish_release }}
         shell: bash
-        run: echo "Draft release ${RELEASE_TAG} is ready with .exe + .appx. Set publish_release=true next time to publish."
+        run: echo "Draft release ${{ steps.meta.outputs.tag }} is ready with .exe + .appx. Set publish_release=true next time to publish."

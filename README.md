@@ -59,11 +59,10 @@ Repo working instructions live in [CLAUDE.md](CLAUDE.md).
 
 You do **not** need a local Windows machine to ship Store/installer builds.
 
-1. Push the commit you want to release to `main` (or the branch you will select when running the workflow).
-2. Open **Actions → Release → Run workflow**.
-3. Set `release_tag` to something like `v2.1.5` (must match the version you want in the installers).
-4. Leave `publish_release` as `false` for a draft, or `true` to publish immediately.
-5. When the run finishes, the draft/public GitHub Release contains:
+1. Open **Actions → Release → Run workflow**.
+2. Leave `release_tag` **empty** — it uses the version in `package.json` automatically (currently `2.1.5` → tag `v2.1.5`).
+3. Leave `publish_release` as `false` for a draft, or set `true` to publish immediately.
+4. When the run finishes, the draft/public GitHub Release contains:
    - `KanbanCode.Setup.<version>.exe` — sideload / direct install
    - `KanbanCode.<version>.appx` — upload to Microsoft Partner Center (Store)
 
