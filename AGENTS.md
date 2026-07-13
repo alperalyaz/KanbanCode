@@ -27,7 +27,7 @@ Default local run target:
 Windows / Microsoft Store release:
 
 - Prefer GitHub Actions over a local Windows machine: **Actions → Release → Run workflow**.
-- Inputs: `release_tag` (e.g. `v2.1.5`) and optional `publish_release`.
+- Leave `release_tag` empty — the workflow reads `package.json` version and creates `vX.Y.Z`.
 - Artifacts: `KanbanCode.Setup.<version>.exe` (sideload) and `KanbanCode.<version>.appx` (Partner Center / Store).
 - Runtime binaries come from the public upstream tag in `runtime.lock.json`; do not point staging at this fork's app tag.
 - The upstream multi-platform release flow (mac notarization, terminal-platform, private runtime dispatch) does not apply to this fork.
