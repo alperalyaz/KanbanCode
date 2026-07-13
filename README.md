@@ -50,10 +50,24 @@ Repo working instructions live in [CLAUDE.md](CLAUDE.md).
 | `pnpm lint`        | Lint (no auto-fix)                                      |
 | `pnpm test`        | Run all tests                                           |
 | `pnpm check`       | Full quality gate (types + lint + test + build)         |
-| `pnpm dist:win`    | Build Windows installer (`.exe` + `.appx`)              |
+| `pnpm dist:win`    | Build Windows installer (`.exe` + `.appx`) locally      |
 | `pnpm dist:mac:arm64` | Build macOS (Apple Silicon) `.dmg`                   |
 | `pnpm dist:mac:x64`   | Build macOS (Intel) `.dmg`                           |
 | `pnpm dist:linux`  | Build Linux `.AppImage` / `.deb` / `.rpm` / `.pacman`   |
+
+### GitHub Actions release (recommended)
+
+You do **not** need a local Windows machine to ship Store/installer builds.
+
+1. Push the commit you want to release to `main` (or the branch you will select when running the workflow).
+2. Open **Actions → Release → Run workflow**.
+3. Set `release_tag` to something like `v2.1.5` (must match the version you want in the installers).
+4. Leave `publish_release` as `false` for a draft, or `true` to publish immediately.
+5. When the run finishes, the draft/public GitHub Release contains:
+   - `KanbanCode.Setup.<version>.exe` — sideload / direct install
+   - `KanbanCode.<version>.appx` — upload to Microsoft Partner Center (Store)
+
+The workflow downloads the bundled agent runtime from the public upstream tag pinned in `runtime.lock.json`, packages both Windows targets with electron-builder, and uploads the artifacts. Partner Center re-signs the `.appx` for Store distribution.
 
 ## Security
 
