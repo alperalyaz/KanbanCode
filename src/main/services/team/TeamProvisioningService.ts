@@ -103,6 +103,11 @@ import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { resolveAnthropicLaunchModel } from '@shared/utils/anthropicLaunchModel';
 import { getAnthropicDefaultTeamModel } from '@shared/utils/anthropicModelDefaults';
 import { parseCliArgs } from '@shared/utils/cliArgsParser';
+import {
+  CODEX_CHATGPT_FALLBACK_MODEL,
+  isCodexChatGptSunsetModel,
+  remapCodexModelForChatGptAccount,
+} from '@shared/utils/codexChatGptSunsetModels';
 import { isUsableCodexModelCatalog } from '@shared/utils/codexModelCatalog';
 import { deriveContextMetrics, inferContextWindowTokens } from '@shared/utils/contextMetrics';
 import { isTeamEffortLevel } from '@shared/utils/effortLevels';
@@ -4965,13 +4970,31 @@ export class TeamProvisioningService {
     };
 
     const leadFacts = await getFacts(leadProviderId);
+    let launchRequest = params.request;
+    if (
+      leadProviderId === 'codex' &&
+      isCodexChatGptSunsetModel(launchRequest.model) &&
+      (leadFacts.providerStatus?.authMethod === 'chatgpt' ||
+        leadFacts.providerStatus?.connection?.codex?.effectiveAuthMode === 'chatgpt' ||
+        leadFacts.providerStatus?.backend?.authMethodDetail === 'chatgpt')
+    ) {
+      launchRequest = {
+        ...launchRequest,
+        model:
+          remapCodexModelForChatGptAccount(
+            launchRequest.model,
+            leadFacts.defaultModel ?? CODEX_CHATGPT_FALLBACK_MODEL
+          ) ?? CODEX_CHATGPT_FALLBACK_MODEL,
+      };
+    }
+
     this.validateRuntimeLaunchSelection({
       actorLabel: 'Team lead',
       providerId: leadProviderId,
-      model: params.request.model,
-      effort: params.request.effort,
-      fastMode: params.request.fastMode,
-      limitContext: params.request.limitContext,
+      model: launchRequest.model,
+      effort: launchRequest.effort,
+      fastMode: launchRequest.fastMode,
+      limitContext: launchRequest.limitContext,
       facts: leadFacts,
     });
 
@@ -4983,13 +5006,13 @@ export class TeamProvisioningService {
         providerId: memberProviderId,
         model: member.model,
         effort: member.effort,
-        limitContext: params.request.limitContext,
+        limitContext: launchRequest.limitContext,
         facts: memberFacts,
       });
     }
 
     return this.buildProviderModelLaunchIdentity({
-      request: params.request,
+      request: launchRequest,
       facts: leadFacts,
     });
   }
@@ -16694,7 +16717,11 @@ export class TeamProvisioningService {
     if (!run.expectedMembers.includes(memberName)) {
       return false;
     }
-    if (!spawnStatus || spawnStatus.bootstrapConfirmed === true || spawnStatus.hardFailure === true) {
+    if (
+      !spawnStatus ||
+      spawnStatus.bootstrapConfirmed === true ||
+      spawnStatus.hardFailure === true
+    ) {
       return false;
     }
     if (spawnStatus.skippedForLaunch === true) {
@@ -20031,6 +20058,7 @@ export class TeamProvisioningService {
   }): Promise<TeamCreateRequest['members']> {
     const envByProvider = new Map<TeamProviderId, Promise<ProvisioningEnvResolution>>();
     const defaultModelByProvider = new Map<TeamProviderId, Promise<string>>();
+    const factsByProvider = new Map<TeamProviderId, Promise<RuntimeProviderLaunchFacts>>();
     const normalizedPrimaryProviderId = resolveTeamProviderId(params.primaryProviderId);
 
     const getProvisioningEnv = (providerId: TeamProviderId): Promise<ProvisioningEnvResolution> => {
@@ -20090,10 +20118,65 @@ export class TeamProvisioningService {
       return created;
     };
 
+    const getProviderFacts = (providerId: TeamProviderId): Promise<RuntimeProviderLaunchFacts> => {
+      const cached = factsByProvider.get(providerId);
+      if (cached) {
+        return cached;
+      }
+      const created = (async () => {
+        const envResolution = await getProvisioningEnv(providerId);
+        return this.readRuntimeProviderLaunchFacts({
+          claudePath: params.claudePath,
+          cwd: params.cwd,
+          providerId,
+          env: envResolution.env,
+          providerArgs:
+            params.providerArgsResolver?.({
+              providerId,
+              providerArgs: envResolution.providerArgs ?? [],
+              phase: 'default-model-resolution',
+            }) ??
+            envResolution.providerArgs ??
+            [],
+          limitContext: params.limitContext === true,
+        });
+      })();
+      factsByProvider.set(providerId, created);
+      return created;
+    };
+
+    const isCodexChatGptAuth = async (): Promise<boolean> => {
+      try {
+        const facts = await getProviderFacts('codex');
+        const authMethod =
+          facts.providerStatus?.authMethod ??
+          facts.providerStatus?.connection?.codex?.effectiveAuthMode ??
+          facts.providerStatus?.backend?.authMethodDetail;
+        return authMethod === 'chatgpt';
+      } catch {
+        // If we cannot prove ChatGPT auth, still remap known-sunset models —
+        // launching them with ChatGPT fails hard, while API-key users can reselect.
+        return true;
+      }
+    };
+
     const effectiveMembers: TeamCreateRequest['members'] = [];
     for (const member of params.members) {
-      const effectiveMember = buildEffectiveTeamMemberSpec(member, params.defaults);
+      let effectiveMember = buildEffectiveTeamMemberSpec(member, params.defaults);
       const providerId = normalizeTeamMemberProviderId(effectiveMember.providerId) ?? 'anthropic';
+
+      if (providerId === 'codex' && isCodexChatGptSunsetModel(effectiveMember.model)) {
+        if (await isCodexChatGptAuth()) {
+          const facts = await getProviderFacts('codex').catch(() => null);
+          const remapped =
+            remapCodexModelForChatGptAccount(
+              effectiveMember.model,
+              facts?.defaultModel ?? CODEX_CHATGPT_FALLBACK_MODEL
+            ) ?? CODEX_CHATGPT_FALLBACK_MODEL;
+          effectiveMember = { ...effectiveMember, model: remapped };
+        }
+      }
+
       if (providerId === 'anthropic' || effectiveMember.model?.trim()) {
         effectiveMembers.push(effectiveMember);
         continue;
@@ -34495,8 +34578,7 @@ export class TeamProvisioningService {
       compact: true,
       providerId:
         currentMembers.find((member) => member.name === leadName)?.providerId ??
-        currentMembers.find((member) => member.role?.toLowerCase().includes('lead'))
-          ?.providerId ??
+        currentMembers.find((member) => member.role?.toLowerCase().includes('lead'))?.providerId ??
         run.request.providerId,
     });
 

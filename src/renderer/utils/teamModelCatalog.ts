@@ -1,3 +1,4 @@
+import { isCodexChatGptSunsetModel } from '@shared/utils/codexChatGptSunsetModels';
 import { inferContextWindowTokens } from '@shared/utils/contextMetrics';
 import { parseModelString } from '@shared/utils/modelParser';
 import {
@@ -645,11 +646,13 @@ function isRuntimeHiddenTeamModel(
   model: string,
   providerStatus?: RuntimeAwareProviderStatus | null
 ): boolean {
-  return (
-    providerId === 'codex' &&
-    model === 'gpt-5.1-codex-max' &&
-    isCodexChatGptSubscriptionProviderStatus(providerStatus)
-  );
+  if (providerId !== 'codex') {
+    return false;
+  }
+  if (!isCodexChatGptSubscriptionProviderStatus(providerStatus)) {
+    return false;
+  }
+  return model === 'gpt-5.1-codex-max' || isCodexChatGptSunsetModel(model);
 }
 
 function getRuntimeCatalogLaunchModels(

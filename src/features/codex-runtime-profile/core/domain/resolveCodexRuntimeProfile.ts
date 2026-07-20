@@ -1,3 +1,8 @@
+import {
+  CODEX_CHATGPT_FALLBACK_MODEL,
+  isCodexChatGptSunsetModel,
+  remapCodexModelForChatGptAccount,
+} from '@shared/utils/codexChatGptSunsetModels';
 import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { isDefaultProviderModelSelection } from '@shared/utils/providerModelSelection';
 
@@ -198,14 +203,39 @@ export function resolveCodexRuntimeSelection(params: {
     params.source.providerStatus?.providerId === 'codex' ? params.source.providerStatus : null;
   const source = { ...params.source, providerStatus };
   const catalog = getCodexCatalog(providerStatus);
-  const explicitModel = normalizeSelectedModel(params.selectedModel);
-  const catalogModel = findCatalogModel(catalog, explicitModel);
+  const effectiveAuthMode = resolveEffectiveAuthMode(source);
+  const catalogUsable = catalog?.status === 'ready' || catalog?.status === 'stale';
+
+  let workingSelected = normalizeSelectedModel(params.selectedModel);
+  if (effectiveAuthMode === 'chatgpt' && workingSelected) {
+    // ChatGPT subscriptions no longer support sunset Codex models. Clear the
+    // selection so we fall through to the live catalog default instead of
+    // launching a guaranteed-to-fail --model.
+    if (isCodexChatGptSunsetModel(workingSelected)) {
+      workingSelected = null;
+    } else if (catalogUsable && !findCatalogModel(catalog, workingSelected)) {
+      workingSelected = null;
+    }
+  }
+
+  let catalogModel = findCatalogModel(catalog, workingSelected);
+  if (effectiveAuthMode === 'chatgpt' && workingSelected && !catalogModel && catalogUsable) {
+    workingSelected = null;
+    catalogModel = findCatalogModel(catalog, null);
+  }
+
+  const catalogDefault =
+    catalog?.defaultLaunchModel?.trim() || catalog?.defaultModelId?.trim() || null;
+  const chatgptFallback =
+    remapCodexModelForChatGptAccount(catalogDefault, CODEX_CHATGPT_FALLBACK_MODEL) ??
+    CODEX_CHATGPT_FALLBACK_MODEL;
+
   const resolvedLaunchModel =
     catalogModel?.launchModel?.trim() ||
-    explicitModel ||
-    catalog?.defaultLaunchModel?.trim() ||
-    catalog?.defaultModelId?.trim() ||
-    null;
+    (effectiveAuthMode === 'chatgpt' ? null : workingSelected) ||
+    catalogDefault ||
+    (effectiveAuthMode === 'chatgpt' ? chatgptFallback : workingSelected);
+
   const launch = resolveLaunchAllowed(source);
 
   return {
@@ -216,7 +246,7 @@ export function resolveCodexRuntimeSelection(params: {
     catalogStatus: catalog?.status ?? 'unavailable',
     catalogFetchedAt: catalog?.fetchedAt ?? null,
     providerBackendId: resolveBackendId(source),
-    effectiveAuthMode: resolveEffectiveAuthMode(source),
+    effectiveAuthMode,
     launchAllowed: launch.launchAllowed,
     launchReadinessState: launch.launchReadinessState,
     launchIssueMessage: launch.launchIssueMessage,

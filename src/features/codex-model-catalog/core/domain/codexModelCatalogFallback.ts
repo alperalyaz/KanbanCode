@@ -31,15 +31,15 @@ function createFallbackModel(options: {
 export function createStaticCodexModelCatalogModels(): CliProviderModelCatalogItem[] {
   return [
     createFallbackModel({
-      id: 'gpt-5.4',
-      displayName: 'GPT-5.4',
-      badgeLabel: '5.4',
-      isDefault: true,
-    }),
-    createFallbackModel({
       id: 'gpt-5.5',
       displayName: 'GPT-5.5',
       badgeLabel: '5.5',
+      isDefault: true,
+    }),
+    createFallbackModel({
+      id: 'gpt-5.4',
+      displayName: 'GPT-5.4',
+      badgeLabel: '5.4',
     }),
     createFallbackModel({
       id: 'gpt-5.4-mini',
