@@ -401,7 +401,8 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
 
   server.addTool({
     name: 'task_complete',
-    description: 'Mark task as completed',
+    description:
+      'Mark an in_progress task as completed. Agents must task_start first, leave a result comment via task_add_comment, then call task_complete. Completing from pending/TODO or without a result comment is rejected.',
     parameters: z.object({
       ...toolContextSchema,
       taskId: z.string().min(1),

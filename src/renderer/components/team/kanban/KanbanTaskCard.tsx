@@ -16,19 +16,9 @@ import {
   isTeamTaskFinishedForDependency,
   isTeamTaskNeedsFixActionable,
 } from '@shared/utils/teamTaskState';
-import {
-  ArrowLeftFromLine,
-  ArrowRightFromLine,
-  FileCode,
-  HelpCircle,
-} from 'lucide-react';
+import { ArrowLeftFromLine, ArrowRightFromLine, FileCode, HelpCircle } from 'lucide-react';
 
-import type {
-  KanbanColumnId,
-  KanbanTaskState,
-  TeamTask,
-  TeamTaskWithKanban,
-} from '@shared/types';
+import type { KanbanColumnId, KanbanTaskState, TeamTask, TeamTaskWithKanban } from '@shared/types';
 
 interface KanbanTaskCardProps {
   task: TeamTaskWithKanban;
@@ -232,7 +222,7 @@ const TaskMetaActions = memo(function TaskMetaActions({
       className={
         changesNeedAttention
           ? 'text-amber-400 hover:bg-amber-500/10 hover:text-amber-300'
-          : 'text-sky-700 dark:text-sky-400 hover:bg-sky-500/10 hover:text-sky-800 dark:hover:text-sky-300'
+          : 'text-sky-700 hover:bg-sky-500/10 hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-300'
       }
       onClick={(e) => {
         e.stopPropagation();
@@ -306,6 +296,14 @@ export const KanbanTaskCard = memo(
         ) : null}
         <div className="mb-2 pt-[11px]">
           {!compact && <TruncatedTitle text={task.subject} className="min-w-0" />}
+          {!compact &&
+          typeof task.description === 'string' &&
+          task.description.trim() &&
+          task.description.trim() !== task.subject.trim() ? (
+            <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--color-text-muted)]">
+              {task.description.trim()}
+            </p>
+          ) : null}
           {task.needsClarification ? (
             <span
               className={`mt-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
