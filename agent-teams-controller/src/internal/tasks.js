@@ -323,12 +323,64 @@ function resolveTaskId(context, taskRef) {
     return taskStore.resolveTaskRef(context.paths, taskRef, { includeDeleted: true });
 }
 
+function isHumanBoardActor(actor) {
+    const normalized = normalizeActorName(actor).toLowerCase();
+    return !normalized || normalized === 'user';
+}
+
+function hasAgentResultComment(task) {
+    const comments = Array.isArray(task.comments) ? task.comments : [];
+    return comments.some((comment) => {
+        const author = String(comment?.author || '')
+            .trim()
+            .toLowerCase();
+        const type = String(comment?.type || 'regular')
+            .trim()
+            .toLowerCase();
+        if (!author || author === 'system' || type === 'system') {
+            return false;
+        }
+        return String(comment?.text || '').trim().length >= 12;
+    });
+}
+
+function assertAgentCanCompleteTask(task, actor) {
+    if (isHumanBoardActor(actor)) {
+        return;
+    }
+    if (task.status === 'completed') {
+        return;
+    }
+    if (task.status !== 'in_progress') {
+        throw new Error(
+            `Task #${task.displayId || task.id} must be in_progress before task_complete (current: ${task.status}). Call task_start, do the work, leave a result comment via task_add_comment, then task_complete.`
+        );
+    }
+    if (!hasAgentResultComment(task)) {
+        throw new Error(
+            `Task #${task.displayId || task.id} needs a result comment before task_complete. Post findings/summary with task_add_comment first, then task_complete. Empty completions are not allowed.`
+        );
+    }
+}
+
 function setTaskStatus(context, taskId, status, actor) {
     return withTeamBoardLock(context.paths, () => {
-        const before = taskStore.readTask(context.paths, taskId, { includeDeleted: true });
+        let before = taskStore.readTask(context.paths, taskId, { includeDeleted: true });
         const normalizedStatus = String(status || '').trim();
         if (before.status === 'deleted' && normalizedStatus !== 'deleted') {
             throw new Error(`Task #${before.displayId || before.id} is deleted; use task_restore before changing status`);
+        }
+        if (normalizedStatus === 'completed') {
+            // Human/UI may mark TODO items done directly; agents must follow the board lifecycle.
+            if (isHumanBoardActor(actor) && before.status === 'pending') {
+                before = taskStore.setTaskStatus(
+                    context.paths,
+                    taskId,
+                    'in_progress',
+                    normalizeActorName(actor) || 'user'
+                );
+            }
+            assertAgentCanCompleteTask(before, actor);
         }
         let task = taskStore.setTaskStatus(context.paths, taskId, status, actor);
         if (normalizedStatus === 'deleted' || normalizedStatus === 'in_progress' || normalizedStatus === 'pending') {

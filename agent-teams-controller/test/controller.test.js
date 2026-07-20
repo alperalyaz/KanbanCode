@@ -14,6 +14,29 @@ describe('agent-teams-controller API', () => {
     }
   });
 
+
+  function finishAgentTask(controller, taskId, actor = 'bob') {
+    const task = controller.tasks.getTask(taskId);
+    if (task.status !== 'completed' && task.status !== 'deleted' && task.status !== 'in_progress') {
+      controller.tasks.startTask(taskId, actor);
+    }
+    const fresh = controller.tasks.getTask(taskId);
+    if (fresh.status === 'in_progress') {
+      const hasComment = (fresh.comments || []).some(
+        (comment) =>
+          String(comment.author || '').toLowerCase() !== 'system' &&
+          String(comment.text || '').trim().length >= 12
+      );
+      if (!hasComment) {
+        controller.tasks.addTaskComment(taskId, {
+          text: 'Automated test result comment for completion.',
+          from: actor,
+        });
+      }
+    }
+    return controller.tasks.completeTask(taskId, actor);
+  }
+
   function makeClaudeDir() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-teams-controller-'));
     tempDirs.push(dir);
@@ -100,7 +123,7 @@ describe('agent-teams-controller API', () => {
     expect(controller.tasks.getTask(created.displayId).blockedBy).toEqual([base.id, dependency.id]);
 
     controller.kanban.addReviewer('alice');
-    controller.tasks.completeTask(created.id, 'bob');
+    finishAgentTask(controller, created.id, 'bob');
     controller.review.requestReview(created.id, { from: 'alice' });
     controller.review.approveReview(created.id, { 'notify-owner': true, from: 'alice' });
 
@@ -523,7 +546,7 @@ describe('agent-teams-controller API', () => {
       description: 'Completed task description should stay out of compact rows',
       owner: 'bob',
     });
-    controller.tasks.completeTask(completedTask.id, 'bob');
+    finishAgentTask(controller, completedTask.id, 'bob');
     controller.tasks.addTaskComment(activeTask.id, {
       from: 'bob',
       text: 'Resumed work with latest context.',
@@ -714,6 +737,33 @@ describe('agent-teams-controller API', () => {
     expect(second.linkedCommentsCreated).toBe(0);
   });
 
+  it('rejects agent task_complete from pending without a result comment', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const task = controller.tasks.createTask({
+      subject: 'Must show in progress',
+      owner: 'bob',
+      description: 'Needs real work before done',
+    });
+
+    expect(() => controller.tasks.completeTask(task.id, 'bob')).toThrow(/must be in_progress/);
+
+    controller.tasks.startTask(task.id, 'bob');
+    expect(() => controller.tasks.completeTask(task.id, 'bob')).toThrow(/needs a result comment/);
+
+    controller.tasks.addTaskComment(task.id, {
+      text: 'Implemented the change and verified the happy path.',
+      from: 'bob',
+    });
+    const completed = controller.tasks.completeTask(task.id, 'bob');
+    expect(completed.status).toBe('completed');
+
+    // Human/UI path may still complete from pending without a comment.
+    const humanTask = controller.tasks.createTask({ subject: 'User closed', owner: 'bob' });
+    const humanCompleted = controller.tasks.completeTask(humanTask.id, 'user');
+    expect(humanCompleted.status).toBe('completed');
+  });
+
   it('tracks lifecycle history and intervals without duplicate same-status transitions', () => {
     const claudeDir = makeClaudeDir();
     const controller = createController({ teamName: 'my-team', claudeDir });
@@ -725,8 +775,8 @@ describe('agent-teams-controller API', () => {
 
     const started = controller.tasks.startTask(task.id, 'bob');
     const startedAgain = controller.tasks.startTask(task.id, 'bob');
-    const completed = controller.tasks.completeTask(task.id, 'bob');
-    const completedAgain = controller.tasks.completeTask(task.id, 'bob');
+    const completed = finishAgentTask(controller, task.id, 'bob');
+    const completedAgain = finishAgentTask(controller, task.id, 'bob');
     const deleted = controller.tasks.softDeleteTask(task.id, 'bob');
     const restored = controller.tasks.restoreTask(task.id, 'bob');
 
@@ -807,7 +857,7 @@ describe('agent-teams-controller API', () => {
     const task = controller.tasks.createTask({ subject: 'Review me', owner: 'bob' });
 
     controller.kanban.addReviewer('alice');
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead' });
 
     const reviewerInboxPath = path.join(claudeDir, 'teams', 'my-team', 'inboxes', 'alice.json');
@@ -829,7 +879,7 @@ describe('agent-teams-controller API', () => {
     const task = controller.tasks.createTask({ subject: 'Review me', owner: 'bob' });
 
     controller.kanban.addReviewer('alice');
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, {
       from: 'team-lead',
       leadSessionId: 'team-lead',
@@ -847,7 +897,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Review me', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
 
     const result = controller.review.startReview(task.id, { from: 'alice' });
@@ -889,7 +939,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const approvedTask = controller.tasks.createTask({ subject: 'Approve review', owner: 'bob' });
 
-    controller.tasks.completeTask(approvedTask.id, 'bob');
+    finishAgentTask(controller, approvedTask.id, 'bob');
     controller.review.requestReview(approvedTask.id, { from: 'team-lead', reviewer: 'alice' });
     controller.review.startReview(approvedTask.id, { from: 'alice' });
     const approved = controller.review.approveReview(approvedTask.id, { from: 'alice' });
@@ -899,7 +949,7 @@ describe('agent-teams-controller API', () => {
     expect(approved.reviewIntervals[0].completedAt).toBeTruthy();
 
     const changesTask = controller.tasks.createTask({ subject: 'Request changes', owner: 'bob' });
-    controller.tasks.completeTask(changesTask.id, 'bob');
+    finishAgentTask(controller, changesTask.id, 'bob');
     controller.review.requestReview(changesTask.id, { from: 'team-lead', reviewer: 'alice' });
     controller.review.startReview(changesTask.id, { from: 'alice' });
     const changed = controller.review.requestChanges(changesTask.id, {
@@ -917,7 +967,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Review me', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
 
     const taskPath = path.join(claudeDir, 'tasks', 'my-team', `${task.id}.json`);
@@ -941,7 +991,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Queued for review', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
     const started = controller.review.startReview(task.id, { from: 'alice' });
 
@@ -969,7 +1019,7 @@ describe('agent-teams-controller API', () => {
       owner: 'bob',
     });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
     controller.review.startReview(task.id);
 
@@ -996,7 +1046,7 @@ describe('agent-teams-controller API', () => {
       subject: 'Completed but not review',
       owner: 'bob',
     });
-    controller.tasks.completeTask(completedTask.id, 'bob');
+    finishAgentTask(controller, completedTask.id, 'bob');
     expect(() =>
       controller.review.requestChanges(completedTask.id, { from: 'alice', comment: 'Fix it' })
     ).toThrow('must be in review before requesting changes');
@@ -1023,7 +1073,7 @@ describe('agent-teams-controller API', () => {
       owner: 'bob',
     });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
 
     expect(() => controller.review.approveReview(task.id, { from: 'alice' })).toThrow(
       'must be in review before approval'
@@ -1060,7 +1110,7 @@ describe('agent-teams-controller API', () => {
       subject: 'Completed without review request',
       owner: 'bob',
     });
-    controller.tasks.completeTask(completedTask.id, 'bob');
+    finishAgentTask(controller, completedTask.id, 'bob');
     expect(() => controller.review.startReview(completedTask.id, { from: 'alice' })).toThrow(
       'must be in review before starting review'
     );
@@ -1087,7 +1137,7 @@ describe('agent-teams-controller API', () => {
       subject: 'Kanban bypass completed',
       owner: 'bob',
     });
-    controller.tasks.completeTask(completedTask.id, 'bob');
+    finishAgentTask(controller, completedTask.id, 'bob');
     expect(() => controller.kanban.setKanbanColumn(completedTask.id, 'review')).toThrow(
       'must be in review before moving to REVIEW column'
     );
@@ -1107,7 +1157,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Approved terminal task', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
     controller.review.startReview(task.id, { from: 'alice' });
     controller.review.approveReview(task.id, { from: 'alice' });
@@ -1124,7 +1174,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Repair review column', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
     controller.review.startReview(task.id, { from: 'alice' });
 
@@ -1172,7 +1222,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Needs fix restart', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
     controller.review.requestChanges(task.id, { from: 'alice', comment: 'Please fix.' });
     const started = controller.tasks.startTask(task.id, 'bob');
@@ -1632,7 +1682,7 @@ describe('agent-teams-controller API', () => {
       notifyOwner: false,
     });
 
-    expect(() => agentController.tasks.completeTask(dependency.id, 'bob')).not.toThrow();
+    expect(() => finishAgentTask(agentController, dependency.id, 'bob')).not.toThrow();
 
     const comments = appController.tasks.getTask(blocked.id).comments || [];
     expect(comments).toHaveLength(1);
@@ -1753,7 +1803,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Needs revision', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'alice', reviewer: 'alice' });
     const updated = controller.review.requestChanges(task.id, {
       from: 'alice',
@@ -1779,7 +1829,7 @@ describe('agent-teams-controller API', () => {
     const task = controller.tasks.createTask({ subject: 'Approve me', owner: 'bob' });
 
     controller.kanban.addReviewer('alice');
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
     controller.review.approveReview(task.id, {
       from: 'team-lead',
@@ -1800,7 +1850,7 @@ describe('agent-teams-controller API', () => {
     const task = controller.tasks.createTask({ subject: 'Needs revision', owner: 'bob' });
 
     controller.kanban.addReviewer('alice');
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
     controller.review.requestChanges(task.id, {
       from: 'alice',
@@ -1858,7 +1908,7 @@ describe('agent-teams-controller API', () => {
       notifyOwner: false,
     });
 
-    controller.tasks.completeTask(reviewTask.id, 'bob');
+    finishAgentTask(controller, reviewTask.id, 'bob');
     controller.review.requestReview(reviewTask.id, { from: 'alice', reviewer: 'alice' });
 
     const leadBriefing = await controller.tasks.leadBriefing();
@@ -2076,7 +2126,7 @@ describe('agent-teams-controller API', () => {
     expect(controller.kanban.listReviewers()).toEqual(['leadbot']);
 
     const reviewTask = controller.tasks.createTask({ subject: 'Review alias', owner: 'bob' });
-    controller.tasks.completeTask(reviewTask.id, 'bob');
+    finishAgentTask(controller, reviewTask.id, 'bob');
     controller.review.requestReview(reviewTask.id, { from: 'alice', reviewer: 'lead' });
 
     const requested = controller.tasks
@@ -2121,7 +2171,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Column cleanup', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
     controller.kanban.updateColumnOrder('review', [task.id]);
     controller.review.requestChanges(task.id, { from: 'alice', comment: 'Needs work.' });
@@ -2130,7 +2180,7 @@ describe('agent-teams-controller API', () => {
     expect(kanbanState.tasks[task.id]).toBeUndefined();
     expect(kanbanState.columnOrder).toBeUndefined();
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
     controller.kanban.updateColumnOrder('review', [task.id]);
     const deleted = controller.tasks.softDeleteTask(task.id, 'bob');
@@ -2150,7 +2200,7 @@ describe('agent-teams-controller API', () => {
       owner: 'bob',
     });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'team-lead', reviewer: 'alice' });
     controller.kanban.updateColumnOrder('review', [task.id]);
     const deleted = controller.tasks.setTaskStatus(task.id, 'deleted', 'bob');
@@ -2206,7 +2256,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Approved then reopened', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'alice', reviewer: 'alice' });
     controller.review.approveReview(task.id, { from: 'alice' });
     const reopened = controller.tasks.setTaskStatus(task.id, 'pending', 'alice');
@@ -2230,7 +2280,7 @@ describe('agent-teams-controller API', () => {
       owner: 'bob',
     });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'alice', reviewer: 'alice' });
     controller.review.approveReview(task.id, { from: 'alice' });
 
@@ -2255,7 +2305,7 @@ describe('agent-teams-controller API', () => {
     expect(() => controller.tasks.setTaskOwner(task.id, 'boob')).toThrow(
       'Unknown task owner: boob'
     );
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     expect(() =>
       controller.review.requestReview(task.id, { from: 'alice', reviewer: 'boob' })
     ).toThrow('Unknown reviewer: boob');
@@ -2303,7 +2353,7 @@ describe('agent-teams-controller API', () => {
       owner: 'bob',
     });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'alice', reviewer: 'alice' });
     controller.review.approveReview(task.id, { from: 'alice' });
 
@@ -2319,7 +2369,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Approved without overlay', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'alice', reviewer: 'alice' });
     controller.review.approveReview(task.id, { from: 'alice' });
 
@@ -2339,7 +2389,7 @@ describe('agent-teams-controller API', () => {
     const controller = createController({ teamName: 'my-team', claudeDir });
     const task = controller.tasks.createTask({ subject: 'Repair reviewer actor', owner: 'bob' });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'alice', reviewer: 'alice' });
 
     const taskPath = path.join(claudeDir, 'tasks', 'my-team', `${task.id}.json`);
@@ -2378,7 +2428,7 @@ describe('agent-teams-controller API', () => {
       owner: 'bob',
     });
 
-    controller.tasks.completeTask(task.id, 'bob');
+    finishAgentTask(controller, task.id, 'bob');
     controller.review.requestReview(task.id, { from: 'alice', reviewer: 'alice' });
 
     const taskPath = path.join(claudeDir, 'tasks', 'my-team', `${task.id}.json`);

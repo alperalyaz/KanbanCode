@@ -303,6 +303,14 @@ export const KanbanTaskCard = memo(
         ) : null}
         <div className="mb-2 pt-[11px]">
           {!compact && <TruncatedTitle text={task.subject} className="min-w-0" />}
+          {!compact &&
+          typeof task.description === 'string' &&
+          task.description.trim() &&
+          task.description.trim() !== task.subject.trim() ? (
+            <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--color-text-muted)]">
+              {task.description.trim()}
+            </p>
+          ) : null}
           {task.needsClarification ? (
             <span
               className={`mt-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${

@@ -6,7 +6,7 @@ import type { AgentActionMode } from '@shared/types';
 const { protocols } = agentTeamsControllerModule;
 
 const LEAD_DELEGATE_DESCRIPTION =
-  'Strict orchestration mode for leads. Delegate the work and any needed investigation to teammates, coordinate it, and do not implement or personally research it yourself unless you are truly in SOLO MODE.';
+  'Strict orchestration mode for leads. Put every actionable request on the kanban board, delegate to teammates, coordinate progress, and do not implement or personally research unless you are truly in SOLO MODE or the human explicitly asked you to do that work yourself.';
 
 const ACTION_MODE_BLOCKS: Record<AgentActionMode, string[]> = {
   do: [
@@ -16,7 +16,8 @@ const ACTION_MODE_BLOCKS: Record<AgentActionMode, string[]> = {
     '- Agent tool policy for this mode: you MAY use the built-in Agent tool only as a normal Claude Code subagent helper, i.e. WITHOUT team_name.',
     '- If you use Agent in this mode, use it the same way normal Claude Code would use Agent: bounded helper work, parallel research, or implementation support when useful.',
     '- Even in DO mode, do NOT use Agent with team_name to create persistent teammates, and do NOT use Agent as a replacement for the team task board or normal teammate delegation.',
-    '- No extra restrictions apply beyond your normal system/team rules.',
+    '- If you are the team lead in a non-solo team: still put actionable work on the board before executing, and prefer delegating to teammates unless the user explicitly asked YOU to do the work yourself or you are in SOLO MODE.',
+    '- No other restrictions apply beyond your normal system/team rules.',
   ],
   ask: [
     'TURN ACTION MODE: ASK',
@@ -26,12 +27,13 @@ const ACTION_MODE_BLOCKS: Record<AgentActionMode, string[]> = {
   ],
   delegate: [
     'TURN ACTION MODE: DELEGATE',
-    '- This turn is delegation/orchestration mode: delegation is your DEFAULT, but you still auto-decide to handle trivial one-step tasks yourself (see RIGHT-SIZE below).',
-    '- If you are the team lead, stay at orchestration level: decompose the work, create every identified item as a pending board task with owners, then start only what should begin now, delegate triage/research to the best teammate, and monitor progress.',
-    '- In this mode, do NOT inspect code, do root-cause research, or spend time narrowing scope yourself before delegating unless the human explicitly asked you for analysis/planning instead of delegation.',
-    '- If the request is underspecified, create one coarse investigation/triage task in pending/TODO for the most relevant teammate; that teammate should inspect the codebase, refine scope, and add follow-up pending tasks. If scope is already clear, create the full pending backlog yourself before any task_start.',
-    '- RIGHT-SIZE (you auto-decide): if the request is a trivial, single-step operation that is genuinely not worth a board task and a teammate handoff — e.g. "git push", "run the tests", "commit and push", "rename X to Y", "open this file", a one-line fix, or answering a quick factual check — just DO IT YOURSELF directly and move on. Do not manufacture ceremony (no board task, no delegation, no verification sub-process) for a one-liner. Reserve delegation for work that genuinely needs a teammate\'s time and spans multiple steps, files, or people.',
-    "- FORBIDDEN for substantial work: implementing multi-step work yourself, doing a teammate's assigned task for them, launching Agent/subagents, or taking direct execution ownership of work that should be delegated — unless you are truly in SOLO MODE (zero teammates on the durable roster). (Trivial one-step operations per the RIGHT-SIZE rule above are the explicit exception and are expected to be done directly.)",
+    '- This turn is STRICT orchestration mode: your job is to put work on the kanban board and keep teammates busy — not to freestyle the work yourself.',
+    '- If you are the team lead, stay at orchestration level: decompose the work, create a FULL pending backlog on the board (TODO must stay non-empty after starts), assign owners, then start at most ONE task per idle/ready teammate, and monitor progress.',
+    '- HARD RULE: no actionable work without a board card first (including small ops like git push, run tests, rename a file). Pure chat may stay off-board; everything else must be a task.',
+    '- HARD RULE: never create-and-start only one task per teammate leaving TODO empty. Always leave visible pending follow-ups in TODO.',
+    '- In this mode, do NOT inspect code, do root-cause research, run project commands, or spend time narrowing scope yourself before delegating unless the human explicitly asked you to do that work yourself, or you are truly in SOLO MODE.',
+    '- If the request is a clear but technically underspecified complete ask, create one coarse investigation/triage task in pending/TODO for the most relevant teammate PLUS additional pending follow-up placeholders where known; that teammate should inspect the codebase, refine scope, and add more pending tasks. If scope is already clear, create the full pending backlog yourself before any task_start. Incomplete or accidental fragments are not triage candidates; ask for clarification instead.',
+    "- FORBIDDEN: implementing work yourself, doing a teammate's assigned task for them, launching Agent/subagents as a substitute for teammates, or taking direct execution ownership — unless you are truly in SOLO MODE or the human explicitly asked YOU to execute.",
     '- In particular, do NOT use Agent as a shortcut for delegation in this mode. Use the team board, real teammates, and explicit task ownership instead.',
     '- SOLO MODE is ONLY when the durable roster lists ZERO teammates. If this turn includes a durable roster with teammate names, the team is NOT solo — create board tasks and assign those teammates. Never invent "no other members" / "team has no teammates" when the roster lists names.',
     '- If you are not the team lead, do not take lead-level orchestration ownership yourself; explain briefly and ask the user to message the lead (or switch mode) instead.',

@@ -121,6 +121,13 @@ describe('TeamProvisioningPromptBuilders', () => {
     expect(prompt).toContain('BOARD PLAN FIRST (MANDATORY for teams with teammates)');
     expect(prompt).toContain('create ALL decomposed tasks on the team board in pending/TODO');
     expect(prompt).toContain('BACKLOG SEEDING (MANDATORY)');
+    expect(prompt).toContain('BOARD IS THE ONLY WORK QUEUE');
+    expect(prompt).toContain('YOUR ROLE IS ORCHESTRATOR, NOT IMPLEMENTER');
+    expect(prompt).toContain('HARD RULE: If it is not on the kanban board, it must not be executed');
+    expect(prompt).toContain('NEVER EMPTY TODO');
+    expect(prompt).toContain('empty TODO is ALSO a failure');
+    expect(prompt).not.toContain('RIGHT-SIZE THE CEREMONY');
+    expect(prompt).not.toContain('just START doing it solo');
   });
 
   it('forbids mobilizing the team on incomplete or accidental user messages', () => {
