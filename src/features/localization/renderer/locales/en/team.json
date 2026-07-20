@@ -74,6 +74,10 @@
       "user": "user",
       "awaitingApproval": "awaiting approval"
     },
+    "liveStatus": {
+      "working": "working…",
+      "title": "Live status"
+    },
     "reply": {
       "replyingTo": "Replying to",
       "action": "Reply"
@@ -786,8 +790,8 @@
       "label": "Action mode",
       "ask": "Ask",
       "delegate": "Delegate",
-      "askTooltip": "Read-only discussion — no code/state changes or commands",
-      "delegateTooltip": "Delegate to the team — the lead orchestrates and still handles trivial tasks itself"
+      "askTooltip": "Read-only discussion — no task creation, code/state changes, or commands",
+      "delegateTooltip": "Assign to the team — the lead breaks work into kanban tasks and assigns teammates. Still handles trivial one-step tasks itself"
     },
     "search": {
       "placeholder": "Search..."
@@ -1417,6 +1421,9 @@
       "teamFallback": "team",
       "placeholder": "Write a message... (Enter to send, Shift+Enter for new line)",
       "slashTip": "Tip: You can use \"/\" to run any Claude commands.",
+      "tipMentions": "Tip: Use @ for members/files and # for tasks",
+      "tipCreateTask": "Tip: Mention \"create a task\" to add it to the kanban",
+      "tipDelegate": "Tip: For team work, select Delegate — the lead creates kanban tasks and assigns teammates",
       "charsLeft_few": "{{count}} chars left",
       "charsLeft_many": "{{count}} chars left"
     },

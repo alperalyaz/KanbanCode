@@ -1221,6 +1221,7 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   const renderInlineStatusSection = (): React.JSX.Element => (
     <MessagesStatusSection
+      teamName={teamName}
       members={members}
       tasks={tasks}
       messages={effectiveMessages}
@@ -1234,6 +1235,7 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   const renderSidebarStatusSection = (): React.JSX.Element => (
     <MessagesStatusSection
+      teamName={teamName}
       members={members}
       tasks={tasks}
       messages={effectiveMessages}
