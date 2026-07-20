@@ -3233,7 +3233,7 @@ export default interface Resources {
         nameLaunching: 'A team with this name is currently launching';
       };
       fields: {
-        color: 'Color (optional)';
+        color: 'Human user color (optional)';
         description: 'Description (optional)';
         prompt: 'Prompt for team lead (optional)';
         teamName: 'Team name';
@@ -3430,7 +3430,7 @@ export default interface Resources {
         save: 'Save';
       };
       addMemberLockReason: 'Use the dedicated Add member dialog to add new teammates while the team is live.';
-      description: 'Change team name, description and color';
+      description: 'Change team name, description, and human-user color';
       errors: {
         changesSavedRefreshFailed: 'Team changes were saved, but failed to refresh the latest view: {{message}}';
         liveRenameBlocked: 'Existing teammates cannot be renamed while the team is live. renamed: {{names}}';
@@ -3452,7 +3452,8 @@ export default interface Resources {
         unsupportedMixedPrimaryMutation: 'Live edits to primary-owned teammates in mixed OpenCode teams are not supported yet. Stop the team, edit the roster, then relaunch. Affected: {{names}}';
       };
       fields: {
-        colorOptional: 'Color (optional)';
+        colorOptional: 'Human user color (optional)';
+        colorHint: 'Used for the team header accent and your messages. Does not change agent dots.';
         description: 'Description';
         name: 'Name';
       };
