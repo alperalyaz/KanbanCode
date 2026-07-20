@@ -4,6 +4,7 @@ import {
   buildRemovedMemberReassignmentLeadNotice,
   listReassignmentCandidates,
   planRemovedMemberReassignments,
+  selectPendingReassignmentsToAutoStart,
 } from '../../../../src/main/services/team/RemovedMemberTaskReassigner';
 
 describe('RemovedMemberTaskReassigner', () => {
@@ -94,6 +95,46 @@ describe('RemovedMemberTaskReassigner', () => {
     expect(notice).toContain('@Karagöz');
     expect(notice).toContain('#c553a99c');
     expect(notice).toContain('@Beberuhi');
-    expect(notice).toContain('task_start');
+    expect(notice).toContain('ownership is already fixed');
+    expect(notice).toContain('do NOT write a cleanup essay');
+  });
+
+  it('auto-starts only unblocked pending work for owners without an in_progress handoff', () => {
+    const selected = selectPendingReassignmentsToAutoStart({
+      reassignments: [
+        {
+          taskId: 'ip-1',
+          status: 'in_progress',
+          fromOwner: 'Karagöz',
+          toOwner: 'Beberuhi',
+        },
+        {
+          taskId: 'p-1',
+          status: 'pending',
+          fromOwner: 'Karagöz',
+          toOwner: 'Beberuhi',
+        },
+        {
+          taskId: 'p-2',
+          status: 'pending',
+          fromOwner: 'Karagöz',
+          toOwner: 'Hacivat',
+        },
+        {
+          taskId: 'p-3',
+          status: 'pending',
+          fromOwner: 'Karagöz',
+          toOwner: 'Tiryaki',
+        },
+      ],
+      tasks: [
+        { id: 'ip-1', status: 'in_progress', owner: 'Beberuhi' },
+        { id: 'p-1', status: 'pending', owner: 'Beberuhi' },
+        { id: 'p-2', status: 'pending', owner: 'Hacivat', blockedBy: ['ip-1'] },
+        { id: 'p-3', status: 'pending', owner: 'Tiryaki' },
+      ],
+    });
+
+    expect(selected.map((item) => item.taskId)).toEqual(['p-3']);
   });
 });

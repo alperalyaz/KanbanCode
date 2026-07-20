@@ -152,9 +152,11 @@ import {
 } from '../services/team/mergeLiveLeadProcessMessages';
 import { isAutoClearableLaunchFailureReason } from '../services/team/provisioning/TeamProvisioningLaunchFailurePolicy';
 import {
+  buildRemovedMemberOwnerHandoffText,
   buildRemovedMemberReassignmentLeadNotice,
   planRemovedMemberReassignments,
   type RemovedMemberReassignment,
+  selectPendingReassignmentsToAutoStart,
 } from '../services/team/RemovedMemberTaskReassigner';
 import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
 import { TeamConfigReader } from '../services/team/TeamConfigReader';
@@ -638,6 +640,51 @@ async function autoReassignTasksAfterMemberRemoval(args: {
       } catch (error) {
         logger.warn(
           `[${teamName}] Failed to reassign task ${item.taskId} from removed member "${removedMemberName}" to "${item.toOwner}": ${getErrorMessage(error)}`
+        );
+      }
+    }
+
+    // Wake new owners immediately — do not wait for the lead to hand off.
+    for (const item of applied.filter((entry) => entry.status === 'in_progress')) {
+      try {
+        await teamDataService.sendMessage(teamName, {
+          member: item.toOwner,
+          from: 'system',
+          summary: `Resume ${item.displayId ? `#${item.displayId}` : item.taskId} after teammate removal`,
+          text: buildRemovedMemberOwnerHandoffText({
+            removedMemberName,
+            taskId: item.taskId,
+            displayId: item.displayId,
+            subject: item.subject,
+            status: 'in_progress',
+            teamName,
+          }),
+          taskRefs: [
+            {
+              taskId: item.taskId,
+              displayId: item.displayId,
+              teamName,
+            },
+          ],
+          source: 'system_notification',
+          actionMode: 'do',
+        });
+      } catch (error) {
+        logger.warn(
+          `[${teamName}] Failed to hand off in_progress task ${item.taskId} to "${item.toOwner}": ${getErrorMessage(error)}`
+        );
+      }
+    }
+
+    for (const item of selectPendingReassignmentsToAutoStart({
+      reassignments: applied,
+      tasks,
+    })) {
+      try {
+        await teamDataService.startTask(teamName, item.taskId);
+      } catch (error) {
+        logger.warn(
+          `[${teamName}] Failed to auto-start reassigned pending task ${item.taskId} for "${item.toOwner}": ${getErrorMessage(error)}`
         );
       }
     }

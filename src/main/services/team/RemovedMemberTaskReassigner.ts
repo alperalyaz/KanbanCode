@@ -187,7 +187,7 @@ export function buildRemovedMemberReassignmentLeadNotice(args: {
     }
     return [
       `System notice: teammate @${removed} was removed from the team.`,
-      'Do not assign them new work. Continue orchestrating with remaining healthy teammates.',
+      'Do not assign them new work. Scan the board and task_start any idle healthy teammates who have ready work.',
     ].join('\n');
   }
 
@@ -198,12 +198,90 @@ export function buildRemovedMemberReassignmentLeadNotice(args: {
   });
 
   return [
-    `System notice: teammate @${removed} was removed. Their active tasks were AUTO-REASSIGNED to remaining teammates — do not leave them on the removed member.`,
-    'ACT NOW (same turn):',
-    '- Confirm the new owners below and task_start any in_progress / unblocked work that should resume immediately.',
-    '- Message each new owner with a one-line handoff if they have not started yet.',
-    '- Keep healthy idle teammates busy; do not wait for the removed member.',
+    `System notice: teammate @${removed} was removed. Their active tasks were AUTO-REASSIGNED on the board — ownership is already fixed.`,
+    'ACT NOW (same turn) — do NOT search the workspace for "ownership references" and do NOT write a cleanup essay:',
+    '- Verify with lead_briefing / task_list that the rows below match the board.',
+    '- For each new owner who is idle, SendMessage them a one-line handoff and make sure in_progress / unblocked work is actually running (task_start if still pending).',
+    '- Keep every healthy idle teammate busy. Report to "user" only after work is moving again.',
     'Reassignments:',
     ...lines,
+  ].join('\n');
+}
+
+export function isTaskBlockedByOpenWork(
+  task: Pick<RemovableOwnedTask, 'blockedBy'>,
+  allTasks: readonly RemovableOwnedTask[]
+): boolean {
+  const blockers = task.blockedBy ?? [];
+  if (blockers.length === 0) return false;
+  const byId = new Map(allTasks.map((item) => [item.id, item]));
+  const byDisplay = new Map(
+    allTasks
+      .filter((item) => item.displayId)
+      .map((item) => [String(item.displayId).toLowerCase(), item])
+  );
+  return blockers.some((blockerId) => {
+    const key = String(blockerId).trim();
+    if (!key) return false;
+    const blocker =
+      byId.get(key) ??
+      byDisplay.get(key.toLowerCase()) ??
+      byDisplay.get(key.replace(/^#/, '').toLowerCase());
+    if (!blocker) return false;
+    return blocker.status === 'pending' || blocker.status === 'in_progress';
+  });
+}
+
+/** Pending tasks that should be auto-started after reassignment (unblocked, one per new owner). */
+export function selectPendingReassignmentsToAutoStart(args: {
+  reassignments: readonly RemovedMemberReassignment[];
+  tasks: readonly RemovableOwnedTask[];
+}): RemovedMemberReassignment[] {
+  const ownersWithInProgress = new Set(
+    args.reassignments
+      .filter((item) => item.status === 'in_progress')
+      .map((item) => item.toOwner.trim().toLowerCase())
+  );
+  const selected: RemovedMemberReassignment[] = [];
+  const startedOwners = new Set<string>();
+
+  for (const item of args.reassignments) {
+    if (item.status !== 'pending') continue;
+    const ownerKey = item.toOwner.trim().toLowerCase();
+    if (!ownerKey || ownersWithInProgress.has(ownerKey) || startedOwners.has(ownerKey)) {
+      continue;
+    }
+    const task = args.tasks.find((candidate) => candidate.id === item.taskId);
+    if (!task || isTaskBlockedByOpenWork(task, args.tasks)) {
+      continue;
+    }
+    selected.push(item);
+    startedOwners.add(ownerKey);
+  }
+  return selected;
+}
+
+export function buildRemovedMemberOwnerHandoffText(args: {
+  removedMemberName: string;
+  taskId: string;
+  displayId?: string;
+  subject?: string;
+  status: 'pending' | 'in_progress';
+  teamName: string;
+}): string {
+  const label = formatTaskDisplayLabel({ id: args.taskId, displayId: args.displayId });
+  const subject = args.subject?.trim() || '(no subject)';
+  const removed = args.removedMemberName.trim() || 'removed teammate';
+  if (args.status === 'in_progress') {
+    return [
+      `Handoff: ${label} "${subject}" was taken over from removed teammate @${removed}.`,
+      'It is already in_progress — resume work immediately. Do not wait for further confirmation.',
+      `When done: task_complete { teamName: "${args.teamName}", taskId: "${args.taskId}" }`,
+    ].join('\n');
+  }
+  return [
+    `Handoff: ${label} "${subject}" was reassigned to you from removed teammate @${removed}.`,
+    'Start this task now if you are idle.',
+    `task_start { teamName: "${args.teamName}", taskId: "${args.taskId}" }`,
   ].join('\n');
 }

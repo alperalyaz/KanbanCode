@@ -138,6 +138,7 @@ describe('TeamProvisioningPromptBuilders', () => {
 
     expect(prompt).toContain('NEVER ASSIGN TO UNHEALTHY WHEN HEALTHY EXIST');
     expect(prompt).toContain('REMOVED TEAMMATE');
+    expect(prompt).toContain('ACTIVE ORCHESTRATOR');
     expect(prompt).toContain('pending AND in_progress work');
     expect(prompt).toContain('UNHEALTHY OWNER + BLOCKED FRONTIER');
     expect(prompt).toContain('do NOT wait ~2 minutes for the unhealthy ones');
