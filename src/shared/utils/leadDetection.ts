@@ -9,6 +9,9 @@
 
 const LEAD_AGENT_TYPES = new Set(['team-lead', 'lead', 'orchestrator']);
 
+/** Canonical + inbox/runtime aliases for the lead member name. */
+const LEAD_MEMBER_NAMES = new Set(['team-lead', 'lead']);
+
 /**
  * Returns true if the given agentType string identifies a team lead.
  * Handles all known CLI variants: "team-lead", "lead", "orchestrator".
@@ -23,12 +26,21 @@ export function isLeadAgentType(agentType: string | undefined | null): boolean {
 }
 
 /**
- * Returns true if the member is a team lead, checking both agentType
- * and the conventional "team-lead" name as a fallback.
+ * Returns true if the member is a team lead, checking agentType, role, and
+ * conventional lead name aliases ("team-lead", "lead").
  */
-export function isLeadMember(member: { agentType?: unknown; name?: unknown }): boolean {
+export function isLeadMember(member: {
+  agentType?: unknown;
+  name?: unknown;
+  role?: unknown;
+}): boolean {
   const agentType = typeof member.agentType === 'string' ? member.agentType : null;
   if (isLeadAgentType(agentType)) return true;
+
+  const role = typeof member.role === 'string' ? member.role.trim().toLowerCase() : '';
+  // Config/meta commonly store "Team Lead"; activity actors use the short "lead".
+  if (role === 'lead' || role === 'team lead') return true;
+
   const name = typeof member.name === 'string' ? member.name.trim().toLowerCase() : '';
-  return name === 'team-lead';
+  return LEAD_MEMBER_NAMES.has(name);
 }

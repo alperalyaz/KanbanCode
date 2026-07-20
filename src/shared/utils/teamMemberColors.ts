@@ -15,11 +15,19 @@ export interface TeamMemberColorInput {
 
 interface BuildTeamMemberColorMapOptions {
   preferProvidedColors?: boolean;
+  /**
+   * Team `config.color` — the human user's identity color.
+   * When set, overrides the reserved gray `user` palette entry so badges and
+   * message accents match the color chosen in Edit Team / Create Team.
+   */
+  userColor?: string;
 }
 
 /**
  * Build a deterministic roster color map that optimizes contrast inside a team.
  * Leads reserve their own color but do not consume the teammate palette order.
+ * The human `user` pseudo-member uses `userColor` when provided, otherwise the
+ * reserved gray `user` palette id.
  */
 export function buildTeamMemberColorMap(
   members: readonly TeamMemberColorInput[],
@@ -71,7 +79,8 @@ export function buildTeamMemberColorMap(
     map.set(member.name, color);
   }
 
-  map.set('user', 'user');
+  const trimmedUserColor = options.userColor?.trim();
+  map.set('user', trimmedUserColor ? normalizeMemberColorName(trimmedUserColor) : 'user');
 
   return map;
 }

@@ -11,6 +11,7 @@ import { Button } from '@renderer/components/ui/button';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStore } from '@renderer/store';
 import { selectMemberMessagesForTeamMember } from '@renderer/store/slices/teamSlice';
+import { selectTeamDataForName } from '@renderer/store/team/teamDataSelectors';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -57,8 +58,12 @@ export const MemberMessagesTab = ({
     }))
   );
   const { readSet } = useTeamMessagesRead(teamName);
+  const teamUserColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
   const taskMap = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
-  const messageContext = useMemo(() => buildMessageContext(members), [members]);
+  const messageContext = useMemo(
+    () => buildMessageContext(members, teamUserColor),
+    [members, teamUserColor]
+  );
 
   useEffect(() => {
     setActivityFilter(initialFilter);

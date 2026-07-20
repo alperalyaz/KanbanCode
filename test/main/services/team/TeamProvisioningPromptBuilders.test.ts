@@ -145,6 +145,35 @@ describe('TeamProvisioningPromptBuilders', () => {
     );
   });
 
+  it('requires leads to skip unhealthy owners and reassign without being asked', () => {
+    const prompt = buildPersistentLeadContext({
+      teamName: 'atlas-hq',
+      leadName: 'Lider',
+      isSolo: false,
+      members: [
+        { name: 'Lider', role: 'team-lead' },
+        { name: 'Karagöz', role: 'developer' },
+        { name: 'Beberuhi', role: 'developer' },
+      ] as TeamCreateRequest['members'],
+    });
+
+    expect(prompt).toContain('NEVER ASSIGN TO UNHEALTHY WHEN HEALTHY EXIST');
+    expect(prompt).toContain('REMOVED TEAMMATE');
+    expect(prompt).toContain('ACTIVE ORCHESTRATOR');
+    expect(prompt).toContain('pending AND in_progress work');
+    expect(prompt).toContain('UNHEALTHY OWNER + BLOCKED FRONTIER');
+    expect(prompt).toContain('do NOT wait ~2 minutes for the unhealthy ones');
+    expect(prompt).toContain(
+      'When you receive a system notice that a teammate is unhealthy and still owns pending/in_progress work'
+    );
+    expect(prompt).toContain(
+      'The user should NEVER have to micromanage "take the work off the red agent'
+    );
+    expect(prompt).toContain(
+      'healthy idle teammates exist AND there is pending TODO work OR an unhealthy/stale/offline owner'
+    );
+  });
+
   it('keeps errored provisioned-but-not-alive members failed in Gemini hydration prompts', () => {
     const prompt = buildPromptWithStatus({
       status: 'error',
