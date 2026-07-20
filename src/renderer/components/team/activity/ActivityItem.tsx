@@ -541,7 +541,7 @@ const TaskStallRemediationRow = ({
             {' '}
             <button
               type="button"
-              className="font-medium text-blue-700 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200"
+              className="font-medium text-blue-700 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
               onClick={(event) => {
                 event.stopPropagation();
                 onTaskIdClick?.(taskRef.taskId);
@@ -618,7 +618,7 @@ const MemberWorkSyncNudgeRow = ({
             {' '}
             <button
               type="button"
-              className="font-medium text-blue-700 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200"
+              className="font-medium text-blue-700 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
               onClick={(event) => {
                 event.stopPropagation();
                 onTaskIdClick?.(primaryTaskRef.taskId);
@@ -1392,14 +1392,14 @@ export const ActivityItem = memo(
         <AlertTriangle size={10} />
         {t('activity.badges.rateLimited')}
       </span>
-	    ) : isApiError ? (
-	      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
-	        <AlertTriangle size={10} />
-	        {message.messageKind === 'agent_error'
-	          ? t('activity.badges.agentError')
-	          : t('activity.badges.apiError')}
-	      </span>
-	    ) : null;
+    ) : isApiError ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+        <AlertTriangle size={10} />
+        {message.messageKind === 'agent_error'
+          ? t('activity.badges.agentError')
+          : t('activity.badges.apiError')}
+      </span>
+    ) : null;
 
     const recipientBadge =
       commentTaskRef && commentTaskDisplayId ? (
@@ -1491,16 +1491,16 @@ export const ActivityItem = memo(
                 : isHumanConversation
                   ? 'var(--info-bg)'
                   : isSlashCommandResult
-                  ? 'rgba(245, 158, 11, 0.08)'
-                  : isSlashCommandMessage
                     ? 'rgba(245, 158, 11, 0.08)'
-                    : isCrossTeamAny
-                      ? 'var(--cross-team-bg)'
-                      : isSystemMessage
-                        ? 'var(--system-activity-bg)'
-                        : zebraShade
-                          ? CARD_BG_ZEBRA
-                          : CARD_BG,
+                    : isSlashCommandMessage
+                      ? 'rgba(245, 158, 11, 0.08)'
+                      : isCrossTeamAny
+                        ? 'var(--cross-team-bg)'
+                        : isSystemMessage
+                          ? 'var(--system-activity-bg)'
+                          : zebraShade
+                            ? CARD_BG_ZEBRA
+                            : CARD_BG,
           border:
             rateLimited || isApiError
               ? '1px solid var(--tool-result-error-border)'
@@ -1509,14 +1509,14 @@ export const ActivityItem = memo(
                 : isHumanConversation
                   ? '1px solid var(--info-border)'
                   : isSlashCommandResult
-                  ? '1px solid rgba(245, 158, 11, 0.22)'
-                  : isSlashCommandMessage
                     ? '1px solid rgba(245, 158, 11, 0.22)'
-                    : isCrossTeamAny
-                      ? '1px solid var(--cross-team-border)'
-                      : isSystemMessage
-                        ? '1px solid var(--system-activity-border)'
-                        : CARD_BORDER_STYLE,
+                    : isSlashCommandMessage
+                      ? '1px solid rgba(245, 158, 11, 0.22)'
+                      : isCrossTeamAny
+                        ? '1px solid var(--cross-team-border)'
+                        : isSystemMessage
+                          ? '1px solid var(--system-activity-border)'
+                          : CARD_BORDER_STYLE,
           borderLeft:
             rateLimited || isApiError
               ? '3px solid var(--tool-result-error-text)'
@@ -1525,14 +1525,14 @@ export const ActivityItem = memo(
                 : isHumanConversation
                   ? '4px solid var(--color-accent)'
                   : isSlashCommandResult
-                  ? '3px solid rgba(245, 158, 11, 0.85)'
-                  : isSlashCommandMessage
                     ? '3px solid rgba(245, 158, 11, 0.85)'
-                    : isCrossTeamAny
-                      ? '3px solid var(--cross-team-accent)'
-                      : isSystemMessage
-                        ? '3px solid var(--system-activity-accent)'
-                        : `3px solid ${getThemedBorder(colors, isLight)}`,
+                    : isSlashCommandMessage
+                      ? '3px solid rgba(245, 158, 11, 0.85)'
+                      : isCrossTeamAny
+                        ? '3px solid var(--cross-team-accent)'
+                        : isSystemMessage
+                          ? '3px solid var(--system-activity-accent)'
+                          : `3px solid ${getThemedBorder(colors, isLight)}`,
         }}
       >
         {/* Header — div with role=button (cannot use <button> due to nested buttons inside) */}
@@ -1912,7 +1912,11 @@ export const ActivityItem = memo(
                   ) : null}
                   <CopyButton text={displayText} inline />
                 </div>
-                <ExpandableContent className="pr-20" onExpand={onExpandContent}>
+                <ExpandableContent
+                  className="pr-20"
+                  defaultExpanded={isHumanConversation}
+                  onExpand={onExpandContent}
+                >
                   <span
                     onClickCapture={
                       onTaskIdClick
@@ -1936,7 +1940,7 @@ export const ActivityItem = memo(
                       maxHeight="max-h-none"
                       className={
                         isHumanConversation
-                          ? '[&_li]:text-[15px] [&_p]:text-[15px] [&_table]:text-[15px] [&_li]:leading-relaxed [&_p]:leading-relaxed [&_li]:font-medium [&_p]:font-medium [&_strong]:font-semibold'
+                          ? '[&_li]:text-[15px] [&_li]:font-medium [&_li]:leading-relaxed [&_p]:text-[15px] [&_p]:font-medium [&_p]:leading-relaxed [&_strong]:font-semibold [&_table]:text-[15px]'
                           : '[&_li]:text-[13px] [&_p]:text-[13px] [&_table]:text-[13px]'
                       }
                       bare
