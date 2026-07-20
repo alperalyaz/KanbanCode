@@ -1292,6 +1292,17 @@ const TASK_WAIT_FALLBACK_MS = 15_000;
 // settle (bootstrap lock released, runtime evidence flushed) so the retry does
 // not race the finalize path.
 const TRANSIENT_TEAMMATE_AUTO_RETRY_DELAY_MS = 4_000;
+// Grace window before treating a never-confirmed member as stuck. The app has
+// TWO independent "is this member alive" signals that never cross-check each
+// other: the lead CLI's self-reported launchState, and the OS-process-table
+// based TeamRuntimeLivenessResolver. A member can be permanently red
+// (registered_only/stale_metadata/not_found) while launchState never reaches
+// 'failed_to_start' (the lead's bootstrap stream simply never flagged it) —
+// so scheduleTransientTeammateAutoRetries's launchState-only gate never fires
+// for it, and it sits stale forever until a human clicks retry. This window
+// reconciles the two signals: once a member has had a real chance to come up
+// and BOTH signals still disagree, auto-heal with one restart.
+const STALE_RUNTIME_RECONCILE_GRACE_MS = 45_000;
 const STALL_CHECK_INTERVAL_MS = 10_000;
 const STALL_WARNING_THRESHOLD_MS = 20_000;
 const APP_TEAM_RUNTIME_DISALLOWED_TOOLS =
@@ -16663,6 +16674,78 @@ export class TeamProvisioningService {
     return spawnStatus.launchState === 'skipped_for_launch';
   }
 
+  /**
+   * True when the lead's own bootstrap stream and the independent OS-process
+   * liveness resolver disagree in a way that would otherwise leave a member
+   * stuck red forever: bootstrap was never confirmed for it, AND liveness
+   * independently reports it registered/stale/not-found, AND it has had a
+   * fair chance to come up (grace window since its spawn was first accepted).
+   * See STALE_RUNTIME_RECONCILE_GRACE_MS for why this reconciliation exists.
+   */
+  private isStaleRuntimeReconcileCandidate(
+    run: ProvisioningRun,
+    memberName: string,
+    spawnStatus: MemberSpawnStatusEntry | undefined,
+    livenessKind: string | undefined
+  ): boolean {
+    if (!run.isLaunch || run.cancelRequested || run.processKilled) {
+      return false;
+    }
+    if (!run.expectedMembers.includes(memberName)) {
+      return false;
+    }
+    if (!spawnStatus || spawnStatus.bootstrapConfirmed === true || spawnStatus.hardFailure === true) {
+      return false;
+    }
+    if (spawnStatus.skippedForLaunch === true) {
+      return false;
+    }
+    if (
+      livenessKind !== 'registered_only' &&
+      livenessKind !== 'stale_metadata' &&
+      livenessKind !== 'not_found'
+    ) {
+      return false;
+    }
+    const firstSpawnAcceptedMs = parseOptionalIsoMs(spawnStatus.firstSpawnAcceptedAt);
+    if (firstSpawnAcceptedMs <= 0) {
+      return false;
+    }
+    return Date.now() - firstSpawnAcceptedMs >= STALE_RUNTIME_RECONCILE_GRACE_MS;
+  }
+
+  /**
+   * Reconciliation auto-heal: restart a member exactly once per run when
+   * isStaleRuntimeReconcileCandidate is true. Reuses the same
+   * autoRetriedTransientMembers bookkeeping as scheduleTransientTeammateAutoRetries
+   * so the two mechanisms never double-restart the same member.
+   */
+  private scheduleStaleRuntimeAutoHeal(run: ProvisioningRun, memberName: string): void {
+    const alreadyHealed = (run.autoRetriedTransientMembers ??= new Set<string>());
+    if (alreadyHealed.has(memberName)) {
+      return;
+    }
+    if (
+      this.isMemberLifecycleOperationActive(run.teamName, memberName) ||
+      run.pendingMemberRestarts.has(memberName)
+    ) {
+      return;
+    }
+    alreadyHealed.add(memberName);
+    logger.info(
+      `[${run.teamName}] Auto-healing "${memberName}": bootstrap never confirmed and OS-level ` +
+        'liveness independently reports it stale/missing — restarting automatically instead of ' +
+        'leaving it red indefinitely.'
+    );
+    void this.restartMember(run.teamName, memberName).catch((error: unknown) => {
+      logger.warn(
+        `[${run.teamName}] Stale-runtime auto-heal restart failed for "${memberName}": ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    });
+  }
+
   private async restartMemberUnlocked(teamName: string, memberName: string): Promise<void> {
     const runId = this.getAliveRunId(teamName);
     if (!runId) {
@@ -27513,6 +27596,12 @@ export class TeamProvisioningService {
         processTableAvailable: memberProcessTableAvailable,
         nowIso: nowIso(),
       });
+      if (
+        run &&
+        this.isStaleRuntimeReconcileCandidate(run, memberName, status, resolved.livenessKind)
+      ) {
+        this.scheduleStaleRuntimeAutoHeal(run, memberName);
+      }
       const bootstrapTransportDiagnostic =
         status?.runtimeDiagnostic ?? launchMember?.runtimeDiagnostic;
       const bootstrapTransportDiagnosticSeverity =
