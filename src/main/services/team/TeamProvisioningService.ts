@@ -133,7 +133,7 @@ import {
   normalizeTeamMemberMcpPolicy,
   requiresStrictTeamMemberMcpConfig,
 } from '@shared/utils/teamMemberMcpPolicy';
-import { createCliAutoSuffixNameGuard, parseNumericSuffixName } from '@shared/utils/teamMemberName';
+import { createCliAutoSuffixNameGuard } from '@shared/utils/teamMemberName';
 import {
   inferTeamProviderIdFromModel,
   normalizeOptionalTeamProviderId,
@@ -336,6 +336,7 @@ import {
   isProvisionedButNotAliveFailureReason,
 } from './provisioning/TeamProvisioningLaunchFailurePolicy';
 import {
+  collectMemberNameIdentityAliases,
   isOpenCodeOverlayMemberRemoved,
   matchesExactTeamMemberName,
   matchesMemberNameOrBase,
@@ -454,6 +455,7 @@ import {
 } from './idleNotificationMainProcessSemantics';
 import { withInboxLock } from './inboxLock';
 import { getEffectiveInboxMessageId } from './inboxMessageIdentity';
+import { resolveMemberInboxFileName } from './memberInboxPath';
 import {
   buildProcessBootstrapPendingDiagnostic,
   buildProcessBootstrapTimeoutDiagnostic,
@@ -11670,7 +11672,7 @@ export class TeamProvisioningService {
     }
 
     const matches = expectedMembers.filter((memberName) =>
-      matchesObservedMemberNameForExpected(trimmedCandidate, memberName)
+      matchesObservedMemberNameForExpected(trimmedCandidate, memberName, expectedMembers)
     );
     return matches.length === 1 ? (matches[0] ?? null) : null;
   }
@@ -16281,7 +16283,12 @@ export class TeamProvisioningService {
     }
 
     for (const [candidateName, metadata] of input.liveRuntimeByMember.entries()) {
-      if (!matchesObservedMemberNameForExpected(candidateName, input.memberName)) {
+      if (
+        !matchesObservedMemberNameForExpected(candidateName, input.memberName, [
+          input.memberName,
+          ...input.liveRuntimeByMember.keys(),
+        ])
+      ) {
         continue;
       }
       if (metadata.backendType === 'in-process') {
@@ -16426,7 +16433,10 @@ export class TeamProvisioningService {
     const liveRuntimeMember =
       liveRuntimeByMember.get(memberName) ??
       [...liveRuntimeByMember.entries()].find(([candidateName]) =>
-        matchesObservedMemberNameForExpected(candidateName, memberName)
+        matchesObservedMemberNameForExpected(candidateName, memberName, [
+          memberName,
+          ...liveRuntimeByMember.keys(),
+        ])
       )?.[1];
     if (
       !replaceExistingRuntime &&
@@ -16694,7 +16704,11 @@ export class TeamProvisioningService {
     if (!run.expectedMembers.includes(memberName)) {
       return false;
     }
-    if (!spawnStatus || spawnStatus.bootstrapConfirmed === true || spawnStatus.hardFailure === true) {
+    if (
+      !spawnStatus ||
+      spawnStatus.bootstrapConfirmed === true ||
+      spawnStatus.hardFailure === true
+    ) {
       return false;
     }
     if (spawnStatus.skippedForLaunch === true) {
@@ -17992,7 +18006,10 @@ export class TeamProvisioningService {
     const liveRuntimeMember =
       liveRuntimeByMember.get(params.memberName) ??
       [...liveRuntimeByMember.entries()].find(([candidateName]) =>
-        matchesObservedMemberNameForExpected(candidateName, params.memberName)
+        matchesObservedMemberNameForExpected(candidateName, params.memberName, [
+          params.memberName,
+          ...liveRuntimeByMember.keys(),
+        ])
       )?.[1];
     return hasOpenCodeRuntimeEntryHandle(liveRuntimeMember);
   }
@@ -18106,7 +18123,10 @@ export class TeamProvisioningService {
     const metadata =
       runtimeByMember.get(memberName) ??
       [...runtimeByMember.entries()].find(([candidateName]) =>
-        matchesObservedMemberNameForExpected(candidateName, memberName)
+        matchesObservedMemberNameForExpected(candidateName, memberName, [
+          memberName,
+          ...runtimeByMember.keys(),
+        ])
       )?.[1];
     const acceptedAtMs = Date.parse(refreshedFirstSpawnAcceptedAt);
     const elapsedMs = Number.isFinite(acceptedAtMs) ? Date.now() - acceptedAtMs : Infinity;
@@ -26018,7 +26038,9 @@ export class TeamProvisioningService {
     member: string,
     messages: { messageId: string }[]
   ): Promise<void> {
-    const inboxPath = path.join(getTeamsBasePath(), teamName, 'inboxes', `${member}.json`);
+    const inboxDir = path.join(getTeamsBasePath(), teamName, 'inboxes');
+    const inboxFileName = await resolveMemberInboxFileName(inboxDir, member);
+    const inboxPath = path.join(inboxDir, `${inboxFileName}.json`);
 
     await withFileLock(inboxPath, async () => {
       await withInboxLock(inboxPath, async () => {
@@ -26213,15 +26235,19 @@ export class TeamProvisioningService {
         continue;
       }
 
-      const matchedRuntimeNames = [...registeredNames].filter((name) => {
-        if (name === expected) return true;
-        const parsed = parseNumericSuffixName(name);
-        return parsed !== null && parsed.suffix >= 2 && parsed.base === expected;
-      });
+      const matchedRuntimeNames = [...registeredNames].filter((name) =>
+        matchesObservedMemberNameForExpected(name, expected, run.expectedMembers)
+      );
 
       const runtimeAlive =
-        liveAgentNames.has(expected) ||
-        matchedRuntimeNames.some((runtimeName) => liveAgentNames.has(runtimeName));
+        [...liveAgentNames].some((liveName) =>
+          matchesObservedMemberNameForExpected(liveName, expected, run.expectedMembers)
+        ) ||
+        matchedRuntimeNames.some((runtimeName) =>
+          [...liveAgentNames].some((liveName) =>
+            matchesObservedMemberNameForExpected(liveName, runtimeName, run.expectedMembers)
+          )
+        );
 
       // A teammate may intentionally stay silent after bootstrap. If Claude Code
       // registered the runtime and the OS process is still alive, treat it as
@@ -26344,11 +26370,9 @@ export class TeamProvisioningService {
     }
 
     for (const expected of run.expectedMembers) {
-      const matchedRuntimeNames = [...registeredNames].filter((name) => {
-        if (name === expected) return true;
-        const parsed = parseNumericSuffixName(name);
-        return parsed !== null && parsed.suffix >= 2 && parsed.base === expected;
-      });
+      const matchedRuntimeNames = [...registeredNames].filter((name) =>
+        matchesObservedMemberNameForExpected(name, expected, run.expectedMembers)
+      );
 
       if (matchedRuntimeNames.length > 0) {
         continue;
@@ -26453,13 +26477,14 @@ export class TeamProvisioningService {
   ): Promise<Record<string, MemberSpawnStatusEntry>> {
     const runtimeByMember = await this.getLiveTeamAgentRuntimeMetadata(teamName);
     const nextStatuses = { ...statuses };
+    const statusKeys = Object.keys(nextStatuses);
     for (const [memberName, metadata] of runtimeByMember.entries()) {
       const resolvedStatusKey =
         nextStatuses[memberName] != null
           ? memberName
           : (() => {
-              const matches = Object.keys(nextStatuses).filter((candidateName) =>
-                matchesObservedMemberNameForExpected(memberName, candidateName)
+              const matches = statusKeys.filter((candidateName) =>
+                matchesObservedMemberNameForExpected(memberName, candidateName, statusKeys)
               );
               return matches.length === 1 ? matches[0] : null;
             })();
@@ -27579,10 +27604,12 @@ export class TeamProvisioningService {
         : this.shouldPreferCurrentLaunchMemberStatus(trackedStatus, adapterStatus)
           ? adapterStatus
           : (trackedStatus ?? adapterStatus ?? launchStatus);
+      const allExpectedMemberNames = [...metadataByMember.keys()];
       const resolved = resolveTeamMemberRuntimeLiveness({
         teamName,
         memberName,
         agentId: metadata.agentId,
+        allExpectedMemberNames,
         backendType: metadata.backendType,
         providerId: metadata.providerId ?? launchMember?.providerId,
         tmuxPaneId: metadata.tmuxPaneId,
@@ -31705,7 +31732,7 @@ export class TeamProvisioningService {
       };
       const isOpenCodeSecondaryLaneMember = isPersistedOpenCodeSecondaryLaneMember(current);
       const matchedConfigNames = [...configMembers].filter((name) =>
-        matchesObservedMemberNameForExpected(name, expected)
+        matchesObservedMemberNameForExpected(name, expected, persistedMemberNames)
       );
       const configBootstrapRunId = matchedConfigNames
         .map((name) => configBootstrapRunIds.get(name))
@@ -31740,7 +31767,7 @@ export class TeamProvisioningService {
         current.lastHeartbeatAt = current.lastHeartbeatAt ?? bootstrapMember.lastHeartbeatAt;
       }
       const runtimeMetadataCandidates = [...liveRuntimeByMember.entries()].filter(([name]) =>
-        matchesObservedMemberNameForExpected(name, expected)
+        matchesObservedMemberNameForExpected(name, expected, persistedMemberNames)
       );
       const runtimeMetadata =
         runtimeMetadataCandidates.find(([, metadata]) => metadata.alive) ??
@@ -34495,8 +34522,7 @@ export class TeamProvisioningService {
       compact: true,
       providerId:
         currentMembers.find((member) => member.name === leadName)?.providerId ??
-        currentMembers.find((member) => member.role?.toLowerCase().includes('lead'))
-          ?.providerId ??
+        currentMembers.find((member) => member.role?.toLowerCase().includes('lead'))?.providerId ??
         run.request.providerId,
     });
 
@@ -37306,8 +37332,16 @@ export class TeamProvisioningService {
       }
       const nextMissing = new Set<string>();
       for (const member of missing) {
-        const inboxPath = path.join(inboxDir, `${member}.json`);
-        if (!(await this.pathExists(inboxPath))) {
+        const inboxAliases = collectMemberNameIdentityAliases(member, run.expectedMembers);
+        let found = false;
+        for (const alias of inboxAliases) {
+          const inboxPath = path.join(inboxDir, `${alias}.json`);
+          if (await this.pathExists(inboxPath)) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
           nextMissing.add(member);
         }
       }
