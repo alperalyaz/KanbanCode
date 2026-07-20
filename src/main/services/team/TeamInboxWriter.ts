@@ -7,6 +7,7 @@ import { atomicWriteAsync } from './atomicWrite';
 import { withFileLock } from './fileLock';
 import { withInboxLock } from './inboxLock';
 import { getEffectiveInboxMessageId } from './inboxMessageIdentity';
+import { resolveMemberInboxFileName, resolveMemberInboxPath } from './memberInboxPath';
 
 import type { InboxMessage, SendMessageRequest, SendMessageResult, TaskRef } from '@shared/types';
 
@@ -53,7 +54,9 @@ export interface CorrelateRuntimeDeliveryReplyResult {
 
 export class TeamInboxWriter {
   async sendMessage(teamName: string, request: SendMessageRequest): Promise<SendMessageResult> {
-    const inboxPath = path.join(getTeamsBasePath(), teamName, 'inboxes', `${request.member}.json`);
+    const inboxDir = path.join(getTeamsBasePath(), teamName, 'inboxes');
+    const inboxFileName = await resolveMemberInboxFileName(inboxDir, request.member);
+    const inboxPath = resolveMemberInboxPath(getTeamsBasePath(), teamName, inboxFileName);
     const messageId = request.messageId?.trim() || randomUUID();
 
     const attachmentMeta = request.attachments?.map((a) => ({
@@ -160,7 +163,9 @@ export class TeamInboxWriter {
       return { found: false, updated: false };
     }
 
-    const inboxPath = path.join(getTeamsBasePath(), teamName, 'inboxes', `${request.member}.json`);
+    const inboxDir = path.join(getTeamsBasePath(), teamName, 'inboxes');
+    const inboxFileName = await resolveMemberInboxFileName(inboxDir, request.member);
+    const inboxPath = resolveMemberInboxPath(getTeamsBasePath(), teamName, inboxFileName);
     let result: UpdateInboxMessageTextResult = { found: false, updated: false };
 
     await withFileLock(inboxPath, async () => {

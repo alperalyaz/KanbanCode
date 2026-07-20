@@ -11,6 +11,8 @@ import {
 import { CARD_ICON_MUTED } from '@renderer/constants/cssVariables';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
+import { useStore } from '@renderer/store';
+import { selectTeamDataForName } from '@renderer/store/team/teamDataSelectors';
 
 import { MemberBadge } from '../MemberBadge';
 import { MemberColorAvatar } from '../MemberColorAvatar';
@@ -140,7 +142,8 @@ export const MessageExpandDialog = memo(function MessageExpandDialog({
   if (expandedItem) lastItemRef.current = expandedItem;
   const displayItem = expandedItem ?? lastItemRef.current;
 
-  const ctx = useMemo(() => buildMessageContext(members), [members]);
+  const teamUserColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
+  const ctx = useMemo(() => buildMessageContext(members, teamUserColor), [members, teamUserColor]);
 
   const handleMemberNameClick = useCallback(
     (name: string) => {

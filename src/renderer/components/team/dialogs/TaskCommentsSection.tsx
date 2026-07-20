@@ -17,6 +17,7 @@ import { useMarkCommentsRead } from '@renderer/hooks/useMarkCommentsRead';
 import { useTaskSuggestions } from '@renderer/hooks/useTaskSuggestions';
 import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
 import { useStore } from '@renderer/store';
+import { selectTeamDataForName } from '@renderer/store/team/teamDataSelectors';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
 import { buildReplyBlock, parseMessageReply } from '@renderer/utils/agentMessageFormatting';
 import { isImageMimeType } from '@renderer/utils/attachmentUtils';
@@ -118,7 +119,11 @@ export const TaskCommentsSection = ({
 
   const draft = useDraftPersistence({ key: `taskComment:${teamName}:${taskId}` });
   const chipDraft = useChipDraftPersistence(`taskCommentChips:${teamName}:${taskId}`);
-  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
+  const teamUserColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
+  const colorMap = useMemo(
+    () => buildMemberColorMap(members, teamUserColor),
+    [members, teamUserColor]
+  );
   const { suggestions: teamMentionSuggestions } = useTeamSuggestions(teamName);
   const { suggestions: taskSuggestions } = useTaskSuggestions(teamName);
   const teamNamesForLinkify = useMemo(

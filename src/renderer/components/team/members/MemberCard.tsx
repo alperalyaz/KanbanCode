@@ -45,10 +45,11 @@ import {
   Undo2,
 } from 'lucide-react';
 
-import { CurrentTaskIndicator } from './CurrentTaskIndicator';
-import { MemberLaunchDiagnosticsButton } from './MemberLaunchDiagnosticsButton';
+import { LiveWorkingStatusStrip } from '../activity/LiveWorkingStatusStrip';
 import { MemberColorAvatar } from '../MemberColorAvatar';
 
+import { CurrentTaskIndicator } from './CurrentTaskIndicator';
+import { MemberLaunchDiagnosticsButton } from './MemberLaunchDiagnosticsButton';
 import { MemberPresenceDot } from './MemberPresenceDot';
 
 import type { MemberActivityTimerAnchor } from '@renderer/utils/memberActivityTimer';
@@ -1234,24 +1235,44 @@ export const MemberCard = memo(function MemberCard({
                 <>
                   {runtimeAdvisoryTone === 'error' ? (
                     <AlertTriangle className="size-3 shrink-0 text-red-400" />
-                  ) : (
-                    <SyncedLoader2
-                      className={`size-3 shrink-0 ${runtimeAdvisoryLabel ? 'text-amber-400' : ''}`}
-                      style={runtimeAdvisoryLabel ? undefined : { color: colors.border }}
+                  ) : teamName ? (
+                    <LiveWorkingStatusStrip
+                      teamName={teamName}
+                      members={[member]}
+                      variant="member"
+                      memberName={member.name}
+                      leadActivity={leadActivity}
+                      awaitingFallbackLabel={
+                        runtimeAdvisoryLabel ?? t('activity.pendingReplies.awaitingReply')
+                      }
                     />
+                  ) : (
+                    <>
+                      <SyncedLoader2
+                        className={`size-3 shrink-0 ${runtimeAdvisoryLabel ? 'text-amber-400' : ''}`}
+                        style={runtimeAdvisoryLabel ? undefined : { color: colors.border }}
+                      />
+                      <span
+                        className={`shrink-0 text-[10px] ${
+                          runtimeAdvisoryLabel ? 'text-amber-300' : 'text-[var(--color-text-muted)]'
+                        }`}
+                        title={
+                          runtimeAdvisoryTitle ??
+                          t('activity.pendingReplies.messageSentAwaitingReply')
+                        }
+                      >
+                        {runtimeAdvisoryLabel ?? t('activity.pendingReplies.awaitingReply')}
+                      </span>
+                    </>
                   )}
-                  <span
-                    className={`shrink-0 text-[10px] ${
-                      runtimeAdvisoryTone === 'error'
-                        ? 'text-red-300'
-                        : runtimeAdvisoryLabel
-                          ? 'text-amber-300'
-                          : 'text-[var(--color-text-muted)]'
-                    }`}
-                    title={runtimeAdvisoryTitle ?? 'Message sent, awaiting reply'}
-                  >
-                    {runtimeAdvisoryLabel ?? 'awaiting reply'}
-                  </span>
+                  {runtimeAdvisoryTone === 'error' ? (
+                    <span
+                      className="shrink-0 text-[10px] text-red-300"
+                      title={runtimeAdvisoryTitle ?? undefined}
+                    >
+                      {runtimeAdvisoryLabel}
+                    </span>
+                  ) : null}
                   {canRelaunchRuntimeAdvisoryOpenCode ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1287,6 +1308,15 @@ export const MemberCard = memo(function MemberCard({
                     />
                   ) : null}
                 </>
+              ) : null}
+              {!activityTask && !isAwaitingReply && teamName ? (
+                <LiveWorkingStatusStrip
+                  teamName={teamName}
+                  members={[member]}
+                  variant="member"
+                  memberName={member.name}
+                  leadActivity={leadActivity}
+                />
               ) : null}
             </div>
             {showStartingSkeleton ? (
@@ -1490,7 +1520,7 @@ export const MemberCard = memo(function MemberCard({
                         aria-label={
                           retryingLaunch ? restartActionBusyLabel : restartActionIdleLabel
                         }
-                        className="rounded p-1 text-zinc-600 dark:text-zinc-300 transition-colors hover:bg-zinc-500/10 hover:text-zinc-800 dark:hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded p-1 text-zinc-600 transition-colors hover:bg-zinc-500/10 hover:text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-300 dark:hover:text-zinc-100"
                         disabled={retryingLaunch}
                         onClick={handleRestartMember}
                       >

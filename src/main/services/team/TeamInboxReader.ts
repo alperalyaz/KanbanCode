@@ -8,6 +8,7 @@ import * as path from 'path';
 
 import { estimateCachedValueBytes } from './cacheMemoryEstimate';
 import { getEffectiveInboxMessageId } from './inboxMessageIdentity';
+import { resolveMemberInboxFileName, resolveMemberInboxPath } from './memberInboxPath';
 
 import type { InboxMessage } from '@shared/types';
 
@@ -494,7 +495,9 @@ export class TeamInboxReader {
   }
 
   async getMessagesFor(teamName: string, member: string): Promise<InboxMessage[]> {
-    const inboxPath = path.join(getTeamsBasePath(), teamName, 'inboxes', `${member}.json`);
+    const inboxDir = path.join(getTeamsBasePath(), teamName, 'inboxes');
+    const inboxFileName = await resolveMemberInboxFileName(inboxDir, member);
+    const inboxPath = resolveMemberInboxPath(getTeamsBasePath(), teamName, inboxFileName);
 
     let raw: string;
     let signature: InboxFileSignature;
@@ -588,7 +591,9 @@ export class TeamInboxReader {
     member: string,
     options: { cursor?: InboxMessageCursor | null; limit: number }
   ): Promise<InboxMessagesWindow> {
-    const inboxPath = path.join(getTeamsBasePath(), teamName, 'inboxes', `${member}.json`);
+    const inboxDir = path.join(getTeamsBasePath(), teamName, 'inboxes');
+    const inboxFileName = await resolveMemberInboxFileName(inboxDir, member);
+    const inboxPath = resolveMemberInboxPath(getTeamsBasePath(), teamName, inboxFileName);
     const limit = Math.max(1, Math.floor(options.limit));
     const sourceRevisionHash = createHash('sha256');
     let raw: string;
