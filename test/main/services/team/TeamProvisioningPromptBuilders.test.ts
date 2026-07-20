@@ -51,6 +51,24 @@ describe('TeamProvisioningPromptBuilders', () => {
     );
   });
 
+  it('forbids inventing an empty board from an empty lead_briefing queue', () => {
+    const prompt = buildPersistentLeadContext({
+      teamName: 'atlas-hq',
+      leadName: 'Lider',
+      isSolo: false,
+      members: [
+        { name: 'Lider', role: 'team-lead' },
+        { name: 'Hacivat', role: 'developer' },
+      ] as TeamCreateRequest['members'],
+    });
+
+    expect(prompt).toContain('do NOT say "board is empty"');
+    expect(prompt).toContain('"No lead action items" from lead_briefing is NOT an empty board');
+    expect(prompt).toContain(
+      'lead_briefing showing "No lead action items" means YOUR oversight queue is empty'
+    );
+  });
+
   it('requires non-solo leads to seed the full pending backlog before starting work', () => {
     const prompt = buildPersistentLeadContext({
       teamName: 'signal-ops',
