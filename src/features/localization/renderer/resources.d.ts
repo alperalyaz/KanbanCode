@@ -398,6 +398,12 @@ export default interface Resources {
       teammateFallback: 'teammate';
       unassigned: 'Unassigned';
     };
+    mentionable: {
+      tips: {
+        mentions: 'Tip: Use @ for people or files.';
+        tasks: 'Tip: Use # to link an existing task.';
+      };
+    };
     notifications: {
       actions: {
         back: 'Go back';
@@ -4064,7 +4070,6 @@ export default interface Resources {
         charsLeft_other: '{{count}} chars left';
         crossTeamPlaceholder: 'Cross-team message to {{team}}...';
         placeholder: 'Write a message... (Enter to send, Shift+Enter for new line)';
-        slashTip: 'Tip: You can use "/" to run any Claude commands.';
         teamFallback: 'team';
         teamLaunchingPlaceholder: 'Team is launching... message will be queued for inbox delivery.';
       };
@@ -4097,6 +4102,15 @@ export default interface Resources {
         online: 'online';
         onlineTitle: 'Online';
         thisTeam: 'This team';
+      };
+      tips: {
+        actionMode: 'Tip: Ask = talk only. Delegate = the lead orchestrates the team. Shift+Tab cycles modes.';
+        attachments: 'Tip: Attach files with the paperclip, paste, or drag and drop.';
+        mentions: 'Tip: Use @ to mention teammates or attach project files.';
+        recipient: 'Tip: Choose the recipient to message the lead or a specific teammate.';
+        send: 'Tip: Enter sends. Shift+Enter adds a new line.';
+        slash: 'Tip: Type / to run lead slash commands and skills (lead must be online).';
+        tasks: 'Tip: Use # to link an existing kanban task in your message.';
       };
     };
     messages: {
