@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
+import { useStore } from '@renderer/store';
 import { computePendingCrossTeamReplies } from '@renderer/utils/crossTeamPendingReplies';
 import { isDisplayableCurrentTask } from '@renderer/utils/teamTaskDisplayState';
 import { ChevronRight } from 'lucide-react';
 
 import { ActiveTasksBlock } from '../activity/ActiveTasksBlock';
+import { LiveWorkingStatusStrip } from '../activity/LiveWorkingStatusStrip';
 import { PendingRepliesBlock } from '../activity/PendingRepliesBlock';
 
 import type { InboxMessage, ResolvedTeamMember, TeamTaskWithKanban } from '@shared/types';
 
 interface StatusBlockProps {
+  teamName: string;
   members: ResolvedTeamMember[];
   tasks: TeamTaskWithKanban[];
   messages: InboxMessage[];
@@ -30,6 +33,7 @@ interface StatusBlockProps {
  * text selection in messages is not disrupted.
  */
 export const StatusBlock = ({
+  teamName,
   members,
   tasks,
   messages,
@@ -42,6 +46,18 @@ export const StatusBlock = ({
   const { t } = useAppTranslation('team');
   const [collapsed, setCollapsed] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const leadActivity = useStore((s) => s.leadActivityByTeam[teamName]);
+  const hasLiveTools = useStore((s) => {
+    const active = s.activeToolsByTeam[teamName];
+    if (!active) return false;
+    for (const byId of Object.values(active)) {
+      for (const tool of Object.values(byId)) {
+        if (tool.state === 'running') return true;
+      }
+    }
+    return false;
+  });
+  const showLiveWorking = hasLiveTools || leadActivity === 'active';
 
   const pendingCrossTeamReplies = useMemo(
     () => computePendingCrossTeamReplies(messages, nowMs),
@@ -64,9 +80,10 @@ export const StatusBlock = ({
 
   /** Whether the Status block has any visible items. */
   const hasItems = useMemo(() => {
+    if (showLiveWorking) return true;
     if (hasPendingReplies) return true;
     return hasActiveTasks;
-  }, [hasActiveTasks, hasPendingReplies]);
+  }, [hasActiveTasks, hasPendingReplies, showLiveWorking]);
 
   // Only pending reply TTL labels need a 1-second refresh.
   useEffect(() => {
@@ -104,12 +121,19 @@ export const StatusBlock = ({
       ) : null}
       {!collapsed && (
         <div className={layout === 'overlay' ? 'mt-5' : ''}>
+          {showLiveWorking ? (
+            <LiveWorkingStatusStrip
+              teamName={teamName}
+              members={members}
+              leadActivity={leadActivity}
+            />
+          ) : null}
           {hasPendingReplies ? (
             <PendingRepliesBlock
               members={members}
               pendingRepliesByMember={pendingRepliesByMember}
               pendingCrossTeamReplies={pendingCrossTeamReplies}
-              headerRight={flowInlineToggle}
+              headerRight={!showLiveWorking ? flowInlineToggle : undefined}
               onMemberClick={onMemberClick}
             />
           ) : null}
@@ -117,10 +141,13 @@ export const StatusBlock = ({
             members={members}
             tasks={tasks}
             defaultCollapsed={position === 'sidebar'}
-            headerRight={!hasPendingReplies ? flowInlineToggle : undefined}
+            headerRight={!hasPendingReplies && !showLiveWorking ? flowInlineToggle : undefined}
             onMemberClick={onMemberClick}
             onTaskClick={onTaskClick}
           />
+          {showLiveWorking && !hasPendingReplies && !hasActiveTasks && flowInlineToggle ? (
+            <div className="mb-2 flex justify-end">{flowInlineToggle}</div>
+          ) : null}
         </div>
       )}
     </>

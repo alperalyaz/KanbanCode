@@ -13,15 +13,24 @@ Start here:
 
 GitHub repository disambiguation:
 
-- For this workspace, the canonical GitHub repository is `777genius/agent-teams-ai`.
-- When reviewing or discussing PR `#126`, inspect `777genius/agent-teams-ai#126` unless the user explicitly names another repository.
-- Do not confuse this workspace with upstream or similarly named forks such as `matt1398/claude-devtools`.
+- **This workspace is the KanbanCode fork:** `alperalyaz/KanbanCode` (https://github.com/alperalyaz/kanbancode). Open issues, PRs, and release work here unless the user explicitly names another repository.
+- **Upstream project:** `777genius/agent-teams-ai` (https://github.com/777genius/agent-teams-ai). KanbanCode is an AGPL-3.0 fork; credit and upstream-only bugs belong there.
+- When reviewing upstream PR `#126`, inspect `777genius/agent-teams-ai#126` unless the user explicitly names this fork's PR number instead.
+- Do not confuse this workspace with other similarly named forks such as `matt1398/claude-devtools`.
 
 Default local run target:
 
 - Use the desktop Electron app: `pnpm dev`
 - Do not start the browser/web dev mode for normal development or smoke checks. The browser path is limited and lacks the full desktop runtime, IPC, terminal, provider auth, and team lifecycle behavior.
 - When documenting or recommending startup commands, point contributors to the desktop app unless a task explicitly asks for browser-mode internals.
+
+Windows / Microsoft Store release:
+
+- Prefer GitHub Actions over a local Windows machine: **Actions → Release → Run workflow**.
+- Leave `release_tag` empty — the workflow reads `package.json` version and creates `vX.Y.Z`.
+- Artifacts: `KanbanCode.Setup.<version>.exe` (sideload) and `KanbanCode.<version>.appx` (Partner Center / Store).
+- Runtime binaries come from the public upstream tag in `runtime.lock.json`; do not point staging at this fork's app tag.
+- The upstream multi-platform release flow (mac notarization, terminal-platform, private runtime dispatch) does not apply to this fork.
 
 Critical real-project safety:
 

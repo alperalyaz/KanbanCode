@@ -100,7 +100,7 @@ import { isEphemeralProjectPath } from '@shared/utils/ephemeralProjectPath';
 import { DEFAULT_PROVIDER_MODEL_SELECTION } from '@shared/utils/providerModelSelection';
 import { resolveTeamLeadColorName } from '@shared/utils/teamMemberColors';
 import { isTeamProviderId, normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
-import { AlertTriangle, CheckCircle2, Info, Loader2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FolderOpen, Info, Loader2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { AdvancedCliSection } from './AdvancedCliSection';
@@ -122,7 +122,11 @@ import {
   isDeletedProjectPathSelection,
   isSelectableProjectPathProject,
 } from './projectPathOptions';
-import { loadProjectPathProjects, type ProjectPathProject } from './projectPathProjects';
+import {
+  loadProjectPathProjects,
+  type ProjectPathProject,
+  syntheticProjectFromPath,
+} from './projectPathProjects';
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { buildProviderPrepareModelCacheKey } from './providerPrepareCacheKey';
 import {
@@ -503,6 +507,8 @@ export const CreateTeamDialog = ({
   const prepareIdleHandlesRef = useRef(new Set<ScheduledIdleHandle>());
   const prepareUnmountGenerationRef = useRef(0);
   const appliedDefaultProjectPathRef = useRef<string | null>(null);
+  const projectPathTouchedByUserRef = useRef(false);
+  const [showAlternateProjectPath, setShowAlternateProjectPath] = useState(false);
   const lastAutoDescriptionRef = useRef<string | null>(null);
   const legacyMemberNamesMigratedRef = useRef(false);
   const [fieldErrors, setFieldErrors] = useState<{
@@ -653,7 +659,29 @@ export const CreateTeamDialog = ({
     isEphemeralProjectPath(selectedProjectPath) || selectedProjectPathDeleted
       ? ''
       : selectedProjectPath.trim();
-  const effectiveCwd = cwdMode === 'project' ? selectedProjectCwd : customCwd.trim();
+  const knownCurrentProjectPath =
+    typeof defaultProjectPath === 'string' &&
+    defaultProjectPath.trim().length > 0 &&
+    !isEphemeralProjectPath(defaultProjectPath)
+      ? defaultProjectPath.trim()
+      : null;
+  const knownCurrentProjectName = knownCurrentProjectPath
+    ? (knownCurrentProjectPath.split(/[/\\]/).filter(Boolean).pop() ?? knownCurrentProjectPath)
+    : null;
+  const useCompactCurrentProject =
+    Boolean(knownCurrentProjectPath) &&
+    !showAlternateProjectPath &&
+    cwdMode === 'project' &&
+    (selectedProjectPath.length === 0 ||
+      (knownCurrentProjectPath != null &&
+        normalizePath(selectedProjectPath) === normalizePath(knownCurrentProjectPath)));
+  // Prefer the already-open app project when Create Team opens inside that folder.
+  // Do not wait on project-list IPC / selector state before cwd is usable.
+  const effectiveCwd =
+    cwdMode === 'project'
+      ? selectedProjectCwd ||
+        (useCompactCurrentProject && knownCurrentProjectPath ? knownCurrentProjectPath : '')
+      : customCwd.trim();
   const dialogTeamNameKey = sanitizeTeamName(teamName.trim());
   /** All taken names: existing teams + teams currently being provisioned. */
   const allTakenTeamNames = useMemo(
@@ -761,11 +789,11 @@ export const CreateTeamDialog = ({
     if (!teamName.trim()) {
       return 1;
     }
-    if (launchTeam && !effectiveCwd) {
+    if (launchTeam && !effectiveCwd && !knownCurrentProjectPath) {
       return 2;
     }
     return 3;
-  }, [effectiveCwd, launchTeam, teamName]);
+  }, [effectiveCwd, knownCurrentProjectPath, launchTeam, teamName]);
   const openCodeProviderStatus = runtimeProviderStatusById.get('opencode');
   const firstRunConnectPath = firstRunMode ? getFirstRunConnectPath() : null;
   const openCodeCatalogStillLoading =
@@ -1096,7 +1124,13 @@ export const CreateTeamDialog = ({
       setPrepareState('idle');
       setPrepareWarnings([]);
       setPrepareChecks([]);
-      setPrepareMessage(t('create.prepare.selectWorkingDirectory'));
+      setPrepareMessage(
+        knownCurrentProjectPath
+          ? t('create.prepare.usingCurrentProject', {
+              project: knownCurrentProjectName ?? knownCurrentProjectPath,
+            })
+          : t('create.prepare.selectWorkingDirectory')
+      );
       return;
     }
 
@@ -1323,6 +1357,8 @@ export const CreateTeamDialog = ({
     canCreate,
     launchTeam,
     effectiveCwd,
+    knownCurrentProjectPath,
+    knownCurrentProjectName,
     effectiveMemberDrafts,
     effectiveAnthropicRuntimeLimitContext,
     prepareProviderInvalidationEpochById,
@@ -1340,6 +1376,19 @@ export const CreateTeamDialog = ({
     if (!open) {
       setWorkflowMentionSuggestionsEnabled(false);
       return;
+    }
+
+    // Seed the open app project immediately so Create Team does not wait on
+    // project-list IPC before cwd/preflight become ready.
+    if (
+      defaultProjectPath &&
+      !isEphemeralProjectPath(defaultProjectPath) &&
+      !projectPathTouchedByUserRef.current
+    ) {
+      const seeded = syntheticProjectFromPath(defaultProjectPath);
+      setProjects([seeded]);
+      setSelectedProjectPath(seeded.path);
+      appliedDefaultProjectPathRef.current = normalizePath(defaultProjectPath);
     }
 
     setProjectsLoading(true);
@@ -1361,7 +1410,7 @@ export const CreateTeamDialog = ({
         setProjectsError(
           error instanceof Error ? error.message : t('create.errors.loadProjectsFailed')
         );
-        setProjects([]);
+        setProjects((prev) => (prev.length > 0 ? prev : []));
       } finally {
         if (!cancelled) {
           setProjectsLoading(false);
@@ -1372,7 +1421,7 @@ export const CreateTeamDialog = ({
     return () => {
       cancelled = true;
     };
-  }, [open, defaultProjectPath, t]);
+  }, [open, defaultProjectPath, setSelectedProjectPath, t]);
 
   useEffect(() => {
     if (!open || !draftLoaded) {
@@ -1528,13 +1577,19 @@ export const CreateTeamDialog = ({
     }
   }, [descriptionDraft, initialData, open, suggestedTeamName, t, teamName]);
 
-  // Pre-select defaultProjectPath when projects loaded (only while dialog is open)
+  // Pre-select the currently open app project when the dialog opens.
+  // Keep syncing to defaultProjectPath until the user manually changes project/cwd.
   useEffect(() => {
     if (!open) {
       appliedDefaultProjectPathRef.current = null;
+      projectPathTouchedByUserRef.current = false;
+      setShowAlternateProjectPath(false);
       return;
     }
     if (cwdMode !== 'project') {
+      return;
+    }
+    if (projectPathTouchedByUserRef.current) {
       return;
     }
     const selectableProjects = projects.filter(isSelectableProjectPathProject);
@@ -1543,12 +1598,10 @@ export const CreateTeamDialog = ({
     }
     if (defaultProjectPath && !isEphemeralProjectPath(defaultProjectPath)) {
       const normalizedDefaultProjectPath = normalizePath(defaultProjectPath);
-      const defaultAlreadyApplied =
-        appliedDefaultProjectPathRef.current === normalizedDefaultProjectPath;
       const match = selectableProjects.find(
         (p) => normalizePath(p.path) === normalizedDefaultProjectPath
       );
-      if (match && !defaultAlreadyApplied) {
+      if (match) {
         appliedDefaultProjectPathRef.current = normalizedDefaultProjectPath;
         if (normalizePath(selectedProjectPath) !== normalizedDefaultProjectPath) {
           setSelectedProjectPath(match.path);
@@ -1558,16 +1611,6 @@ export const CreateTeamDialog = ({
     }
     if (selectedProjectPath) {
       return;
-    }
-    if (defaultProjectPath && !isEphemeralProjectPath(defaultProjectPath)) {
-      const normalizedDefaultProjectPath = normalizePath(defaultProjectPath);
-      const match = selectableProjects.find(
-        (p) => normalizePath(p.path) === normalizedDefaultProjectPath
-      );
-      if (match) {
-        setSelectedProjectPath(match.path);
-        return;
-      }
     }
     setSelectedProjectPath(selectableProjects[0].path);
   }, [open, cwdMode, projects, selectedProjectPath, defaultProjectPath, setSelectedProjectPath]);
@@ -1584,6 +1627,41 @@ export const CreateTeamDialog = ({
     }
     setSelectedProjectPath('');
   }, [open, cwdMode, projects, selectedProjectPath, setSelectedProjectPath]);
+
+  const handleCwdModeChange = useCallback(
+    (mode: 'project' | 'custom') => {
+      projectPathTouchedByUserRef.current = true;
+      setCwdMode(mode);
+    },
+    [setCwdMode]
+  );
+
+  const handleSelectedProjectPathChange = useCallback(
+    (path: string) => {
+      projectPathTouchedByUserRef.current = true;
+      setSelectedProjectPath(path);
+    },
+    [setSelectedProjectPath]
+  );
+
+  const handleCustomCwdChange = useCallback(
+    (path: string) => {
+      projectPathTouchedByUserRef.current = true;
+      setCustomCwd(path);
+    },
+    [setCustomCwd]
+  );
+
+  const handleUseCurrentProjectAgain = useCallback(() => {
+    if (!knownCurrentProjectPath) {
+      return;
+    }
+    projectPathTouchedByUserRef.current = false;
+    setShowAlternateProjectPath(false);
+    setCwdMode('project');
+    setSelectedProjectPath(knownCurrentProjectPath);
+    appliedDefaultProjectPathRef.current = normalizePath(knownCurrentProjectPath);
+  }, [knownCurrentProjectPath, setCwdMode, setSelectedProjectPath]);
 
   const { suggestions: taskSuggestions } = useTaskSuggestions(null, {
     enabled: workflowMentionSuggestionsEnabled,
@@ -2418,7 +2496,11 @@ export const CreateTeamDialog = ({
         </DialogHeader>
 
         {firstRunMode ? (
-          <FirstRunCreateStepIndicator currentStep={firstRunStep} className="shrink-0" />
+          <FirstRunCreateStepIndicator
+            currentStep={firstRunStep}
+            hasCurrentProject={Boolean(knownCurrentProjectPath)}
+            className="shrink-0"
+          />
         ) : null}
 
         {showFirstRunOpenCodeSetupHint ? (
@@ -2623,18 +2705,66 @@ export const CreateTeamDialog = ({
 
                 {launchTeam ? (
                   <div className="mt-4 space-y-4">
-                    <ProjectPathSelector
-                      cwdMode={cwdMode}
-                      onCwdModeChange={setCwdMode}
-                      selectedProjectPath={selectedProjectPath}
-                      onSelectedProjectPathChange={setSelectedProjectPath}
-                      customCwd={customCwd}
-                      onCustomCwdChange={setCustomCwd}
-                      projects={projects}
-                      projectsLoading={projectsLoading}
-                      projectsError={projectsError}
-                      fieldError={fieldErrors.cwd}
-                    />
+                    {useCompactCurrentProject && knownCurrentProjectPath ? (
+                      <div
+                        className="space-y-2 rounded-md border px-3 py-2.5"
+                        data-testid="create-team-current-project"
+                        style={{
+                          borderColor: 'var(--color-border)',
+                          backgroundColor: isLight
+                            ? 'color-mix(in srgb, var(--color-surface-overlay) 40%, white 60%)'
+                            : 'var(--color-surface)',
+                        }}
+                      >
+                        <div className="flex items-start gap-2">
+                          <FolderOpen className="mt-0.5 size-4 shrink-0 text-[var(--color-text-muted)]" />
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <p className="text-xs font-medium text-[var(--color-text)]">
+                              {t('create.currentProject.label', {
+                                project: knownCurrentProjectName ?? knownCurrentProjectPath,
+                              })}
+                            </p>
+                            <p className="truncate font-mono text-[11px] text-[var(--color-text-muted)]">
+                              {knownCurrentProjectPath}
+                            </p>
+                            <p className="text-[11px] text-[var(--color-text-muted)]">
+                              {t('create.currentProject.hint')}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-[11px] font-medium text-[var(--color-accent)] hover:underline"
+                          onClick={() => setShowAlternateProjectPath(true)}
+                        >
+                          {t('create.currentProject.useDifferent')}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <ProjectPathSelector
+                          cwdMode={cwdMode}
+                          onCwdModeChange={handleCwdModeChange}
+                          selectedProjectPath={selectedProjectPath}
+                          onSelectedProjectPathChange={handleSelectedProjectPathChange}
+                          customCwd={customCwd}
+                          onCustomCwdChange={handleCustomCwdChange}
+                          projects={projects}
+                          projectsLoading={projectsLoading}
+                          projectsError={projectsError}
+                          fieldError={fieldErrors.cwd}
+                        />
+                        {knownCurrentProjectPath && showAlternateProjectPath ? (
+                          <button
+                            type="button"
+                            className="text-[11px] font-medium text-[var(--color-accent)] hover:underline"
+                            onClick={handleUseCurrentProjectAgain}
+                          >
+                            {t('create.currentProject.useCurrent')}
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
 
                     {showAdvancedCreateOptions || !firstRunMode ? (
                       <OptionalSettingsSection

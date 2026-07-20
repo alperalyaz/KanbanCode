@@ -341,8 +341,10 @@
       })();
     </script>
     <div id="root"></div>
-    <script type="module">
-      import('./main.tsx');
-    </script>
+    <!-- Use src= (not an inline module import) so Vite does not create an
+         html-proxy entry. On Windows, folder casing mismatches
+         (C:\kanbancode vs C:\KanbanCode) make html-proxy lookups fail with
+         "No matching HTML proxy module found". -->
+    <script type="module" src="./main.tsx"></script>
   </body>
 </html>

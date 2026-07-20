@@ -1,3 +1,7 @@
+import {
+  isCodexChatGptBlockedModel,
+  resolveCodexChatGptLaunchModel,
+} from '@shared/utils/codexChatGptSunsetModels';
 import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { isDefaultProviderModelSelection } from '@shared/utils/providerModelSelection';
 
@@ -27,6 +31,7 @@ type CodexProviderStatusSource = Partial<
     | 'backend'
     | 'connection'
     | 'modelCatalog'
+    | 'modelAvailability'
     | 'runtimeCapabilities'
     | 'models'
   >
@@ -198,14 +203,70 @@ export function resolveCodexRuntimeSelection(params: {
     params.source.providerStatus?.providerId === 'codex' ? params.source.providerStatus : null;
   const source = { ...params.source, providerStatus };
   const catalog = getCodexCatalog(providerStatus);
-  const explicitModel = normalizeSelectedModel(params.selectedModel);
-  const catalogModel = findCatalogModel(catalog, explicitModel);
-  const resolvedLaunchModel =
+  const effectiveAuthMode = resolveEffectiveAuthMode(source);
+  const catalogUsable = catalog?.status === 'ready' || catalog?.status === 'stale';
+
+  let workingSelected = normalizeSelectedModel(params.selectedModel);
+  const unavailableModelIds =
+    providerStatus?.modelAvailability
+      ?.filter((entry) => entry.status === 'unavailable')
+      .map((entry) => entry.modelId) ?? [];
+
+  if (effectiveAuthMode === 'chatgpt' && workingSelected) {
+    // Prefer live catalog + probe availability. Clear selections that ChatGPT
+    // cannot launch so we fall through to the catalog's current default.
+    if (isCodexChatGptBlockedModel(workingSelected, unavailableModelIds)) {
+      workingSelected = null;
+    } else if (catalogUsable && !findCatalogModel(catalog, workingSelected)) {
+      workingSelected = null;
+    }
+  }
+
+  let catalogModel = findCatalogModel(catalog, workingSelected);
+  if (effectiveAuthMode === 'chatgpt' && workingSelected && !catalogModel && catalogUsable) {
+    workingSelected = null;
+    catalogModel = findCatalogModel(catalog, null);
+  }
+
+  const catalogDefault =
+    catalog?.defaultLaunchModel?.trim() || catalog?.defaultModelId?.trim() || null;
+
+  // Live catalog first: defaultLaunchModel → first safe catalog model → offline static default.
+  // Hardcoded model ids are not the strategy; the static catalog isDefault is only last resort.
+  const chatgptSafeDefault =
+    effectiveAuthMode === 'chatgpt'
+      ? resolveCodexChatGptLaunchModel({
+          selectedModel: workingSelected,
+          catalogDefault,
+          catalogModels: catalog?.models,
+          unavailableModelIds,
+        })
+      : null;
+
+  if (
+    effectiveAuthMode === 'chatgpt' &&
+    chatgptSafeDefault &&
+    (!catalogModel || isCodexChatGptBlockedModel(catalogModel.launchModel, unavailableModelIds))
+  ) {
+    catalogModel = findCatalogModel(catalog, chatgptSafeDefault);
+  }
+
+  const resolvedLaunchModelRaw =
     catalogModel?.launchModel?.trim() ||
-    explicitModel ||
-    catalog?.defaultLaunchModel?.trim() ||
-    catalog?.defaultModelId?.trim() ||
-    null;
+    (effectiveAuthMode === 'chatgpt' ? null : workingSelected) ||
+    (effectiveAuthMode === 'chatgpt' ? null : catalogDefault) ||
+    (effectiveAuthMode === 'chatgpt' ? chatgptSafeDefault : workingSelected);
+
+  const resolvedLaunchModel =
+    effectiveAuthMode === 'chatgpt'
+      ? resolveCodexChatGptLaunchModel({
+          selectedModel: resolvedLaunchModelRaw,
+          catalogDefault,
+          catalogModels: catalog?.models,
+          unavailableModelIds,
+        })
+      : resolvedLaunchModelRaw;
+
   const launch = resolveLaunchAllowed(source);
 
   return {
@@ -216,7 +277,7 @@ export function resolveCodexRuntimeSelection(params: {
     catalogStatus: catalog?.status ?? 'unavailable',
     catalogFetchedAt: catalog?.fetchedAt ?? null,
     providerBackendId: resolveBackendId(source),
-    effectiveAuthMode: resolveEffectiveAuthMode(source),
+    effectiveAuthMode,
     launchAllowed: launch.launchAllowed,
     launchReadinessState: launch.launchReadinessState,
     launchIssueMessage: launch.launchIssueMessage,

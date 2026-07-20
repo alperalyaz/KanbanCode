@@ -38,6 +38,8 @@ pnpm dev
 
 `pnpm dev` starts the desktop Electron app with hot reload. The desktop app is the supported way to run agent teams; the browser/web path is limited and not intended for normal use.
 
+On Windows, open the folder with its real casing (`C:\KanbanCode`, not `C:\kanbancode`). Mixed casing can break Vite's HTML proxy during `pnpm dev`.
+
 Repo working instructions live in [CLAUDE.md](CLAUDE.md).
 
 ### Scripts
@@ -50,10 +52,23 @@ Repo working instructions live in [CLAUDE.md](CLAUDE.md).
 | `pnpm lint`        | Lint (no auto-fix)                                      |
 | `pnpm test`        | Run all tests                                           |
 | `pnpm check`       | Full quality gate (types + lint + test + build)         |
-| `pnpm dist:win`    | Build Windows installer (`.exe` + `.appx`)              |
+| `pnpm dist:win`    | Build Windows installer (`.exe` + `.appx`) locally      |
 | `pnpm dist:mac:arm64` | Build macOS (Apple Silicon) `.dmg`                   |
 | `pnpm dist:mac:x64`   | Build macOS (Intel) `.dmg`                           |
 | `pnpm dist:linux`  | Build Linux `.AppImage` / `.deb` / `.rpm` / `.pacman`   |
+
+### GitHub Actions release (recommended)
+
+You do **not** need a local Windows machine to ship Store/installer builds.
+
+1. Open **Actions → Release → Run workflow**.
+2. Leave `release_tag` **empty** — it uses the version in `package.json` automatically (currently `2.1.6` → tag `v2.1.6`).
+3. Leave `publish_release` as `false` for a draft, or set `true` to publish immediately.
+4. When the run finishes, the draft/public GitHub Release contains:
+   - `KanbanCode.Setup.<version>.exe` — sideload / direct install
+   - `KanbanCode.<version>.appx` — upload to Microsoft Partner Center (Store)
+
+The workflow downloads the bundled agent runtime from the public upstream tag pinned in `runtime.lock.json`, packages both Windows targets with electron-builder, and uploads the artifacts. Partner Center re-signs the `.appx` for Store distribution.
 
 ## Security
 

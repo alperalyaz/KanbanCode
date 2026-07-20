@@ -1,10 +1,9 @@
-import { describe, expect, it } from 'vitest';
-
 import {
   buildDetectedErrorFromTeam,
   type TeamEventType,
   type TeamNotificationPayload,
 } from '@main/utils/teamNotificationBuilder';
+import { describe, expect, it } from 'vitest';
 
 function makePayload(overrides: Partial<TeamNotificationPayload> = {}): TeamNotificationPayload {
   return {
@@ -97,6 +96,7 @@ describe('buildDetectedErrorFromTeam', () => {
     task_review_requested: { triggerName: 'Review Requested', triggerColor: 'orange' },
     task_blocked: { triggerName: 'Task Blocked', triggerColor: 'red' },
     task_created: { triggerName: 'Task Created', triggerColor: 'green' },
+    task_done: { triggerName: 'Task Done', triggerColor: 'green' },
     all_tasks_completed: { triggerName: 'All Done', triggerColor: 'green' },
     cross_team_message: { triggerName: 'Cross-Team', triggerColor: 'cyan' },
     team_launched: { triggerName: 'Team Launched', triggerColor: 'green' },

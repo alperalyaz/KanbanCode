@@ -198,8 +198,8 @@ export const EditTeamDialog = ({
   useFileListCacheWarmer(projectPath ?? null);
   const clearTransientErrors = useEditTeamErrorReset(setError, setSaveOutcomeError);
   const effectiveResolvedMemberColorMap = useMemo(
-    () => resolvedMemberColorMap ?? buildMemberColorMap(currentMembers),
-    [currentMembers, resolvedMemberColorMap]
+    () => resolvedMemberColorMap ?? buildMemberColorMap(currentMembers, color || currentColor),
+    [color, currentColor, currentMembers, resolvedMemberColorMap]
   );
   const leadDraft = useMemo(() => {
     if (!leadMember) return null;
@@ -767,6 +767,9 @@ export const EditTeamDialog = ({
             <label className="label-optional mb-1 block text-xs font-medium">
               {t('editTeam.fields.colorOptional')}
             </label>
+            <p className="mb-2 text-[11px] leading-snug text-[var(--color-text-muted)]">
+              {t('editTeam.fields.colorHint')}
+            </p>
             <div className="flex flex-wrap gap-2">
               {TEAM_COLOR_NAMES.map((colorName) => {
                 const colorSet = getTeamColorSet(colorName);

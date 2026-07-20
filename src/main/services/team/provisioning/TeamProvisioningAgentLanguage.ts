@@ -38,7 +38,8 @@ export function getAgentLanguageInstruction(): string {
     `switching if they switch. This applies to every message to the user, every message to ` +
     `teammates or the lead, every status update, summary, task subject, and task description, ` +
     `including technical explanations, plans, and review notes — so the human can follow the whole ` +
-    `conversation. Only literal code, identifiers, file paths, and tool/command names keep their ` +
+    `conversation. Do NOT bounce between languages within one conversation when the user stays in one ` +
+    `language. Only literal code, identifiers, file paths, and tool/command names keep their ` +
     `original form; the surrounding prose follows the user's language. ` +
     `Until the user has written anything, default to ${defaultLanguageName}.`
   );

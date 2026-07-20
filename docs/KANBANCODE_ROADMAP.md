@@ -37,6 +37,14 @@ Core to keep: team creation + agent process management + kanban board + messagin
 
 ## Status log
 
+- **2026-07-13 (cloud session)** — **GitHub Actions Windows release (exe + appx).**
+  Replaced upstream multi-platform `release.yml` (broken here: terminal-platform removed,
+  `RUNTIME_BUILD_DISPATCH_TOKEN` unavailable, appx not uploaded, Agent Teams asset names)
+  with a single `windows-latest` workflow that stages runtime from `runtime.lock.json`,
+  runs `pnpm pack:win`, uploads `KanbanCode.Setup.*.exe` + `KanbanCode.*.appx` to a draft
+  GitHub Release, and also keeps Actions artifacts for 14 days. Trigger: Actions → Release
+  → Run workflow (`release_tag=vX.Y.Z`, optional `publish_release`).
+
 - **2026-07-09 (cloud session)** — **Connect & Go first-run + inline API keys.**
   (1) Optimistic OpenCode: curated `opencode/big-pickle` floor is selectable before the
   full model catalog hydrates; checklist treats runtime-ready as model-ready.
@@ -143,7 +151,9 @@ Core to keep: team creation + agent process management + kanban board + messagin
   `agent-teams-ai`); Sentry release prefix → `kanbancode@`. **Sentry finding:** DSN is injected at
   build time from `SENTRY_DSN` env (upstream CI secret) — local/Store builds compile with an empty
   DSN, so Sentry is already a no-op; full package removal can wait for the pruning phase.
-  Not touched: `.github/workflows/release.yml` (upstream CI, needs its own pass if fork ever uses it).
+  Release CI: `.github/workflows/release.yml` rewritten for KanbanCode Windows-only
+  (NSIS `.exe` + Store `.appx`) via `workflow_dispatch` — no local Windows toolchain,
+  no mac/linux signing secrets, runtime staged from `runtime.lock.json` public upstream.
 
 - **2026-07-02** — Built-in code editor and team-graph visualization removed (commit `4359e7b6` + earlier commits). Typecheck green after cleaning ~250 leftover errors (orphaned tests deleted, preload/MarkdownViewer/MemberBadge/KanbanTaskCard fixes). i18n types regenerated. Branch `claude/agent-teams-ai-overview-f8n3rm` merged into `main` and deleted; all work now on `main`.
 - **2026-07-02** — Full vitest suite after clean install: 9219 passed / 50 failed / 69 skipped. Known local-machine quirks: `node_modules/.bin` can end up empty → run tools via `node node_modules/vitest/vitest.mjs run`; a stale process once locked `node-pty` and broke `pnpm install`.
