@@ -1,8 +1,6 @@
 import {
-  CODEX_CHATGPT_FALLBACK_MODEL,
-  isCodexChatGptSunsetModel,
-  pickCodexChatGptSafeModel,
-  remapCodexModelForChatGptAccount,
+  isCodexChatGptBlockedModel,
+  resolveCodexChatGptLaunchModel,
 } from '@shared/utils/codexChatGptSunsetModels';
 import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { isDefaultProviderModelSelection } from '@shared/utils/providerModelSelection';
@@ -33,6 +31,7 @@ type CodexProviderStatusSource = Partial<
     | 'backend'
     | 'connection'
     | 'modelCatalog'
+    | 'modelAvailability'
     | 'runtimeCapabilities'
     | 'models'
   >
@@ -208,11 +207,15 @@ export function resolveCodexRuntimeSelection(params: {
   const catalogUsable = catalog?.status === 'ready' || catalog?.status === 'stale';
 
   let workingSelected = normalizeSelectedModel(params.selectedModel);
+  const unavailableModelIds =
+    providerStatus?.modelAvailability
+      ?.filter((entry) => entry.status === 'unavailable')
+      .map((entry) => entry.modelId) ?? [];
+
   if (effectiveAuthMode === 'chatgpt' && workingSelected) {
-    // ChatGPT subscriptions no longer support sunset Codex models. Clear the
-    // selection so we fall through to a ChatGPT-safe catalog default instead of
-    // launching a guaranteed-to-fail --model.
-    if (isCodexChatGptSunsetModel(workingSelected)) {
+    // Prefer live catalog + probe availability. Clear selections that ChatGPT
+    // cannot launch so we fall through to the catalog's current default.
+    if (isCodexChatGptBlockedModel(workingSelected, unavailableModelIds)) {
       workingSelected = null;
     } else if (catalogUsable && !findCatalogModel(catalog, workingSelected)) {
       workingSelected = null;
@@ -227,18 +230,23 @@ export function resolveCodexRuntimeSelection(params: {
 
   const catalogDefault =
     catalog?.defaultLaunchModel?.trim() || catalog?.defaultModelId?.trim() || null;
-  const catalogModelIds =
-    catalog?.models.map((model) => model.launchModel?.trim() || model.id?.trim()) ?? [];
-  // Important: Codex config.toml may still list gpt-5.3-codex as the default.
-  // ChatGPT auth must never inherit that — pick the first non-sunset catalog model.
-  const chatgptSafeDefault = pickCodexChatGptSafeModel(
-    [catalogDefault, ...catalogModelIds],
-    CODEX_CHATGPT_FALLBACK_MODEL
-  );
+
+  // Live catalog first: defaultLaunchModel → first safe catalog model → offline static default.
+  // Hardcoded model ids are not the strategy; the static catalog isDefault is only last resort.
+  const chatgptSafeDefault =
+    effectiveAuthMode === 'chatgpt'
+      ? resolveCodexChatGptLaunchModel({
+          selectedModel: workingSelected,
+          catalogDefault,
+          catalogModels: catalog?.models,
+          unavailableModelIds,
+        })
+      : null;
 
   if (
     effectiveAuthMode === 'chatgpt' &&
-    (!catalogModel || isCodexChatGptSunsetModel(catalogModel.launchModel))
+    chatgptSafeDefault &&
+    (!catalogModel || isCodexChatGptBlockedModel(catalogModel.launchModel, unavailableModelIds))
   ) {
     catalogModel = findCatalogModel(catalog, chatgptSafeDefault);
   }
@@ -251,8 +259,12 @@ export function resolveCodexRuntimeSelection(params: {
 
   const resolvedLaunchModel =
     effectiveAuthMode === 'chatgpt'
-      ? (remapCodexModelForChatGptAccount(resolvedLaunchModelRaw, chatgptSafeDefault) ??
-        chatgptSafeDefault)
+      ? resolveCodexChatGptLaunchModel({
+          selectedModel: resolvedLaunchModelRaw,
+          catalogDefault,
+          catalogModels: catalog?.models,
+          unavailableModelIds,
+        })
       : resolvedLaunchModelRaw;
 
   const launch = resolveLaunchAllowed(source);

@@ -18,7 +18,7 @@ export {
 type SupportedProviderId = CliProviderId | TeamProviderId;
 type RuntimeAwareProviderStatus = Pick<
   CliProviderStatus,
-  'providerId' | 'authMethod' | 'backend' | 'modelCatalog'
+  'providerId' | 'authMethod' | 'backend' | 'modelCatalog' | 'modelAvailability'
 >;
 type RuntimeModelCatalog = NonNullable<RuntimeAwareProviderStatus['modelCatalog']>;
 type RuntimeCatalogModel = RuntimeModelCatalog['models'][number];
@@ -652,7 +652,15 @@ function isRuntimeHiddenTeamModel(
   if (!isCodexChatGptSubscriptionProviderStatus(providerStatus)) {
     return false;
   }
-  return model === 'gpt-5.1-codex-max' || isCodexChatGptSunsetModel(model);
+  if (model === 'gpt-5.1-codex-max' || isCodexChatGptSunsetModel(model)) {
+    return true;
+  }
+  // Live probe results: hide models Codex already marked unavailable for this account.
+  return (providerStatus?.modelAvailability ?? []).some(
+    (entry) =>
+      entry.status === 'unavailable' &&
+      entry.modelId.trim().toLowerCase() === model.trim().toLowerCase()
+  );
 }
 
 function getRuntimeCatalogLaunchModels(

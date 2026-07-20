@@ -64,3 +64,13 @@ export function createStaticCodexModelCatalogModels(): CliProviderModelCatalogIt
     }),
   ];
 }
+
+/** Offline last resort: whatever the static catalog marks as default (tracks catalog bumps). */
+export function getStaticCodexDefaultLaunchModel(): string {
+  const models = createStaticCodexModelCatalogModels();
+  return (
+    models.find((model) => model.isDefault)?.launchModel?.trim() ||
+    models[0]?.launchModel?.trim() ||
+    'gpt-5.5'
+  );
+}

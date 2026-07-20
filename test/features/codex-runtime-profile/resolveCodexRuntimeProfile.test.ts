@@ -256,6 +256,51 @@ describe('resolveCodexRuntimeProfile', () => {
     expect(selection.catalogModel?.launchModel).toBe('gpt-5.5');
   });
 
+  it('auto-picks a newer live catalog default without requiring a hardcoded model id', () => {
+    const selection = resolveCodexRuntimeSelection({
+      source: {
+        providerStatus: makeProviderStatus({
+          modelCatalog: makeCodexCatalog({
+            defaultModelId: 'gpt-5.9',
+            defaultLaunchModel: 'gpt-5.9',
+            models: [
+              {
+                id: 'gpt-5.9',
+                launchModel: 'gpt-5.9',
+                displayName: 'GPT-5.9',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                defaultReasoningEffort: 'medium',
+                inputModalities: ['text'],
+                supportsPersonality: false,
+                isDefault: true,
+                upgrade: false,
+                source: 'app-server',
+              },
+              {
+                id: 'gpt-5.5',
+                launchModel: 'gpt-5.5',
+                displayName: 'GPT-5.5',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                defaultReasoningEffort: 'medium',
+                inputModalities: ['text'],
+                supportsPersonality: false,
+                isDefault: false,
+                upgrade: false,
+                source: 'app-server',
+              },
+            ],
+          }),
+        }),
+      },
+      selectedModel: 'default',
+    });
+
+    expect(selection.resolvedLaunchModel).toBe('gpt-5.9');
+    expect(selection.catalogModel?.launchModel).toBe('gpt-5.9');
+  });
+
   it('still allows sunset Codex models when auth is API key', () => {
     const selection = resolveCodexRuntimeSelection({
       source: {

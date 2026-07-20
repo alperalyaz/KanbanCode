@@ -104,7 +104,7 @@ import { resolveAnthropicLaunchModel } from '@shared/utils/anthropicLaunchModel'
 import { getAnthropicDefaultTeamModel } from '@shared/utils/anthropicModelDefaults';
 import { parseCliArgs } from '@shared/utils/cliArgsParser';
 import {
-  CODEX_CHATGPT_FALLBACK_MODEL,
+  getCodexChatGptOfflineFallbackModel,
   isCodexChatGptSunsetModel,
   pickCodexChatGptSafeModel,
   remapCodexModelForChatGptAccount,
@@ -4732,7 +4732,7 @@ export class TeamProvisioningService {
                 providerStatus?.connection?.codex?.effectiveAuthMode === 'chatgpt' ||
                 providerStatus?.backend?.authMethodDetail === 'chatgpt') &&
               isCodexChatGptSunsetModel(defaultModel)
-            ? pickCodexChatGptSafeModel(modelIds, CODEX_CHATGPT_FALLBACK_MODEL)
+            ? pickCodexChatGptSafeModel(modelIds, getCodexChatGptOfflineFallbackModel())
             : defaultModel,
       modelIds,
       modelListParsed,
@@ -4996,7 +4996,7 @@ export class TeamProvisioningService {
         selection.resolvedLaunchModel?.trim() ||
         pickCodexChatGptSafeModel(
           [leadFacts.defaultModel, ...leadFacts.modelIds],
-          CODEX_CHATGPT_FALLBACK_MODEL
+          getCodexChatGptOfflineFallbackModel()
         );
       launchRequest = {
         ...launchRequest,
@@ -5009,8 +5009,8 @@ export class TeamProvisioningService {
         model:
           remapCodexModelForChatGptAccount(
             launchRequest.model,
-            leadFacts.defaultModel ?? CODEX_CHATGPT_FALLBACK_MODEL
-          ) ?? CODEX_CHATGPT_FALLBACK_MODEL,
+            leadFacts.defaultModel ?? getCodexChatGptOfflineFallbackModel()
+          ) ?? getCodexChatGptOfflineFallbackModel(),
       };
     }
 
@@ -20202,7 +20202,7 @@ export class TeamProvisioningService {
         const facts = await getProviderFacts('codex').catch(() => null);
         const safeDefault = pickCodexChatGptSafeModel(
           [facts?.defaultModel, ...(facts?.modelIds ?? [])],
-          CODEX_CHATGPT_FALLBACK_MODEL
+          getCodexChatGptOfflineFallbackModel()
         );
         const currentModel = effectiveMember.model?.trim() ?? '';
         // Force an explicit ChatGPT-safe model. Leaving "default"/empty lets the
@@ -20222,8 +20222,8 @@ export class TeamProvisioningService {
         const remapped =
           remapCodexModelForChatGptAccount(
             effectiveMember.model,
-            facts?.defaultModel ?? CODEX_CHATGPT_FALLBACK_MODEL
-          ) ?? CODEX_CHATGPT_FALLBACK_MODEL;
+            facts?.defaultModel ?? getCodexChatGptOfflineFallbackModel()
+          ) ?? getCodexChatGptOfflineFallbackModel();
         effectiveMember = { ...effectiveMember, model: remapped };
       }
 
