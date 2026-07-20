@@ -123,6 +123,27 @@ describe('TeamProvisioningPromptBuilders', () => {
     expect(prompt).toContain('BACKLOG SEEDING (MANDATORY)');
   });
 
+  it('forbids mobilizing the team on incomplete or accidental user messages', () => {
+    const prompt = buildPersistentLeadContext({
+      teamName: 'atlas-hq',
+      leadName: 'Lider',
+      isSolo: false,
+      members: [
+        { name: 'Lider', role: 'team-lead' },
+        { name: 'Hacivat', role: 'developer' },
+      ] as TeamCreateRequest['members'],
+    });
+
+    expect(prompt).toContain('INCOMPLETE / ACCIDENTAL USER MESSAGE');
+    expect(prompt).toContain('do NOT mobilize the team');
+    expect(prompt).toContain('FORBIDDEN in that turn: task_create');
+    expect(prompt).toContain('ONE short clarification ask only');
+    expect(prompt).toContain('Incomplete/accidental fragments are NOT a "real request"');
+    expect(prompt).toContain(
+      'NEVER for incomplete/accidental half-messages (ask the user instead'
+    );
+  });
+
   it('does not add team backlog seeding rules in solo mode', () => {
     const prompt = buildPersistentLeadContext({
       teamName: 'signal-ops',
