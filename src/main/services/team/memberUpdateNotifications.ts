@@ -248,7 +248,7 @@ export function buildReplaceMembersSummaryMessage(diff: ReplaceMembersDiff): str
 
   for (const name of diff.removed) {
     lines.push(
-      `- Teammate "${name}" was removed from the team. Stop assigning them new work and reassign any active tasks if needed.`
+      `- Teammate "${name}" was removed from the team. The app may have already auto-reassigned their pending/in_progress tasks. Confirm ownership on the board, task_start anything that should resume now, and NEVER leave active work owned by a removed member while healthy teammates are idle.`
     );
   }
 

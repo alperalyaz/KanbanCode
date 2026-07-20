@@ -114,7 +114,7 @@ describe('member runtime presentation', () => {
     ).toBe(true);
   });
 
-  it('marks stale confirmed Codex native spawn state as non-green runtime status', () => {
+  it('marks soft Codex probe gaps as amber probe-stale, not red dead', () => {
     const presentation = buildMemberLaunchPresentation({
       member: createMember(),
       spawnLivenessSource: 'heartbeat',
@@ -125,11 +125,13 @@ describe('member runtime presentation', () => {
     });
 
     expect(presentation.launchVisualState).toBe('stale_runtime');
-    expect(presentation.presenceLabel).toBe('stale runtime');
-    expect(presentation.dotClass).toContain('bg-red-400');
+    expect(presentation.presenceLabel).toBe('runtime probe stale');
+    expect(presentation.launchStatusLabel).toBe('runtime probe stale');
+    expect(presentation.dotClass).toContain('bg-amber-400');
+    expect(presentation.dotClass).not.toContain('bg-red-400');
   });
 
-  it('marks Codex native members without runtime snapshots as stale after launch settles', () => {
+  it('marks Codex native members without runtime snapshots as soft probe-stale after launch settles', () => {
     const presentation = buildMemberLaunchPresentation({
       member: createMember(),
       spawnStatus: undefined,
@@ -143,7 +145,8 @@ describe('member runtime presentation', () => {
     });
 
     expect(presentation.launchVisualState).toBe('stale_runtime');
-    expect(presentation.dotClass).toContain('bg-red-400');
+    expect(presentation.presenceLabel).toBe('runtime probe stale');
+    expect(presentation.dotClass).toContain('bg-amber-400');
   });
 
   it('shows assigned board work before runtime process evidence arrives', () => {
@@ -167,7 +170,9 @@ describe('member runtime presentation', () => {
     });
 
     expect(presentation.launchVisualState).toBe('stale_runtime');
-    expect(presentation.dotClass).toContain('bg-red-400');
+    expect(presentation.presenceLabel).toBe('runtime probe stale');
+    expect(presentation.dotClass).toContain('bg-amber-400');
+    expect(presentation.dotClass).not.toContain('bg-red-400');
   });
 
   it('does not mark bootstrap-only Codex native runtime evidence as green', () => {
@@ -186,7 +191,9 @@ describe('member runtime presentation', () => {
     });
 
     expect(presentation.launchVisualState).toBe('stale_runtime');
-    expect(presentation.dotClass).toContain('bg-red-400');
+    expect(presentation.presenceLabel).toBe('runtime probe stale');
+    expect(presentation.dotClass).toContain('bg-amber-400');
+    expect(presentation.dotClass).not.toContain('bg-red-400');
   });
 
   it('does not require runtime evidence for non-Codex teammates', () => {

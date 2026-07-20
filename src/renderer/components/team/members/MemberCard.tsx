@@ -46,6 +46,7 @@ import {
   Undo2,
 } from 'lucide-react';
 
+import { LiveWorkingStatusStrip } from '../activity/LiveWorkingStatusStrip';
 import { MemberColorAvatar } from '../MemberColorAvatar';
 
 import { CurrentTaskIndicator } from './CurrentTaskIndicator';
@@ -836,14 +837,20 @@ export const MemberCard = memo(function MemberCard({
     member.gitBranch ? `Branch: ${member.gitBranch}` : null,
   ].filter((line): line is string => Boolean(line));
   const activityTask = visibleCurrentTask ?? visibleReviewTask ?? null;
-  const isActivelyWorking = Boolean(activityTask) && !isRemoved;
+  const isActivelyWorking =
+    !isRemoved &&
+    (Boolean(activityTask) || inProgress > 0 || (isLead && leadActivity === 'active'));
   const workPresenceLabel = visibleCurrentTask
     ? 'working'
     : visibleReviewTask
       ? reviewTaskTimer
         ? 'reviewing'
         : 'review requested'
-      : null;
+      : inProgress > 0
+        ? 'working'
+        : isLead && leadActivity === 'active'
+          ? 'processing'
+          : null;
   const resolvedPresenceLabel =
     isActivelyWorking && workPresenceLabel ? workPresenceLabel : displayPresenceLabel;
   const resolvedDotClass = isActivelyWorking
@@ -1264,24 +1271,44 @@ export const MemberCard = memo(function MemberCard({
                 <>
                   {runtimeAdvisoryTone === 'error' ? (
                     <AlertTriangle className="size-3 shrink-0 text-red-400" />
-                  ) : (
-                    <SyncedLoader2
-                      className={`size-3 shrink-0 ${runtimeAdvisoryLabel ? 'text-amber-400' : ''}`}
-                      style={runtimeAdvisoryLabel ? undefined : { color: colors.border }}
+                  ) : teamName ? (
+                    <LiveWorkingStatusStrip
+                      teamName={teamName}
+                      members={[member]}
+                      variant="member"
+                      memberName={member.name}
+                      leadActivity={leadActivity}
+                      awaitingFallbackLabel={
+                        runtimeAdvisoryLabel ?? t('activity.pendingReplies.awaitingReply')
+                      }
                     />
+                  ) : (
+                    <>
+                      <SyncedLoader2
+                        className={`size-3 shrink-0 ${runtimeAdvisoryLabel ? 'text-amber-400' : ''}`}
+                        style={runtimeAdvisoryLabel ? undefined : { color: colors.border }}
+                      />
+                      <span
+                        className={`shrink-0 text-[10px] ${
+                          runtimeAdvisoryLabel ? 'text-amber-300' : 'text-[var(--color-text-muted)]'
+                        }`}
+                        title={
+                          runtimeAdvisoryTitle ??
+                          t('activity.pendingReplies.messageSentAwaitingReply')
+                        }
+                      >
+                        {runtimeAdvisoryLabel ?? t('activity.pendingReplies.awaitingReply')}
+                      </span>
+                    </>
                   )}
-                  <span
-                    className={`shrink-0 text-[10px] ${
-                      runtimeAdvisoryTone === 'error'
-                        ? 'text-red-300'
-                        : runtimeAdvisoryLabel
-                          ? 'text-amber-300'
-                          : 'text-[var(--color-text-muted)]'
-                    }`}
-                    title={runtimeAdvisoryTitle ?? 'Message sent, awaiting reply'}
-                  >
-                    {runtimeAdvisoryLabel ?? 'awaiting reply'}
-                  </span>
+                  {runtimeAdvisoryTone === 'error' ? (
+                    <span
+                      className="shrink-0 text-[10px] text-red-300"
+                      title={runtimeAdvisoryTitle ?? undefined}
+                    >
+                      {runtimeAdvisoryLabel}
+                    </span>
+                  ) : null}
                   {canRelaunchRuntimeAdvisoryOpenCode ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1317,6 +1344,15 @@ export const MemberCard = memo(function MemberCard({
                     />
                   ) : null}
                 </>
+              ) : null}
+              {!activityTask && !isAwaitingReply && teamName ? (
+                <LiveWorkingStatusStrip
+                  teamName={teamName}
+                  members={[member]}
+                  variant="member"
+                  memberName={member.name}
+                  leadActivity={leadActivity}
+                />
               ) : null}
             </div>
             {showStartingSkeleton ? (
