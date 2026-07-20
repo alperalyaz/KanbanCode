@@ -87,23 +87,29 @@ describe('TeamTaskStallNotifier', () => {
     expect(teamDataService.sendSystemNotificationToLead).not.toHaveBeenCalled();
   });
 
-  it('skips non-OpenCode owners', async () => {
+  it('sends lead alerts that demand reassignment off unhealthy owners', async () => {
+    const sendSystemNotificationToLead = vi.fn(async () => undefined);
     const notifier = new TeamTaskStallNotifier(
-      { sendSystemNotificationToLead: vi.fn(async () => undefined) } as never,
-      {
-        relayOpenCodeMemberInboxMessages: vi.fn(async () => ({
-          lastDelivery: { delivered: true },
-        })),
-      } as never,
+      { sendSystemNotificationToLead } as never,
+      undefined,
       { getMessagesFor: vi.fn(async () => []) } as never,
       { sendMessage: vi.fn(async () => ({ deliveredToInbox: true, messageId: 'msg' })) } as never
     );
 
-    await expect(
-      notifier.notifyOpenCodeOwners('demo', [
-        createAlert({ ownerProviderId: 'codex', owner: 'alice' }),
-      ])
-    ).resolves.toEqual([]);
+    await notifier.notifyLead('demo', [createAlert({ ownerProviderId: 'codex' })]);
+
+    expect(sendSystemNotificationToLead).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamName: 'demo',
+        summary: 'Potential stalled tasks detected',
+        text: expect.stringContaining(
+          'If the owner already shows stale runtime / offline / unhealthy'
+        ),
+      })
+    );
+    expect(sendSystemNotificationToLead.mock.calls[0]?.[0]?.text).toContain(
+      'Never leave healthy idle agents waiting on one red/unhealthy owner'
+    );
   });
 
   it('skips review alerts because task owner is not necessarily the reviewer', async () => {

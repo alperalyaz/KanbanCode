@@ -443,6 +443,10 @@ import {
   getTeamProviderLabel,
   logRuntimeLaunchSnapshot,
 } from './provisioning/TeamProvisioningRuntimeDiagnostics';
+import {
+  buildUnhealthyOwnerLeadNoticeText,
+  listHealthyTeammateNames,
+} from './stallMonitor/UnhealthyOwnerLeadNotifier';
 import { OpenCodeTaskLogAttributionStore } from './taskLogs/stream/OpenCodeTaskLogAttributionStore';
 import { getCurrentAgentTeamsMcpHttpTransportEvidence } from './AgentTeamsMcpHttpServer';
 import { isAgentTeamsToolUse } from './agentTeamsToolNames';
@@ -3456,6 +3460,7 @@ export class TeamProvisioningService {
   private static readonly RETAINED_PROVISIONING_PROGRESS_TTL_MS = 5 * 60_000;
   private static readonly OPENCODE_RUNTIME_DELIVERY_ADVISORY_EVENT_TTL_MS = 24 * 60 * 60_000;
   private static readonly OPENCODE_RUNTIME_DELIVERY_LEAD_NOTICE_TTL_MS = 24 * 60 * 60_000;
+  private static readonly UNHEALTHY_OWNER_LEAD_NOTICE_TTL_MS = 10 * 60_000;
   private static readonly INBOX_RELAY_IN_FLIGHT_TIMEOUT_MS = 2 * 60_000;
 
   private readonly runs = new Map<string, ProvisioningRun>();
@@ -3545,6 +3550,7 @@ export class TeamProvisioningService {
   private readonly openCodeRuntimeDeliveryAdvisoryReviewTimers = new Map<string, NodeJS.Timeout>();
   private readonly openCodeRuntimeDeliveryAdvisoryEventSentAt = new Map<string, number>();
   private readonly openCodeRuntimeDeliveryLeadNoticeSentAt = new Map<string, number>();
+  private readonly unhealthyOwnerLeadNoticeSentAt = new Map<string, number>();
   private readonly openCodeRuntimeDeliveryProofReader = new OpenCodeRuntimeDeliveryProofReader();
   private readonly openCodePromptDeliveryWatchdogQueue: {
     teamName: string;
@@ -14299,7 +14305,18 @@ export class TeamProvisioningService {
   ): void {
     if (previous.runtimeAlive === true && next.runtimeAlive !== true) {
       this.pauseMemberTaskActivityForRuntimeLoss(run, memberName, previous, observedAt);
+      void this.notifyLeadAboutUnhealthyOwnerWithActiveWork(run, memberName, next).catch(
+        (error: unknown) =>
+          logger.warn(
+            `[${run.teamName}] failed to notify lead about unhealthy owner ${memberName}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          )
+      );
     } else if (previous.runtimeAlive !== true && next.runtimeAlive === true) {
+      this.unhealthyOwnerLeadNoticeSentAt.delete(
+        `${run.teamName}:${memberName.trim().toLowerCase()}`
+      );
       const nextUpdatedMs = parseOptionalIsoMs(next.updatedAt);
       const previousUpdatedMs = parseOptionalIsoMs(previous.updatedAt);
       const resumeFallbackAt =
@@ -14311,6 +14328,76 @@ export class TeamProvisioningService {
         memberName,
         deriveTaskActivityResumeAt(previous, observedAt, resumeFallbackAt)
       );
+    }
+  }
+
+  private pruneUnhealthyOwnerLeadNoticeDedupe(now: number): void {
+    const ttlMs = TeamProvisioningService.UNHEALTHY_OWNER_LEAD_NOTICE_TTL_MS;
+    for (const [key, sentAt] of this.unhealthyOwnerLeadNoticeSentAt) {
+      if (now - sentAt > ttlMs) {
+        this.unhealthyOwnerLeadNoticeSentAt.delete(key);
+      }
+    }
+  }
+
+  private async notifyLeadAboutUnhealthyOwnerWithActiveWork(
+    run: ProvisioningRun,
+    memberName: string,
+    status: MemberSpawnStatusEntry
+  ): Promise<void> {
+    if (run.processKilled || run.cancelRequested) {
+      return;
+    }
+    const leadName = this.getRunLeadName(run).trim().toLowerCase();
+    const normalizedMember = memberName.trim();
+    if (!normalizedMember || normalizedMember.toLowerCase() === leadName) {
+      return;
+    }
+
+    const noticeKey = `${run.teamName}:${normalizedMember.toLowerCase()}`;
+    const now = Date.now();
+    this.pruneUnhealthyOwnerLeadNoticeDedupe(now);
+    if (this.unhealthyOwnerLeadNoticeSentAt.has(noticeKey)) {
+      return;
+    }
+
+    const tasks = await new TeamTaskReader().getTasks(run.teamName).catch(() => []);
+    const reason =
+      status.hardFailureReason?.trim() ||
+      status.runtimeDiagnostic?.trim() ||
+      status.error?.trim() ||
+      (status.livenessKind ? `liveness=${status.livenessKind}` : null) ||
+      'runtime lost / stale';
+
+    const healthyTeammates = listHealthyTeammateNames({
+      members: run.request.members ?? [],
+      unhealthyMemberName: normalizedMember,
+      isHealthy: (name) => {
+        const entry = run.memberSpawnStatuses.get(name);
+        if (!entry) return false;
+        if (entry.hardFailure === true) return false;
+        if (entry.runtimeAlive !== true) return false;
+        if (entry.status === 'error') return false;
+        return true;
+      },
+    });
+
+    const message = buildUnhealthyOwnerLeadNoticeText({
+      unhealthyMemberName: normalizedMember,
+      reason,
+      ownedTasks: tasks,
+      healthyTeammates,
+    });
+    if (!message) {
+      return;
+    }
+
+    this.unhealthyOwnerLeadNoticeSentAt.set(noticeKey, now);
+    try {
+      await this.sendMessageToRun(run, message);
+    } catch (error) {
+      this.unhealthyOwnerLeadNoticeSentAt.delete(noticeKey);
+      throw error;
     }
   }
 
