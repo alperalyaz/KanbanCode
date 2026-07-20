@@ -1049,8 +1049,8 @@
     },
     "notFound": "Görev bulunamadı",
     "related": {
-      "blockedBy": "Şununla engellendi:",
-      "blocks": "Şunu engelliyor:",
+      "blockedBy": "Şunu bekliyor:",
+      "blocks": "Şunu bekletiyor:",
       "linkedFrom": "Şuradan bağlandı:",
       "links": "Bağlantılar",
       "title": "İlgili görevler"
@@ -1126,8 +1126,8 @@
     "createTask": {
       "assignee": "Atanan kişi",
       "assigneeOptional": "Atanan kişi (isteğe bağlı)",
-      "blockedByOptional": "Engelleyen görevler (isteğe bağlı)",
-      "blockedBySummary": "Görev şununla engellenecek: {{tasks}}",
+      "blockedByOptional": "Beklenen görevler (isteğe bağlı)",
+      "blockedBySummary": "Görev şunu bekleyecek: {{tasks}}",
       "cancel": "İptal",
       "create": "Oluştur",
       "creating": "Oluşturuluyor...",
@@ -1157,8 +1157,8 @@
     },
     "list": {
       "columns": {
-        "blockedBy": "Engelleyen",
-        "blocks": "Engelliyor",
+        "blockedBy": "Bekliyor",
+        "blocks": "Bekletiyor",
         "id": "Kimlik",
         "owner": "Sahip",
         "status": "Durum",
@@ -1570,23 +1570,23 @@
       "noInput": "Girdi yok"
     },
     "blockingEdge": {
-      "title": "Engelleyen Bağımlılık",
-      "blocks": "engelliyor",
+      "title": "Bekleme Bağımlılığı",
+      "blocks": "bekletiyor",
       "close": "Kapat",
-      "blockingHiddenTasks": "Engelleyen gizli görevler",
-      "blockedHiddenTasks": "Engellenen gizli görevler",
+      "blockingHiddenTasks": "Bekleten gizli görevler",
+      "blockedHiddenTasks": "Bekleyen gizli görevler",
       "links_one": "{{count}} bağlantı",
       "links_other": "{{count}} bağlantı",
-      "hiddenBlockingLinks_one": "{{count}} gizli engelleyen bağlantı",
-      "hiddenBlockingLinks_other": "{{count}} gizli engelleyen bağlantı",
+      "hiddenBlockingLinks_one": "{{count}} gizli bekleten bağlantı",
+      "hiddenBlockingLinks_other": "{{count}} gizli bekleten bağlantı",
       "hiddenTaskStack": "Gizli görev yığını",
       "hiddenTasks_one": "{{count}} gizli görev",
       "hiddenTasks_other": "{{count}} gizli görev",
       "task": "Görev",
-      "openBlockerStack": "Engelleyici yığınını aç",
-      "openBlockedStack": "Engellenen yığınını aç",
-      "openBlockerTask": "Engelleyici görevi aç",
-      "openBlockedTask": "Engellenen görevi aç"
+      "openBlockerStack": "Bekleten yığını aç",
+      "openBlockedStack": "Bekleyen yığını aç",
+      "openBlockerTask": "Bekleten görevi aç",
+      "openBlockedTask": "Bekleyen görevi aç"
     },
     "activityHud": {
       "activity": "Etkinlik",
@@ -2049,8 +2049,8 @@
       "newTaskLogsArriving": "Yeni görev günlükleri geliyor",
       "awaitingUser": "Kullanıcı bekleniyor",
       "awaitingLead": "Lider bekleniyor",
-      "blockedBy": "Şununla engellendi:",
-      "blocks": "Şunu engelliyor:",
+      "blockedBy": "Şunu bekliyor:",
+      "blocks": "Şunu bekletiyor:",
       "start": "Başlat",
       "complete": "Tamamla",
       "approve": "Onayla",
