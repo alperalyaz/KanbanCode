@@ -483,7 +483,7 @@ describe('MemberCard starting-state visuals', () => {
     });
   });
 
-  it('keeps runtime-pending launch status visible even when the teammate has an active task', async () => {
+  it('prioritizes working status when runtime-pending teammates have an active task', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -509,9 +509,10 @@ describe('MemberCard starting-state visuals', () => {
       await Promise.resolve();
     });
 
-    expect(host.textContent).toContain('waiting for bootstrap');
+    expect(host.textContent).toContain('working');
+    expect(host.textContent).not.toContain('waiting for bootstrap');
     expect(host.textContent).not.toContain('online');
-    expect(host.querySelector('[aria-label="waiting for bootstrap"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="working"]')).not.toBeNull();
 
     await act(async () => {
       root.unmount();
@@ -519,7 +520,7 @@ describe('MemberCard starting-state visuals', () => {
     });
   });
 
-  it('keeps registered-only OpenCode status visible next to active task context', async () => {
+  it('prioritizes working status for registered-only OpenCode teammates with task context', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -554,8 +555,9 @@ describe('MemberCard starting-state visuals', () => {
       await Promise.resolve();
     });
 
-    expect(host.textContent).toContain('registered');
-    expect(host.querySelector('[aria-label="registered"]')).not.toBeNull();
+    expect(host.textContent).toContain('working');
+    expect(host.textContent).not.toContain('registered');
+    expect(host.querySelector('[aria-label="working"]')).not.toBeNull();
     expect(host.firstElementChild?.className).toContain('-mx-[calc(1rem-5px)]');
     expect(host.firstElementChild?.className).toContain('px-[calc(1rem-5px)]');
     expect(host.querySelector('[role="button"]')?.className).toContain('-mx-[calc(1rem-5px)]');

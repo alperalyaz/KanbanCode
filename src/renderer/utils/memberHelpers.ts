@@ -1280,26 +1280,19 @@ export function shouldDisplayMemberCurrentTask({
     runtimeEntry,
   });
 
+  const hasSpawnLiveClaim = hasSpawnRuntimeLiveClaim({
+    spawnStatus: effectiveSpawnStatus,
+    spawnLaunchState: effectiveSpawnLaunchState,
+    spawnRuntimeAlive: effectiveSpawnRuntimeAlive,
+    spawnBootstrapConfirmed: spawnEntry?.bootstrapConfirmed,
+  });
+
   if (softRuntimeGap) {
-    return (
-      hasSpawnRuntimeLiveClaim({
-        spawnStatus: effectiveSpawnStatus,
-        spawnLaunchState: effectiveSpawnLaunchState,
-        spawnRuntimeAlive: effectiveSpawnRuntimeAlive,
-        spawnBootstrapConfirmed: spawnEntry?.bootstrapConfirmed,
-      }) || Boolean(member.currentTaskId)
-    );
+    return hasSpawnLiveClaim || Boolean(member.currentTaskId);
   }
 
   if (isCodexNativeProcessTeammate(member) && !hasLiveRuntimeProcessEvidence(runtimeEntry)) {
-    return (
-      hasSpawnRuntimeLiveClaim({
-        spawnStatus: effectiveSpawnStatus,
-        spawnLaunchState: effectiveSpawnLaunchState,
-        spawnRuntimeAlive: effectiveSpawnRuntimeAlive,
-        spawnBootstrapConfirmed: spawnEntry?.bootstrapConfirmed,
-      }) || Boolean(member.currentTaskId)
-    );
+    return hasSpawnLiveClaim || Boolean(member.currentTaskId);
   }
   return true;
 }

@@ -976,6 +976,7 @@ export const MemberCard = memo(function MemberCard({
   const showLaunchBadge =
     !isRemoved &&
     !runtimeAdvisoryLabel &&
+    !isActivelyWorking &&
     (presenceLabel === 'starting' ||
       presenceLabel === 'connecting' ||
       launchVisualState === 'queued' ||
