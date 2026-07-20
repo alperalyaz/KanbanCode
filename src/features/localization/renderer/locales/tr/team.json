@@ -1429,6 +1429,15 @@
       "charsLeft_few": "{{count}} karakter kaldı",
       "charsLeft_many": "{{count}} karakter kaldı"
     },
+    "tips": {
+      "mentions": "İpucu: Takım arkadaşlarını anmak veya proje dosyası eklemek için @ kullanın.",
+      "tasks": "İpucu: Mevcut bir kanban görevine bağlanmak için # kullanın.",
+      "slash": "İpucu: Lider slash komutları ve skill'leri için / yazın (lider çevrimiçi olmalı).",
+      "actionMode": "İpucu: Sor = yalnızca konuş. Devret = lider ekibi yönetir. Shift+Tab modları değiştirir.",
+      "recipient": "İpucu: Lidere veya belirli bir takım arkadaşına yazmak için alıcıyı seçin.",
+      "attachments": "İpucu: Dosya eklemek için ataş, yapıştırma veya sürükle-bırak kullanın.",
+      "send": "İpucu: Enter gönderir. Shift+Enter yeni satır ekler."
+    },
     "teamSelector": {
       "thisTeam": "Bu ekip",
       "current": "geçerli",

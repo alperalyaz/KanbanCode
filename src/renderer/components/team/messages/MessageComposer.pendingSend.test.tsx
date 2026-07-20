@@ -255,8 +255,13 @@ vi.mock('@renderer/store', () => ({
     }),
 }));
 
+vi.mock('@renderer/store/team/teamDataSelectors', () => ({
+  selectTeamDataForName: () => null,
+}));
+
 vi.mock('@renderer/store/slices/teamSlice', () => ({
   isTeamProvisioningActive: () => provisioningHarness.state.active,
+  selectTeamTasksForName: () => [],
 }));
 
 import { MessageComposer } from './MessageComposer';

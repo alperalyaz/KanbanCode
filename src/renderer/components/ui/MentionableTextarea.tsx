@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { PROSE_LINK } from '@renderer/constants/cssVariables';
 import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
 import { useFileSuggestions } from '@renderer/hooks/useFileSuggestions';
@@ -363,7 +364,9 @@ interface MentionableTextareaProps extends Omit<
   onShiftTab?: () => void;
   /** Ref that receives the dismiss callback to close mention dropdown from outside */
   dismissMentionsRef?: React.MutableRefObject<(() => void) | null>;
-  /** Additional rotating tips to append after the defaults */
+  /** Replace default rotating tips. When omitted, generic mention/task tips are used. */
+  tips?: string[];
+  /** Additional rotating tips to append after the defaults or `tips` */
   extraTips?: string[];
 }
 
@@ -392,6 +395,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       onModEnter,
       onShiftTab,
       dismissMentionsRef,
+      tips,
       extraTips = [],
       style,
       className,
@@ -399,6 +403,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     },
     forwardedRef
   ) => {
+    const { t } = useAppTranslation('common');
     const internalRef = React.useRef<HTMLTextAreaElement | null>(null);
     const backdropRef = React.useRef<HTMLDivElement>(null);
     const surfaceShellRef = React.useRef<HTMLDivElement | null>(null);
@@ -1070,18 +1075,13 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       : style;
 
     // --- Rotating tips ---
-    // Prefer caller-provided localized tips. Keep a short English fallback only when
-    // no tips were passed (other surfaces that reuse this textarea).
-    const rotatingTips = React.useMemo(
-      () =>
-        extraTips.length > 0
-          ? extraTips
-          : [
-              'Tip: Use @ for members/files and # for tasks',
-              'Tip: Mention "create a task" to add it to the kanban',
-            ],
-      [extraTips]
-    );
+    const rotatingTips = React.useMemo(() => {
+      const baseTips =
+        tips && tips.length > 0
+          ? tips
+          : [t('mentionable.tips.mentions'), t('mentionable.tips.tasks')];
+      return [...baseTips, ...extraTips];
+    }, [extraTips, t, tips]);
     const [tipIndex, setTipIndex] = React.useState(0);
     const [tipVisible, setTipVisible] = React.useState(true);
 

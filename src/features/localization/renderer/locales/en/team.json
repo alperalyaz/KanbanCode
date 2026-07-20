@@ -1430,6 +1430,15 @@
       "charsLeft_few": "{{count}} chars left",
       "charsLeft_many": "{{count}} chars left"
     },
+    "tips": {
+      "mentions": "Tip: Use @ to mention teammates or attach project files.",
+      "tasks": "Tip: Use # to link an existing kanban task in your message.",
+      "slash": "Tip: Type / to run lead slash commands and skills (lead must be online).",
+      "actionMode": "Tip: Ask = talk only. Delegate = the lead orchestrates the team. Shift+Tab cycles modes.",
+      "recipient": "Tip: Choose the recipient to message the lead or a specific teammate.",
+      "attachments": "Tip: Attach files with the paperclip, paste, or drag and drop.",
+      "send": "Tip: Enter sends. Shift+Enter adds a new line."
+    },
     "teamSelector": {
       "thisTeam": "This team",
       "current": "current",

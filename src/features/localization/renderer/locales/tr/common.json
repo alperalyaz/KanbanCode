@@ -20,6 +20,12 @@
     "hide": "Gizle",
     "resetSelection": "Seçimi sıfırla"
   },
+  "mentionable": {
+    "tips": {
+      "mentions": "İpucu: Kişiler veya dosyalar için @ kullanın.",
+      "tasks": "İpucu: Mevcut bir göreve bağlanmak için # kullanın."
+    }
+  },
   "code": {
     "line": "satır {{line}}",
     "lines": "satır {{from}}-{{to}}",
