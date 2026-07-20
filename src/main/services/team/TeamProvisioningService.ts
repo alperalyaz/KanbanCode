@@ -106,6 +106,7 @@ import { parseCliArgs } from '@shared/utils/cliArgsParser';
 import {
   CODEX_CHATGPT_FALLBACK_MODEL,
   isCodexChatGptSunsetModel,
+  pickCodexChatGptSafeModel,
   remapCodexModelForChatGptAccount,
 } from '@shared/utils/codexChatGptSunsetModels';
 import { isUsableCodexModelCatalog } from '@shared/utils/codexModelCatalog';
@@ -4726,7 +4727,13 @@ export class TeamProvisioningService {
                 modelCatalog?.models.map((model) => model.launchModel) ?? modelIds,
               defaultLaunchModel: defaultModel,
             })
-          : defaultModel,
+          : params.providerId === 'codex' &&
+              (providerStatus?.authMethod === 'chatgpt' ||
+                providerStatus?.connection?.codex?.effectiveAuthMode === 'chatgpt' ||
+                providerStatus?.backend?.authMethodDetail === 'chatgpt') &&
+              isCodexChatGptSunsetModel(defaultModel)
+            ? pickCodexChatGptSafeModel(modelIds, CODEX_CHATGPT_FALLBACK_MODEL)
+            : defaultModel,
       modelIds,
       modelListParsed,
       modelCatalog,
@@ -4971,13 +4978,32 @@ export class TeamProvisioningService {
 
     const leadFacts = await getFacts(leadProviderId);
     let launchRequest = params.request;
-    if (
+    const isLeadCodexChatGptAuth =
       leadProviderId === 'codex' &&
-      isCodexChatGptSunsetModel(launchRequest.model) &&
       (leadFacts.providerStatus?.authMethod === 'chatgpt' ||
         leadFacts.providerStatus?.connection?.codex?.effectiveAuthMode === 'chatgpt' ||
-        leadFacts.providerStatus?.backend?.authMethodDetail === 'chatgpt')
-    ) {
+        leadFacts.providerStatus?.backend?.authMethodDetail === 'chatgpt');
+
+    if (isLeadCodexChatGptAuth) {
+      // ChatGPT auth cannot inherit ~/.codex/config.toml defaults like gpt-5.3-codex.
+      // Always pin an explicit ChatGPT-safe --model, including when the UI selected "default".
+      const selection = resolveCodexSelectionFromFacts({
+        selectedModel: launchRequest.model,
+        providerBackendId: launchRequest.providerBackendId,
+        facts: leadFacts,
+      });
+      const safeModel =
+        selection.resolvedLaunchModel?.trim() ||
+        pickCodexChatGptSafeModel(
+          [leadFacts.defaultModel, ...leadFacts.modelIds],
+          CODEX_CHATGPT_FALLBACK_MODEL
+        );
+      launchRequest = {
+        ...launchRequest,
+        model: safeModel,
+      };
+    } else if (leadProviderId === 'codex' && isCodexChatGptSunsetModel(launchRequest.model)) {
+      // Auth mode unknown/API-key path: still remap known-sunset IDs when selected explicitly.
       launchRequest = {
         ...launchRequest,
         model:
@@ -20165,16 +20191,40 @@ export class TeamProvisioningService {
       let effectiveMember = buildEffectiveTeamMemberSpec(member, params.defaults);
       const providerId = normalizeTeamMemberProviderId(effectiveMember.providerId) ?? 'anthropic';
 
-      if (providerId === 'codex' && isCodexChatGptSunsetModel(effectiveMember.model)) {
-        if (await isCodexChatGptAuth()) {
-          const facts = await getProviderFacts('codex').catch(() => null);
-          const remapped =
-            remapCodexModelForChatGptAccount(
-              effectiveMember.model,
-              facts?.defaultModel ?? CODEX_CHATGPT_FALLBACK_MODEL
-            ) ?? CODEX_CHATGPT_FALLBACK_MODEL;
-          effectiveMember = { ...effectiveMember, model: remapped };
+      if (providerId !== 'anthropic' && !effectiveMember.model?.trim()) {
+        effectiveMember = {
+          ...effectiveMember,
+          model: await getResolvedDefaultModel(providerId),
+        };
+      }
+
+      if (providerId === 'codex' && (await isCodexChatGptAuth())) {
+        const facts = await getProviderFacts('codex').catch(() => null);
+        const safeDefault = pickCodexChatGptSafeModel(
+          [facts?.defaultModel, ...(facts?.modelIds ?? [])],
+          CODEX_CHATGPT_FALLBACK_MODEL
+        );
+        const currentModel = effectiveMember.model?.trim() ?? '';
+        // Force an explicit ChatGPT-safe model. Leaving "default"/empty lets the
+        // teammate CLI inherit ~/.codex/config.toml (often still gpt-5.3-codex).
+        if (
+          !currentModel ||
+          isDefaultProviderModelSelection(currentModel) ||
+          isCodexChatGptSunsetModel(currentModel)
+        ) {
+          effectiveMember = {
+            ...effectiveMember,
+            model: remapCodexModelForChatGptAccount(currentModel, safeDefault) ?? safeDefault,
+          };
         }
+      } else if (providerId === 'codex' && isCodexChatGptSunsetModel(effectiveMember.model)) {
+        const facts = await getProviderFacts('codex').catch(() => null);
+        const remapped =
+          remapCodexModelForChatGptAccount(
+            effectiveMember.model,
+            facts?.defaultModel ?? CODEX_CHATGPT_FALLBACK_MODEL
+          ) ?? CODEX_CHATGPT_FALLBACK_MODEL;
+        effectiveMember = { ...effectiveMember, model: remapped };
       }
 
       if (providerId === 'anthropic' || effectiveMember.model?.trim()) {

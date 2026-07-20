@@ -209,6 +209,53 @@ describe('resolveCodexRuntimeProfile', () => {
     expect(selection.catalogModel?.launchModel).toBe('gpt-5.4');
   });
 
+  it('forces a ChatGPT-safe model when UI selection is default but catalog default is sunset', () => {
+    const selection = resolveCodexRuntimeSelection({
+      source: {
+        providerStatus: makeProviderStatus({
+          modelCatalog: makeCodexCatalog({
+            defaultModelId: 'gpt-5.3-codex',
+            defaultLaunchModel: 'gpt-5.3-codex',
+            models: [
+              {
+                id: 'gpt-5.3-codex',
+                launchModel: 'gpt-5.3-codex',
+                displayName: 'GPT-5.3 Codex',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                defaultReasoningEffort: 'medium',
+                inputModalities: ['text'],
+                supportsPersonality: false,
+                isDefault: true,
+                upgrade: false,
+                source: 'app-server',
+              },
+              {
+                id: 'gpt-5.5',
+                launchModel: 'gpt-5.5',
+                displayName: 'GPT-5.5',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                defaultReasoningEffort: 'medium',
+                inputModalities: ['text'],
+                supportsPersonality: false,
+                supportsFastMode: true,
+                isDefault: false,
+                upgrade: false,
+                source: 'app-server',
+              },
+            ],
+          }),
+        }),
+      },
+      selectedModel: 'default',
+    });
+
+    expect(selection.effectiveAuthMode).toBe('chatgpt');
+    expect(selection.resolvedLaunchModel).toBe('gpt-5.5');
+    expect(selection.catalogModel?.launchModel).toBe('gpt-5.5');
+  });
+
   it('still allows sunset Codex models when auth is API key', () => {
     const selection = resolveCodexRuntimeSelection({
       source: {

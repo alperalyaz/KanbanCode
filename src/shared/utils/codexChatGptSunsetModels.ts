@@ -45,3 +45,25 @@ export function remapCodexModelForChatGptAccount(
   }
   return fallback;
 }
+
+/**
+ * Pick the first ChatGPT-safe Codex model from candidates.
+ * Used when the catalog/config default is a sunset model (e.g. gpt-5.3-codex
+ * still set in ~/.codex/config.toml) so launch never inherits that default.
+ */
+export function pickCodexChatGptSafeModel(
+  candidates: readonly (string | null | undefined)[],
+  fallbackModelId: string | null | undefined = CODEX_CHATGPT_FALLBACK_MODEL
+): string {
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (trimmed && !isCodexChatGptSunsetModel(trimmed)) {
+      return trimmed;
+    }
+  }
+  const fallback = fallbackModelId?.trim() || CODEX_CHATGPT_FALLBACK_MODEL;
+  if (fallback && !isCodexChatGptSunsetModel(fallback)) {
+    return fallback;
+  }
+  return CODEX_CHATGPT_FALLBACK_MODEL;
+}

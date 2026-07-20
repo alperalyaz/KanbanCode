@@ -1,6 +1,7 @@
 import {
   CODEX_CHATGPT_FALLBACK_MODEL,
   isCodexChatGptSunsetModel,
+  pickCodexChatGptSafeModel,
   remapCodexModelForChatGptAccount,
 } from '@shared/utils/codexChatGptSunsetModels';
 import { migrateProviderBackendId } from '@shared/utils/providerBackend';
@@ -209,7 +210,7 @@ export function resolveCodexRuntimeSelection(params: {
   let workingSelected = normalizeSelectedModel(params.selectedModel);
   if (effectiveAuthMode === 'chatgpt' && workingSelected) {
     // ChatGPT subscriptions no longer support sunset Codex models. Clear the
-    // selection so we fall through to the live catalog default instead of
+    // selection so we fall through to a ChatGPT-safe catalog default instead of
     // launching a guaranteed-to-fail --model.
     if (isCodexChatGptSunsetModel(workingSelected)) {
       workingSelected = null;
@@ -226,15 +227,33 @@ export function resolveCodexRuntimeSelection(params: {
 
   const catalogDefault =
     catalog?.defaultLaunchModel?.trim() || catalog?.defaultModelId?.trim() || null;
-  const chatgptFallback =
-    remapCodexModelForChatGptAccount(catalogDefault, CODEX_CHATGPT_FALLBACK_MODEL) ??
-    CODEX_CHATGPT_FALLBACK_MODEL;
+  const catalogModelIds =
+    catalog?.models.map((model) => model.launchModel?.trim() || model.id?.trim()) ?? [];
+  // Important: Codex config.toml may still list gpt-5.3-codex as the default.
+  // ChatGPT auth must never inherit that — pick the first non-sunset catalog model.
+  const chatgptSafeDefault = pickCodexChatGptSafeModel(
+    [catalogDefault, ...catalogModelIds],
+    CODEX_CHATGPT_FALLBACK_MODEL
+  );
 
-  const resolvedLaunchModel =
+  if (
+    effectiveAuthMode === 'chatgpt' &&
+    (!catalogModel || isCodexChatGptSunsetModel(catalogModel.launchModel))
+  ) {
+    catalogModel = findCatalogModel(catalog, chatgptSafeDefault);
+  }
+
+  const resolvedLaunchModelRaw =
     catalogModel?.launchModel?.trim() ||
     (effectiveAuthMode === 'chatgpt' ? null : workingSelected) ||
-    catalogDefault ||
-    (effectiveAuthMode === 'chatgpt' ? chatgptFallback : workingSelected);
+    (effectiveAuthMode === 'chatgpt' ? null : catalogDefault) ||
+    (effectiveAuthMode === 'chatgpt' ? chatgptSafeDefault : workingSelected);
+
+  const resolvedLaunchModel =
+    effectiveAuthMode === 'chatgpt'
+      ? (remapCodexModelForChatGptAccount(resolvedLaunchModelRaw, chatgptSafeDefault) ??
+        chatgptSafeDefault)
+      : resolvedLaunchModelRaw;
 
   const launch = resolveLaunchAllowed(source);
 
