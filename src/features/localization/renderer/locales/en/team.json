@@ -122,8 +122,14 @@
       "teamName": "Team name"
     },
     "launchAfterCreate": {
-      "description": "Start the team immediately via local Claude CLI.",
-      "label": "Run command after create"
+      "description": "Start the team immediately in the current project via local Claude CLI.",
+      "label": "Start team after create"
+    },
+    "currentProject": {
+      "label": "Using {{project}}",
+      "hint": "This is the folder you already opened. The team will run here — you do not need to pick it again.",
+      "useDifferent": "Use a different folder…",
+      "useCurrent": "Use the current project again"
     },
     "localOnly": "Available only in local Electron mode.",
     "onDisk": "On disk:",
@@ -145,6 +151,7 @@
       "steps": {
         "name": "Name your team",
         "project": "Choose a project",
+        "projectCurrent": "Confirm your project",
         "model": "Confirm the model"
       },
       "description": "Start with a solo OpenCode team on the free big-pickle model.",
@@ -174,6 +181,7 @@
     "prepare": {
       "unsupportedPreload": "Current preload version does not support team:prepareProvisioning. Restart the dev app.",
       "selectWorkingDirectory": "Select a working directory to validate the launch environment.",
+      "usingCurrentProject": "Using current project ({{project}}) for launch preflight.",
       "someProvidersNeedAttention": "Some selected providers need attention.",
       "readyWithNotes": "All selected providers are ready, with notes.",
       "ready": "All selected providers are ready.",

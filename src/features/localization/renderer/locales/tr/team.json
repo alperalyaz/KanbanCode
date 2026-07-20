@@ -122,8 +122,14 @@
       "teamName": "Ekip adı"
     },
     "launchAfterCreate": {
-      "description": "Ekibi yerel Claude CLI aracılığıyla hemen başlat.",
-      "label": "Oluşturduktan sonra komutu çalıştır"
+      "description": "Ekibi mevcut projede yerel Claude CLI aracılığıyla hemen başlat.",
+      "label": "Oluşturduktan sonra ekibi başlat"
+    },
+    "currentProject": {
+      "label": "{{project}} kullanılıyor",
+      "hint": "Zaten açtığınız klasör. Ekip burada çalışacak — tekrar seçmenize gerek yok.",
+      "useDifferent": "Farklı bir klasör kullan…",
+      "useCurrent": "Mevcut projeyi yeniden kullan"
     },
     "localOnly": "Yalnızca yerel Electron modunda kullanılabilir.",
     "onDisk": "Diskte:",
@@ -145,6 +151,7 @@
       "steps": {
         "name": "Ekibinize ad verin",
         "project": "Proje seçin",
+        "projectCurrent": "Projenizi onaylayın",
         "model": "Modeli onaylayın"
       },
       "description": "Ücretsiz big-pickle modeliyle tek kişilik bir OpenCode ekibiyle başlayın.",
@@ -174,6 +181,7 @@
     "prepare": {
       "unsupportedPreload": "Geçerli preload sürümü team:prepareProvisioning öğesini desteklemiyor. Geliştirme uygulamasını yeniden başlatın.",
       "selectWorkingDirectory": "Başlatma ortamını doğrulamak için bir çalışma dizini seçin.",
+      "usingCurrentProject": "Başlatma ön kontrolü için mevcut proje kullanılıyor ({{project}}).",
       "someProvidersNeedAttention": "Seçili bazı sağlayıcıların ilgilenilmesi gerekiyor.",
       "readyWithNotes": "Seçili tüm sağlayıcılar hazır, notlarla birlikte.",
       "ready": "Seçili tüm sağlayıcılar hazır.",
