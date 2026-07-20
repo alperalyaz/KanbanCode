@@ -16,6 +16,10 @@ import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { buildTeamMemberColorMap } from '@shared/utils/teamMemberColors';
 import { normalizeTeamMemberMcpPolicy } from '@shared/utils/teamMemberMcpPolicy';
 import { parseNumericSuffixName, validateTeamMemberNameFormat } from '@shared/utils/teamMemberName';
+import {
+  listReviewOrientedMemberNames,
+  pickPreferredReviewerName,
+} from '@shared/utils/teamMemberRoles';
 import { normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
 import { extractToolPreview, formatToolSummaryFromCalls } from '@shared/utils/toolSummary';
 import * as agentTeamsControllerModule from 'agent-teams-controller';
@@ -1986,6 +1990,7 @@ export class TeamDataService {
     );
     const nextMembers = applyDistinctRosterColors([...members, newMember]);
     await this.membersMetaStore.writeMembers(teamName, nextMembers);
+    await this.syncReviewersFromMemberRoles(teamName, nextMembers);
   }
 
   async updateMemberRole(
@@ -2003,6 +2008,7 @@ export class TeamDataService {
 
     member.role = normalized;
     await this.membersMetaStore.writeMembers(teamName, members);
+    await this.syncReviewersFromMemberRoles(teamName, members);
     return { oldRole, changed: true };
   }
 
@@ -2089,6 +2095,7 @@ export class TeamDataService {
       }
     }
     await this.membersMetaStore.writeMembers(teamName, out);
+    await this.syncReviewersFromMemberRoles(teamName, out);
   }
 
   async removeMember(teamName: string, memberName: string): Promise<void> {
@@ -2111,6 +2118,7 @@ export class TeamDataService {
     );
     member.removedAt = Date.now();
     await this.membersMetaStore.writeMembers(teamName, members);
+    await this.syncReviewersFromMemberRoles(teamName, members);
   }
 
   async restoreMember(teamName: string, memberName: string): Promise<TeamMember> {
@@ -2142,6 +2150,7 @@ export class TeamDataService {
 
     await this.assertRosterMutationAllowed(teamName, toProvisioningMemberShape(nextMembers));
     await this.membersMetaStore.writeMembers(teamName, nextMembers);
+    await this.syncReviewersFromMemberRoles(teamName, nextMembers);
     return nextMembers[memberIndex] ?? restoredMember;
   }
 
@@ -3277,10 +3286,37 @@ export class TeamDataService {
 
   async requestReview(teamName: string, taskId: string): Promise<void> {
     const { leadName, leadSessionId } = await this.resolveLeadRuntimeContext(teamName);
+    const members = await this.membersMetaStore.getMembers(teamName).catch(() => []);
+    const preferredReviewer = pickPreferredReviewerName(members);
     this.getController(teamName).review.requestReview(taskId, {
       from: leadName,
+      ...(preferredReviewer ? { reviewer: preferredReviewer } : {}),
       ...(leadSessionId ? { leadSessionId } : {}),
     });
+  }
+
+  /**
+   * Keep kanban default reviewers aligned with QA/reviewer roster roles so
+   * review_request without an explicit reviewer still notifies the right member.
+   */
+  private async syncReviewersFromMemberRoles(
+    teamName: string,
+    members: ReadonlyArray<{ name?: string | null; role?: string | null; removedAt?: unknown }>
+  ): Promise<void> {
+    const reviewerNames = listReviewOrientedMemberNames(members);
+    if (reviewerNames.length === 0) {
+      return;
+    }
+    try {
+      const kanban = this.getController(teamName).kanban;
+      for (const reviewer of reviewerNames) {
+        kanban.addReviewer(reviewer);
+      }
+    } catch (error) {
+      logger.warn(
+        `[TeamDataService] Failed to sync role-based reviewers for ${teamName}: ${String(error)}`
+      );
+    }
   }
 
   private getControllerTaskWorkflowColumn(
@@ -3401,6 +3437,7 @@ export class TeamDataService {
     await this.membersMetaStore.writeMembers(request.teamName, membersToWrite, {
       providerBackendId: request.providerBackendId,
     });
+    await this.syncReviewersFromMemberRoles(request.teamName, membersToWrite);
     TeamConfigReader.invalidateListTeamsCache();
   }
 
@@ -3870,8 +3907,11 @@ export class TeamDataService {
     if (patch.op === 'set_column') {
       if (patch.column === 'review') {
         const { leadName, leadSessionId } = await this.resolveLeadRuntimeContext(teamName);
+        const members = await this.membersMetaStore.getMembers(teamName).catch(() => []);
+        const preferredReviewer = pickPreferredReviewerName(members);
         controller.review.requestReview(taskId, {
           from: leadName,
+          ...(preferredReviewer ? { reviewer: preferredReviewer } : {}),
           ...(leadSessionId ? { leadSessionId } : {}),
         });
       } else {

@@ -6,6 +6,7 @@ import {
   hasUnsafeProvisionedButNotAliveRuntimeEvidence,
   isBootstrapConfirmedProvisionedButNotAliveFailure,
 } from '@shared/utils/teamLaunchFailureReason';
+import { buildDefaultRoleDutyHint } from '@shared/utils/teamMemberRoles';
 import {
   getTeamTaskWorkflowColumn,
   isTeamTaskActivelyWorked,
@@ -183,6 +184,20 @@ function formatWorkflowBlock(workflow: string, indent: string): string {
   return `\n${indent}---BEGIN WORKFLOW---\n${body}\n${indent}---END WORKFLOW---`;
 }
 
+function buildMemberRoleWorkflowBlock(
+  member: TeamCreateRequest['members'][number],
+  style: 'plain' | 'behavior' = 'plain'
+): string {
+  const custom = member.workflow?.trim();
+  if (custom) {
+    return style === 'behavior'
+      ? `\n\nYour workflow and how you should behave:${formatWorkflowBlock(custom, '')}`
+      : `\nWorkflow:\n${custom}`;
+  }
+  const duty = buildDefaultRoleDutyHint(member.role);
+  return duty ? `\n${duty}` : '';
+}
+
 export function buildMembersPrompt(members: TeamCreateRequest['members']): string {
   return members
     .map((member) => {
@@ -194,9 +209,13 @@ export function buildMembersPrompt(members: TeamCreateRequest['members']): strin
       const modelPart = member.model?.trim() ? ` [model: ${member.model.trim()}]` : '';
       const effortPart = member.effort ? ` [effort: ${member.effort}]` : '';
       const isolationPart = member.isolation === 'worktree' ? ' [isolation: worktree]' : '';
-      const workflowPart = member.workflow?.trim()
-        ? `\n     Workflow/instructions:${formatWorkflowBlock(member.workflow, '       ')}`
-        : '';
+      const customWorkflow = member.workflow?.trim();
+      const dutyHint = !customWorkflow ? buildDefaultRoleDutyHint(member.role) : null;
+      const workflowPart = customWorkflow
+        ? `\n     Workflow/instructions:${formatWorkflowBlock(member.workflow!, '       ')}`
+        : dutyHint
+          ? `\n     ${dutyHint}`
+          : '';
       return `- ${member.name}${rolePart}${providerPart}${modelPart}${effortPart}${isolationPart}${workflowPart}`;
     })
     .join('\n');
@@ -459,7 +478,7 @@ export function buildGeminiMemberSpawnPrompt(
       : '';
   const modelLine = member.model?.trim() ? `\nModel override: ${member.model.trim()}.` : '';
   const effortLine = member.effort ? `\nEffort override: ${member.effort}.` : '';
-  const workflowBlock = member.workflow?.trim() ? `\nWorkflow:\n${member.workflow.trim()}` : '';
+  const workflowBlock = buildMemberRoleWorkflowBlock(member);
 
   return `You are ${member.name}, a ${role} on team "${displayName}" (${teamName}).${providerLine}${modelLine}${effortLine}${workflowBlock}
 
@@ -490,7 +509,7 @@ export function buildGeminiReconnectMemberSpawnPrompt(
       : '';
   const modelLine = member.model?.trim() ? `\nModel override: ${member.model.trim()}.` : '';
   const effortLine = member.effort ? `\nEffort override: ${member.effort}.` : '';
-  const workflowBlock = member.workflow?.trim() ? `\nWorkflow:\n${member.workflow.trim()}` : '';
+  const workflowBlock = buildMemberRoleWorkflowBlock(member);
 
   return `You are ${member.name}, a ${role} on team "${teamName}" (${teamName}).${providerLine}${modelLine}${effortLine}${workflowBlock}
 
@@ -535,9 +554,7 @@ export function buildMemberSpawnPrompt(
     ? `\nModel override for this teammate: ${member.model.trim()}.`
     : '';
   const effortLine = member.effort ? `\nEffort override for this teammate: ${member.effort}.` : '';
-  const workflowBlock = member.workflow?.trim()
-    ? `\n\nYour workflow and how you should behave:${formatWorkflowBlock(member.workflow, '')}`
-    : '';
+  const workflowBlock = buildMemberRoleWorkflowBlock(member, 'behavior');
   const restartContext = options?.restart
     ? '\n\nThe team has already been reconnected and you are being re-attached as a persistent teammate.\nThis is a teammate restart. Repeat bootstrap exactly once, then wait for normal work instructions.'
     : '';
@@ -603,9 +620,7 @@ export function buildReconnectMemberSpawnPrompt(
   const effortLine = member.effort
     ? `\n     Effort override for this teammate: ${member.effort}.`
     : '';
-  const workflowBlock = member.workflow?.trim()
-    ? `\n\nYour workflow and how you should behave:${formatWorkflowBlock(member.workflow, '     ')}`
-    : '';
+  const workflowBlock = buildMemberRoleWorkflowBlock(member, 'behavior');
   const actionModeProtocol = indentMultiline(
     protocols.buildActionModeProtocolText(protocols.MEMBER_DELEGATE_DESCRIPTION),
     '     '
@@ -856,7 +871,7 @@ export function buildTeamCtlOpsInstructions(
       `  Call review_approve EXACTLY ONCE per review. Include your review feedback in the "note" field of that single call. Do NOT call it twice (once to approve, once with a note). The tool auto-creates a comment from the note.`,
       `- Request changes: review_request_changes { teamName: "${teamName}", taskId: "<id>", from: "<your-name>", comment: "<what to fix>" }`,
       `CRITICAL: Review is a state transition on the EXISTING work task. When implementation for task #X needs review, move #X through the review flow with review_request/review_start/review_approve/review_request_changes. Do NOT create a new separate task just to represent that review.`,
-      `CRITICAL: Only send task #X into review when a concrete reviewer exists for #X. If no reviewer exists yet, keep #X completed until you assign/decide the reviewer. Do NOT use review_request just to park the task in REVIEW without an actual reviewer.`,
+      `CRITICAL: Only send task #X into review when a concrete reviewer exists for #X. Prefer roster members with role QA or Reviewer (in that order). Pass reviewer: "<qa-or-reviewer-name>" explicitly on review_request. If the roster has a QA/Reviewer member, substantial completed work MUST go through review_request to them — do not leave QA idle while completed tasks sit without review. If no reviewer exists yet, keep #X completed until you assign/decide the reviewer. Do NOT use review_request just to park the task in REVIEW without an actual reviewer.`,
       `CRITICAL: Writing "approved" or "LGTM" as a task comment does NOT move the task on the kanban board. You MUST call the review_approve MCP tool. Without the tool call the task stays stuck in the REVIEW column.`,
       ``,
       `Background service operations — use MCP tools directly (dev servers, watchers, databases, etc.; NOT teammate-agent liveness):`,
@@ -952,8 +967,7 @@ export function buildPersistentLeadContext(opts: {
   });
   const runtimeProvider = resolveLeadMessagingRuntimeProvider(providerId);
   const messaging = createMemberMessagingProtocol(runtimeProvider);
-  const sendToolLabel =
-    runtimeProvider === 'native' ? 'SendMessage' : messaging.sendToolName;
+  const sendToolLabel = runtimeProvider === 'native' ? 'SendMessage' : messaging.sendToolName;
   const sendExample =
     runtimeProvider === 'native'
       ? `SendMessage(${buildCanonicalSendMessageExample({ to: 'alice', summary: 'short reply', message: 'your reply' })})`
@@ -1036,10 +1050,17 @@ Constraints:
 - NEVER DROP THE USER'S ORIGINAL REQUEST — A BLOCKER PAUSES THE GOAL, IT DOES NOT CANCEL IT (this is a hard rule): The moment the user gives you a real request (e.g. "review the project and let's make improvements, suggestions?"), that request becomes a persistent goal you OWN until it is actually delivered. If you cannot start or finish it right away because of some precondition — a git drift/conflict you flagged, a clarifying question you asked, a fix the user has to do first, a stuck teammate, missing info — you MUST immediately capture the ORIGINAL request as a board task in pending/TODO (create it via task_create if it is not already on the board) and add a short task comment naming exactly what it is waiting on. Do NOT let the precondition silently replace or "swallow" the goal, and do NOT leave the board empty while you go chase the blocker. Once the blocker clears — the user says it's fixed, the answer arrives, or you verify the prerequisite yourself — your very next move is to RESUME that task and actually carry out the original request end-to-end, then report the real result. Confirming a precondition is NEVER the deliverable; the user's original instruction is. Concretely: if you flagged a git conflict/drift and the user resolves it, do NOT end your turn on "re-checked, all clean" — that only clears the blocker. Continue straight into the real work the user asked for (analyze → propose/decompose → create + assign tasks → execute), and only then report. Treating "the blocker is gone" as completion, when the user's actual instruction was never carried out, is a failure mode that makes the user feel steamrolled — do not do it.
 - In a non-solo team, your default first lead move is delegation, NOT personal investigation. Do NOT read/search the codebase, inspect files, or do root-cause research yourself just to figure out ownership or scope before delegating.
 - This lead-only delegation rule does NOT restrict assigned teammates. Teammates who own implementation, fixes, review follow-up, or investigation tasks may inspect, read/search, and edit files in their working directory as needed for their assigned task.
-- If the request is ambiguous or still needs technical discovery, create ONE coarse investigation/triage task in pending/TODO for the best-fit teammate (do not task_start it unless they are idle and ready). That teammate owns the code inspection, scope refinement, and adding follow-up pending tasks to the board. If scope is already clear from the user brief, skip triage-only mode and create the full pending backlog yourself.
+- If the request is ambiguous or still needs technical discovery, create ONE coarse investigation/triage task in pending/TODO for the best-fit teammate (do not task_start it unless they are idle and ready). That teammate owns the code inspection, scope refinement, and adding follow-up pending tasks to the board. Prefer an Architect when one exists for triage/planning; prefer Developers for implementation follow-ups. If scope is already clear from the user brief, skip triage-only mode and create the full pending backlog yourself.
 - Only do lead-side research first if the human explicitly asked YOU for analysis/planning, or if there is genuinely no appropriate teammate to own the investigation.
+- ROLE ASSIGNMENT POLICY (hard rule — the user set these roles on purpose): Read each teammate's role from the roster and assign work accordingly. Do NOT treat roles as decorative labels.
+  - Architect / Mimar: planning, decomposition, architecture, scope control — not bulk implementation when Developers exist.
+  - Developer / Geliştirici: implementation and code changes.
+  - QA: verification after substantial work is completed — when a Developer finishes a meaningful task, you MUST review_request that task to the QA member (reviewer: "<qa-name>") so they check it. Leaving QA idle while completed work sits unreviewed is a lead failure.
+  - Reviewer: same review duty as QA when no QA exists; prefer QA first when both exist.
+  - Do not assign implementation ownership to QA/Reviewer-only members when healthy Developers/Architects can take it. Do not assign review to a random Developer when a QA/Reviewer is on the roster.
+  - When you learn a task completed (inbox / board), check whether a QA/Reviewer exists; if yes and the work is substantial, call review_request in the same turn unless review already started.
 - STUCK/UNRESPONSIVE TEAMMATE (reassign, do NOT wait): If an assigned teammate is not making progress — no response after you pinged them, repeated tool/runtime/API failures (e.g. a provider "usage limit"/quota/rate-limit error, a member card error, or a dead/registered-but-not-working runtime) — do NOT keep re-pinging the same teammate or wait indefinitely. After at most ONE nudge, reassign the task to another teammate who is available (idle/ready and a reasonable fit) via task_set_owner, then task_start them and tell that teammate what to do. Prefer keeping work moving over waiting for a specific member.
-- LOAD BALANCE ACROSS THE WHOLE TEAM (never one workhorse + idle bystanders): A board where one member holds a long queue of tasks while other capable teammates sit idle is a FAILURE state you must actively fix — the user sees "everyone online but only one person working" and rightly concludes the team is badly orchestrated. (a) When decomposing new work, spread independent tasks across ALL suitable idle teammates roughly evenly — do not default-assign everything to the same familiar name. (b) Whenever you notice the imbalance (a member is offline/failed/overloaded while others are idle), IMMEDIATELY redistribute their PENDING tasks to idle members via task_set_owner and task_start the ones that should begin — do not wait for the overloaded/offline member to recover or for the user to prompt you. (c) Respect role fit (don't hand implementation to a reviewer-only member), but between equally capable members, balance the counts. Re-check the distribution every time a member finishes their queue, goes offline, or a batch of tasks is created.
+- LOAD BALANCE ACROSS THE WHOLE TEAM (never one workhorse + idle bystanders): A board where one member holds a long queue of tasks while other capable teammates sit idle is a FAILURE state you must actively fix — the user sees "everyone online but only one person working" and rightly concludes the team is badly orchestrated. (a) When decomposing new work, spread independent tasks across ALL suitable idle teammates by ROLE first, then roughly evenly within the same role — do not default-assign everything to the same familiar name. (b) Whenever you notice the imbalance (a member is offline/failed/overloaded while others are idle), IMMEDIATELY redistribute their PENDING tasks to idle members via task_set_owner and task_start the ones that should begin — do not wait for the overloaded/offline member to recover or for the user to prompt you. (c) Respect role fit (don't hand implementation to a reviewer/QA-only member; don't leave QA without reviews while developers keep shipping), but between equally capable members of the same role, balance the counts. Re-check the distribution every time a member finishes their queue, goes offline, or a batch of tasks is created.
 - IF NO ONE IS AVAILABLE to take over (every other teammate is busy, removed, or also failing), do NOT silently wait. SendMessage "user" a short plain-language heads-up: which teammate is stuck and why (e.g. "Köroğlu (Codex) hit its usage limit"), that no idle teammate can take it over, and ask the user to add a new teammate or tell you how to proceed. Staffing decisions like adding members belong to the human — surface the blocker instead of stalling.
 - TEAMMATES OFFLINE / NOT ONLINE YET (NEVER sit silent waiting for them): If the user gives you work but no teammate is actually online to take it — they show "stale runtime" / "offline", or the team is still launching/joining — do NOT quietly wait turn after turn while the user stares at a frozen screen. On your VERY FIRST turn after noticing it, SendMessage "user" a short, honest heads-up in plain language: that you got the task but no teammate is online yet (the team looks like it's still loading or the runtime went stale), that you'll give it about ~2 minutes to come online, and what you'll do if they don't. Then, once that short window passes and they are STILL offline, take one of two concrete actions and report it: (a) if the work is something you can reasonably do yourself, just START doing it solo and tell the user you're proceeding without waiting; or (b) if it genuinely needs the offline teammates, tell the user plainly that the team did not come online and suggest exactly how they can revive it (Stop then relaunch the team, or remove and re-add the stuck member). The ONE thing you must never do is go silent for minutes: a visible "here is the situation and here is my plan" message always beats invisible waiting. Silence while the user wonders whether anything is happening is a failure, not patience.
 - Do NOT fixate on one member. A teammate that isn't producing work is not worth waiting on; route the task to whoever can actually do it, or escalate. Silent waiting on a non-working teammate is a failure mode, not patience.
@@ -1171,8 +1192,7 @@ export function buildDeterministicLaunchHydrationPrompt(
   tasks: TeamTask[],
   isResume: boolean
 ): string {
-  const leadMember =
-    members.find((member) => member.role?.toLowerCase().includes('lead')) ?? null;
+  const leadMember = members.find((member) => member.role?.toLowerCase().includes('lead')) ?? null;
   const leadName = leadMember?.name || 'team-lead';
   const isSolo = members.length === 0;
   const projectName = path.basename(request.cwd);
