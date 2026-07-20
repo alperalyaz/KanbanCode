@@ -3845,6 +3845,44 @@ export class TeamProvisioningService {
     return { config, teamMeta, metaMembers };
   }
 
+  /**
+   * Durable teammate names for OpenCode lead deliveries. Prefer members.meta,
+   * then config.members. Excludes the lead and reserved "user".
+   */
+  private resolveDurableTeammateRosterForLead(
+    directory: OpenCodeMemberDirectory,
+    leadName: string
+  ): { name: string; role?: string }[] {
+    const normalize = (name: string | undefined | null): string => name?.trim().toLowerCase() ?? '';
+    const leadLower = normalize(leadName);
+    const reserved = new Set(['team-lead', 'user', leadLower].filter((value) => value.length > 0));
+
+    const fromMeta = (directory.metaMembers ?? [])
+      .filter((member) => !member.removedAt)
+      .filter((member) => {
+        const lower = normalize(member.name);
+        return lower.length > 0 && !reserved.has(lower) && !isLeadMember(member);
+      })
+      .map((member) => ({
+        name: member.name.trim(),
+        ...(member.role?.trim() ? { role: member.role.trim() } : {}),
+      }));
+    if (fromMeta.length > 0) {
+      return fromMeta;
+    }
+
+    return (directory.config?.members ?? [])
+      .filter((member) => !member.removedAt)
+      .filter((member) => {
+        const lower = normalize(member.name);
+        return lower.length > 0 && !reserved.has(lower) && !isLeadMember(member);
+      })
+      .map((member) => ({
+        name: member.name.trim(),
+        ...(member.role?.trim() ? { role: member.role.trim() } : {}),
+      }));
+  }
+
   private getRuntimeSnapshotCacheGeneration(teamName: string): number {
     return this.runtimeSnapshotCacheGenerationByTeam.get(teamName) ?? 0;
   }
@@ -8733,6 +8771,20 @@ export class TeamProvisioningService {
     const { canonicalMemberName, laneIdentity, configMember, metaMember, memberRuntimeCwd } =
       identity;
     const normalizedMemberName = input.memberName.trim();
+    const leadMemberForRoster =
+      directory.metaMembers?.find((member) => !member.removedAt && isLeadMember(member)) ??
+      config?.members?.find((member) => !member.removedAt && isLeadMember(member));
+    const leadNameForRoster = leadMemberForRoster?.name?.trim() || 'team-lead';
+    // Prefer full member records (agentType/role). Name-only checks miss renamed
+    // leads and historically missed the inbox alias "lead" before leadDetection
+    // recognized it. Also match the resolved durable lead name so OpenCode lead
+    // deliveries always get the teammate roster.
+    const recipientLooksLikeLead =
+      isLeadMember(configMember ?? metaMember ?? { name: canonicalMemberName }) ||
+      canonicalMemberName.trim().toLowerCase() === leadNameForRoster.trim().toLowerCase();
+    const teammateRosterForLead = recipientLooksLikeLead
+      ? this.resolveDurableTeammateRosterForLead(directory, leadNameForRoster)
+      : undefined;
     if (
       laneIdentity.laneKind === 'secondary' &&
       laneIdentity.laneOwnerProviderId === 'opencode' &&
@@ -8977,6 +9029,9 @@ export class TeamProvisioningService {
             workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
             controlUrl: controlUrl ?? undefined,
             taskRefs: input.taskRefs,
+            ...(teammateRosterForLead && teammateRosterForLead.length > 0
+              ? { teammateRoster: teammateRosterForLead }
+              : {}),
             forceSessionRefreshReason: forceOpenCodeSessionRefreshReason,
           }),
       });
@@ -9581,6 +9636,9 @@ export class TeamProvisioningService {
             workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
             controlUrl: controlUrl ?? undefined,
             taskRefs: input.taskRefs,
+            ...(teammateRosterForLead && teammateRosterForLead.length > 0
+              ? { teammateRoster: teammateRosterForLead }
+              : {}),
             forceSessionRefreshReason: forceOpenCodeSessionRefreshReason,
           }),
       });
