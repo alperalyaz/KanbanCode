@@ -34,9 +34,11 @@ function buildLeadAlertText(alerts: TaskStallAlert[]): string {
     '',
     'ACT NOW, do NOT keep waiting:',
     '- Send the owner at most ONE short nudge asking for a concrete status/next step.',
-    '- If they already went silent, errored, or hit a provider usage/quota/rate limit, do NOT wait: reassign the task to an available (idle/ready) teammate via task_set_owner, then task_start them with clear instructions.',
+    '- If the owner already shows stale runtime / offline / unhealthy on the member card, or already went silent, errored, or hit a provider usage/quota/rate limit, do NOT wait and do NOT nudge again: immediately reassign the task (pending OR in_progress) to an available healthy (idle/ready) teammate via task_set_owner, then task_start them with clear instructions. Never leave healthy idle agents waiting on one red/unhealthy owner.',
+    '- If TODO work is blockedBy this stalled task and healthy idle teammates exist, reassign this blocker first so the frontier can move.',
     '- If no teammate is available to take over, SendMessage "user" a short plain-language heads-up (which task, which owner, why it is stuck) and ask how to proceed.',
     'Silent waiting on a non-working teammate is not acceptable — keep the work moving or escalate to "user".',
+    'The user should not have to ask you to take work off an unhealthy agent — that is your default lead job.',
   ].join('\n');
 }
 

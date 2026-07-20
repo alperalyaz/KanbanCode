@@ -15,6 +15,7 @@ import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { isTeamProvisioningActive, selectTeamTasksForName } from '@renderer/store/slices/teamSlice';
+import { selectTeamDataForName } from '@renderer/store/team/teamDataSelectors';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
 import {
   canMemberShowAttachmentControl,
@@ -288,7 +289,11 @@ export const MessageComposer = ({
   const teamSuggestionDataEnabled = textHasTeamMentionTrigger;
   const slashCommandDataEnabled = textHasSlashCommandTrigger;
 
-  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
+  const teamUserColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
+  const colorMap = useMemo(
+    () => buildMemberColorMap(members, teamUserColor),
+    [members, teamUserColor]
+  );
   const avatarMap = useMemo(() => buildMemberAvatarMap(members), [members]);
 
   const mentionSuggestions = useMemo<MentionSuggestion[]>(

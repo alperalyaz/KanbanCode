@@ -5,6 +5,7 @@ import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo
 import { AnthropicExtraUsageWarning } from '@renderer/components/team/dialogs/AnthropicExtraUsageWarning';
 import { EffortLevelSelector } from '@renderer/components/team/dialogs/EffortLevelSelector';
 import { OpenCodeContextConfigHint } from '@renderer/components/team/dialogs/OpenCodeContextConfigHint';
+import { localizeOpenCodeModelAdvisoryReason } from '@renderer/components/team/dialogs/openCodeModelAdvisoryCopy';
 import {
   formatTeamModelSummary,
   getProviderScopedTeamModelLabel,
@@ -387,41 +388,25 @@ export const MemberDraftRow = ({
       : null;
   const currentModelIssueText =
     modelIssueText ?? selectedModelUnavailableText ?? selectedModelIssueText ?? null;
-  const currentModelAdvisoryText = currentModelIssueText ? null : selectedModelAdvisoryText;
+  const currentModelAdvisoryText = currentModelIssueText
+    ? null
+    : localizeOpenCodeModelAdvisoryReason(selectedModelAdvisoryText, t);
   const hasModelIssue = Boolean(currentModelIssueText);
   const hasModelAdvisory = Boolean(currentModelAdvisoryText);
   const modelButtonDisabled = (lockProviderModel && !canOpenLockedModelPanel) || isRemoved;
-  const modelButtonTitle =
-    [currentModelIssueText ?? currentModelAdvisoryText, modelTooltipText]
-      .filter((message): message is string => Boolean(message))
-      .join('\n') || undefined;
+  // Issue/advisory copy is already rendered inline under the model button.
+  // Keep the hover tooltip for lock/inherit help only — otherwise the same
+  // amber text appears three times (inline + CSS tooltip + native title) and
+  // the CSS tooltip stays stuck open via focus-within after expanding the panel.
+  const modelButtonTitle = modelTooltipText || undefined;
   const modelIssueDescriptionId =
     hasModelIssue || hasModelAdvisory ? `member-${member.id}-model-issue` : undefined;
   const modelHelpDescriptionId = modelTooltipText ? `member-${member.id}-model-help` : undefined;
   const modelButtonDescribedBy =
     [modelIssueDescriptionId, modelHelpDescriptionId].filter(Boolean).join(' ') || undefined;
-  const modelButtonTooltipContent =
-    currentModelIssueText || currentModelAdvisoryText || modelTooltipText ? (
-      <>
-        {currentModelIssueText ? (
-          <span className="block text-red-300">{currentModelIssueText}</span>
-        ) : null}
-        {currentModelAdvisoryText ? (
-          <span className="block text-amber-200">{currentModelAdvisoryText}</span>
-        ) : null}
-        {modelTooltipText ? (
-          <span
-            className={cn(
-              'block',
-              (currentModelIssueText || currentModelAdvisoryText) &&
-                'mt-1 border-t border-white/10 pt-1'
-            )}
-          >
-            {modelTooltipText}
-          </span>
-        ) : null}
-      </>
-    ) : null;
+  const modelButtonTooltipContent = modelTooltipText ? (
+    <span className="block">{modelTooltipText}</span>
+  ) : null;
   const hasCustomProviderOrModel =
     !forceInheritedModelSettings && Boolean(member.providerId || member.model?.trim());
   const showSonnetExtraUsageWarning =
@@ -516,6 +501,7 @@ export const MemberDraftRow = ({
               content={modelButtonTooltipContent}
               title={modelButtonTitle}
               disabled={!modelButtonTooltipContent}
+              dismissOnClick
               className="w-full"
               contentClassName="max-w-64"
             >

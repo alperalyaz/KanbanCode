@@ -556,11 +556,39 @@ function buildAgendaSnapshot(paths, teamName, actor) {
     actionable.sort(compareAgendaItems);
     awareness.sort(compareAgendaItems);
 
+    const boardInventory = {
+      total: items.length,
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+      other: 0,
+      unassigned: 0,
+      invalidOwner: 0,
+      memberOwnedActive: 0,
+    };
+    for (const item of items) {
+      if (item.status === 'pending') boardInventory.pending += 1;
+      else if (item.status === 'in_progress') boardInventory.inProgress += 1;
+      else if (item.status === 'completed') boardInventory.completed += 1;
+      else boardInventory.other += 1;
+
+      if (!normalizeName(item.owner)) boardInventory.unassigned += 1;
+      if (item.reasonCode === 'owner_invalid') boardInventory.invalidOwner += 1;
+      if (
+        item.actionOwner &&
+        item.actionOwner.kind === 'member' &&
+        (item.status === 'pending' || item.status === 'in_progress')
+      ) {
+        boardInventory.memberOwnedActive += 1;
+      }
+    }
+
     return {
       actor,
       actionable,
       awareness,
       anomalies: boardState.anomalies,
+      boardInventory,
       counters: {
         actionable: actionable.length,
         awareness: awareness.length,
@@ -853,10 +881,22 @@ function formatLeadBriefing(paths, teamName) {
   const leadHeaderName = roster.leadHeaderName ? ` for ${roster.leadHeaderName}` : '';
   const snapshot = buildAgendaSnapshot(paths, teamName, { kind: 'lead' });
   const buckets = bucketLeadItems(snapshot.actionable);
+  const inventory = snapshot.boardInventory || {
+    total: 0,
+    pending: 0,
+    inProgress: 0,
+    completed: 0,
+    other: 0,
+    unassigned: 0,
+    invalidOwner: 0,
+    memberOwnedActive: 0,
+  };
   const lines = [
     `Lead queue${leadHeaderName} on team "${teamName}":`,
     `Primary lead queue. Sections below already represent lead-owned actions or watch-only context.`,
+    `This is NOT the full kanban board. Member-owned pending/in_progress tasks are intentionally omitted here.`,
     `Use task_list only for search, filtering, and drill-down inventory lookups.`,
+    `Board inventory (ALL tasks): total=${inventory.total}, pending=${inventory.pending}, in_progress=${inventory.inProgress}, completed=${inventory.completed}, other=${inventory.other}, unassigned=${inventory.unassigned}, invalidOwner=${inventory.invalidOwner}, memberOwnedActive=${inventory.memberOwnedActive}`,
   ];
 
   if (snapshot.anomalies.length > 0) {
@@ -893,7 +933,11 @@ function formatLeadBriefing(paths, teamName) {
   }
 
   if (!renderedAnySection && snapshot.anomalies.length === 0) {
-    lines.push('', 'No lead action items.');
+    lines.push(
+      '',
+      'No lead action items (your oversight queue is empty).',
+      'CRITICAL: This does NOT mean the kanban board is empty. Member-owned work may still exist — see Board inventory above and use task_list before telling the user anything about board emptiness.'
+    );
   }
 
   lines.push(

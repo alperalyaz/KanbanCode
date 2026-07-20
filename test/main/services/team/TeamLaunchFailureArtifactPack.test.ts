@@ -509,6 +509,11 @@ describe('TeamLaunchFailureArtifactPack', () => {
       code: 'process_exited',
     },
     {
+      name: 'codex chatgpt unsupported model',
+      text: `Codex native error: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-5.3-codex' model is not supported when using Codex with a ChatGPT account."}}`,
+      code: 'provider_model_unsupported',
+    },
+    {
       name: 'opencode protocol',
       text: 'OpenCode API error. non_visible_tool_without_task_progress',
       code: 'opencode_protocol',
@@ -521,5 +526,31 @@ describe('TeamLaunchFailureArtifactPack', () => {
         reason: text,
       }).code
     ).toBe(code);
+  });
+
+  it('does not classify Codex ChatGPT model failures as opencode_protocol from MCP tool lists', () => {
+    const classification = classifyLaunchFailureArtifact({
+      teamName: 'codex-takimi',
+      runId: 'run-chatgpt-model',
+      reason: 'launch_progress_failed',
+      cliLogs: JSON.stringify({
+        type: 'system',
+        subtype: 'init',
+        tools: ['mcp__agent-teams__runtime_bootstrap_checkin', 'Task'],
+        model: 'gpt-5.3-codex',
+      }),
+      progress: {
+        runId: 'run-chatgpt-model',
+        teamName: 'codex-takimi',
+        state: 'failed',
+        message: 'Launch failed — API Error',
+        startedAt: '2026-07-20T17:34:56.242Z',
+        updatedAt: '2026-07-20T17:38:12.891Z',
+        error:
+          "The 'gpt-5.3-codex' model is not supported when using Codex with a ChatGPT account.",
+      } as never,
+    });
+
+    expect(classification.code).toBe('provider_model_unsupported');
   });
 });

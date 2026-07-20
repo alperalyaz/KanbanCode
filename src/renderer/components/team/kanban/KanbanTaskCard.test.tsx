@@ -287,6 +287,32 @@ describe('KanbanTaskCard blocked border', () => {
     });
   });
 
+  it('does not treat completed blockers as still blocking on the card', async () => {
+    const completedBlocker = {
+      ...baseTask,
+      id: 'task-2',
+      displayId: 'b150ebbf',
+      subject: 'Already finished blocker',
+      status: 'completed',
+      reviewState: 'approved',
+    } as TeamTaskWithKanban;
+
+    const { host, root } = await renderTaskCard({
+      task: { ...baseTask, blockedBy: ['task-2'] },
+      columnId: 'in_progress',
+      taskMap: new Map([['task-2', completedBlocker]]),
+    });
+
+    const card = host.querySelector('[data-task-id="task-1"]');
+    expect(card?.className).not.toContain('border-yellow-500/30');
+    expect(host.textContent).not.toContain('Blocked by');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it.each(['done', 'approved'] as const)(
     'does not highlight blocked tasks in %s',
     async (columnId) => {

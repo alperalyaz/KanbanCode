@@ -103,6 +103,12 @@ import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { resolveAnthropicLaunchModel } from '@shared/utils/anthropicLaunchModel';
 import { getAnthropicDefaultTeamModel } from '@shared/utils/anthropicModelDefaults';
 import { parseCliArgs } from '@shared/utils/cliArgsParser';
+import {
+  getCodexChatGptOfflineFallbackModel,
+  isCodexChatGptSunsetModel,
+  pickCodexChatGptSafeModel,
+  remapCodexModelForChatGptAccount,
+} from '@shared/utils/codexChatGptSunsetModels';
 import { isUsableCodexModelCatalog } from '@shared/utils/codexModelCatalog';
 import { deriveContextMetrics, inferContextWindowTokens } from '@shared/utils/contextMetrics';
 import { isTeamEffortLevel } from '@shared/utils/effortLevels';
@@ -133,7 +139,7 @@ import {
   normalizeTeamMemberMcpPolicy,
   requiresStrictTeamMemberMcpConfig,
 } from '@shared/utils/teamMemberMcpPolicy';
-import { createCliAutoSuffixNameGuard, parseNumericSuffixName } from '@shared/utils/teamMemberName';
+import { createCliAutoSuffixNameGuard } from '@shared/utils/teamMemberName';
 import {
   inferTeamProviderIdFromModel,
   normalizeOptionalTeamProviderId,
@@ -336,6 +342,7 @@ import {
   isProvisionedButNotAliveFailureReason,
 } from './provisioning/TeamProvisioningLaunchFailurePolicy';
 import {
+  collectMemberNameIdentityAliases,
   isOpenCodeOverlayMemberRemoved,
   matchesExactTeamMemberName,
   matchesMemberNameOrBase,
@@ -436,6 +443,10 @@ import {
   getTeamProviderLabel,
   logRuntimeLaunchSnapshot,
 } from './provisioning/TeamProvisioningRuntimeDiagnostics';
+import {
+  buildUnhealthyOwnerLeadNoticeText,
+  listHealthyTeammateNames,
+} from './stallMonitor/UnhealthyOwnerLeadNotifier';
 import { OpenCodeTaskLogAttributionStore } from './taskLogs/stream/OpenCodeTaskLogAttributionStore';
 import { getCurrentAgentTeamsMcpHttpTransportEvidence } from './AgentTeamsMcpHttpServer';
 import { isAgentTeamsToolUse } from './agentTeamsToolNames';
@@ -454,6 +465,7 @@ import {
 } from './idleNotificationMainProcessSemantics';
 import { withInboxLock } from './inboxLock';
 import { getEffectiveInboxMessageId } from './inboxMessageIdentity';
+import { resolveMemberInboxFileName } from './memberInboxPath';
 import {
   buildProcessBootstrapPendingDiagnostic,
   buildProcessBootstrapTimeoutDiagnostic,
@@ -3448,6 +3460,7 @@ export class TeamProvisioningService {
   private static readonly RETAINED_PROVISIONING_PROGRESS_TTL_MS = 5 * 60_000;
   private static readonly OPENCODE_RUNTIME_DELIVERY_ADVISORY_EVENT_TTL_MS = 24 * 60 * 60_000;
   private static readonly OPENCODE_RUNTIME_DELIVERY_LEAD_NOTICE_TTL_MS = 24 * 60 * 60_000;
+  private static readonly UNHEALTHY_OWNER_LEAD_NOTICE_TTL_MS = 10 * 60_000;
   private static readonly INBOX_RELAY_IN_FLIGHT_TIMEOUT_MS = 2 * 60_000;
 
   private readonly runs = new Map<string, ProvisioningRun>();
@@ -3537,6 +3550,7 @@ export class TeamProvisioningService {
   private readonly openCodeRuntimeDeliveryAdvisoryReviewTimers = new Map<string, NodeJS.Timeout>();
   private readonly openCodeRuntimeDeliveryAdvisoryEventSentAt = new Map<string, number>();
   private readonly openCodeRuntimeDeliveryLeadNoticeSentAt = new Map<string, number>();
+  private readonly unhealthyOwnerLeadNoticeSentAt = new Map<string, number>();
   private readonly openCodeRuntimeDeliveryProofReader = new OpenCodeRuntimeDeliveryProofReader();
   private readonly openCodePromptDeliveryWatchdogQueue: {
     teamName: string;
@@ -3837,6 +3851,44 @@ export class TeamProvisioningService {
       this.membersMetaStore.getMembers(teamName).catch(() => []),
     ]);
     return { config, teamMeta, metaMembers };
+  }
+
+  /**
+   * Durable teammate names for OpenCode lead deliveries. Prefer members.meta,
+   * then config.members. Excludes the lead and reserved "user".
+   */
+  private resolveDurableTeammateRosterForLead(
+    directory: OpenCodeMemberDirectory,
+    leadName: string
+  ): { name: string; role?: string }[] {
+    const normalize = (name: string | undefined | null): string => name?.trim().toLowerCase() ?? '';
+    const leadLower = normalize(leadName);
+    const reserved = new Set(['team-lead', 'user', leadLower].filter((value) => value.length > 0));
+
+    const fromMeta = (directory.metaMembers ?? [])
+      .filter((member) => !member.removedAt)
+      .filter((member) => {
+        const lower = normalize(member.name);
+        return lower.length > 0 && !reserved.has(lower) && !isLeadMember(member);
+      })
+      .map((member) => ({
+        name: member.name.trim(),
+        ...(member.role?.trim() ? { role: member.role.trim() } : {}),
+      }));
+    if (fromMeta.length > 0) {
+      return fromMeta;
+    }
+
+    return (directory.config?.members ?? [])
+      .filter((member) => !member.removedAt)
+      .filter((member) => {
+        const lower = normalize(member.name);
+        return lower.length > 0 && !reserved.has(lower) && !isLeadMember(member);
+      })
+      .map((member) => ({
+        name: member.name.trim(),
+        ...(member.role?.trim() ? { role: member.role.trim() } : {}),
+      }));
   }
 
   private getRuntimeSnapshotCacheGeneration(teamName: string): number {
@@ -4721,7 +4773,13 @@ export class TeamProvisioningService {
                 modelCatalog?.models.map((model) => model.launchModel) ?? modelIds,
               defaultLaunchModel: defaultModel,
             })
-          : defaultModel,
+          : params.providerId === 'codex' &&
+              (providerStatus?.authMethod === 'chatgpt' ||
+                providerStatus?.connection?.codex?.effectiveAuthMode === 'chatgpt' ||
+                providerStatus?.backend?.authMethodDetail === 'chatgpt') &&
+              isCodexChatGptSunsetModel(defaultModel)
+            ? pickCodexChatGptSafeModel([...modelIds], getCodexChatGptOfflineFallbackModel())
+            : defaultModel,
       modelIds,
       modelListParsed,
       modelCatalog,
@@ -4965,13 +5023,50 @@ export class TeamProvisioningService {
     };
 
     const leadFacts = await getFacts(leadProviderId);
+    let launchRequest = params.request;
+    const isLeadCodexChatGptAuth =
+      leadProviderId === 'codex' &&
+      (leadFacts.providerStatus?.authMethod === 'chatgpt' ||
+        leadFacts.providerStatus?.connection?.codex?.effectiveAuthMode === 'chatgpt' ||
+        leadFacts.providerStatus?.backend?.authMethodDetail === 'chatgpt');
+
+    if (isLeadCodexChatGptAuth) {
+      // ChatGPT auth cannot inherit ~/.codex/config.toml defaults like gpt-5.3-codex.
+      // Always pin an explicit ChatGPT-safe --model, including when the UI selected "default".
+      const selection = resolveCodexSelectionFromFacts({
+        selectedModel: launchRequest.model,
+        providerBackendId: launchRequest.providerBackendId,
+        facts: leadFacts,
+      });
+      const safeModel =
+        selection.resolvedLaunchModel?.trim() ||
+        pickCodexChatGptSafeModel(
+          [leadFacts.defaultModel, ...leadFacts.modelIds],
+          getCodexChatGptOfflineFallbackModel()
+        );
+      launchRequest = {
+        ...launchRequest,
+        model: safeModel,
+      };
+    } else if (leadProviderId === 'codex' && isCodexChatGptSunsetModel(launchRequest.model)) {
+      // Auth mode unknown/API-key path: still remap known-sunset IDs when selected explicitly.
+      launchRequest = {
+        ...launchRequest,
+        model:
+          remapCodexModelForChatGptAccount(
+            launchRequest.model,
+            leadFacts.defaultModel ?? getCodexChatGptOfflineFallbackModel()
+          ) ?? getCodexChatGptOfflineFallbackModel(),
+      };
+    }
+
     this.validateRuntimeLaunchSelection({
       actorLabel: 'Team lead',
       providerId: leadProviderId,
-      model: params.request.model,
-      effort: params.request.effort,
-      fastMode: params.request.fastMode,
-      limitContext: params.request.limitContext,
+      model: launchRequest.model,
+      effort: launchRequest.effort,
+      fastMode: launchRequest.fastMode,
+      limitContext: launchRequest.limitContext,
       facts: leadFacts,
     });
 
@@ -4983,13 +5078,13 @@ export class TeamProvisioningService {
         providerId: memberProviderId,
         model: member.model,
         effort: member.effort,
-        limitContext: params.request.limitContext,
+        limitContext: launchRequest.limitContext,
         facts: memberFacts,
       });
     }
 
     return this.buildProviderModelLaunchIdentity({
-      request: params.request,
+      request: launchRequest,
       facts: leadFacts,
     });
   }
@@ -8684,6 +8779,20 @@ export class TeamProvisioningService {
     const { canonicalMemberName, laneIdentity, configMember, metaMember, memberRuntimeCwd } =
       identity;
     const normalizedMemberName = input.memberName.trim();
+    const leadMemberForRoster =
+      directory.metaMembers?.find((member) => !member.removedAt && isLeadMember(member)) ??
+      config?.members?.find((member) => !member.removedAt && isLeadMember(member));
+    const leadNameForRoster = leadMemberForRoster?.name?.trim() || 'team-lead';
+    // Prefer full member records (agentType/role). Name-only checks miss renamed
+    // leads and historically missed the inbox alias "lead" before leadDetection
+    // recognized it. Also match the resolved durable lead name so OpenCode lead
+    // deliveries always get the teammate roster.
+    const recipientLooksLikeLead =
+      isLeadMember(configMember ?? metaMember ?? { name: canonicalMemberName }) ||
+      canonicalMemberName.trim().toLowerCase() === leadNameForRoster.trim().toLowerCase();
+    const teammateRosterForLead = recipientLooksLikeLead
+      ? this.resolveDurableTeammateRosterForLead(directory, leadNameForRoster)
+      : undefined;
     if (
       laneIdentity.laneKind === 'secondary' &&
       laneIdentity.laneOwnerProviderId === 'opencode' &&
@@ -8928,6 +9037,9 @@ export class TeamProvisioningService {
             workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
             controlUrl: controlUrl ?? undefined,
             taskRefs: input.taskRefs,
+            ...(teammateRosterForLead && teammateRosterForLead.length > 0
+              ? { teammateRoster: teammateRosterForLead }
+              : {}),
             forceSessionRefreshReason: forceOpenCodeSessionRefreshReason,
           }),
       });
@@ -9532,6 +9644,9 @@ export class TeamProvisioningService {
             workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
             controlUrl: controlUrl ?? undefined,
             taskRefs: input.taskRefs,
+            ...(teammateRosterForLead && teammateRosterForLead.length > 0
+              ? { teammateRoster: teammateRosterForLead }
+              : {}),
             forceSessionRefreshReason: forceOpenCodeSessionRefreshReason,
           }),
       });
@@ -11670,7 +11785,7 @@ export class TeamProvisioningService {
     }
 
     const matches = expectedMembers.filter((memberName) =>
-      matchesObservedMemberNameForExpected(trimmedCandidate, memberName)
+      matchesObservedMemberNameForExpected(trimmedCandidate, memberName, expectedMembers)
     );
     return matches.length === 1 ? (matches[0] ?? null) : null;
   }
@@ -14190,7 +14305,18 @@ export class TeamProvisioningService {
   ): void {
     if (previous.runtimeAlive === true && next.runtimeAlive !== true) {
       this.pauseMemberTaskActivityForRuntimeLoss(run, memberName, previous, observedAt);
+      void this.notifyLeadAboutUnhealthyOwnerWithActiveWork(run, memberName, next).catch(
+        (error: unknown) =>
+          logger.warn(
+            `[${run.teamName}] failed to notify lead about unhealthy owner ${memberName}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          )
+      );
     } else if (previous.runtimeAlive !== true && next.runtimeAlive === true) {
+      this.unhealthyOwnerLeadNoticeSentAt.delete(
+        `${run.teamName}:${memberName.trim().toLowerCase()}`
+      );
       const nextUpdatedMs = parseOptionalIsoMs(next.updatedAt);
       const previousUpdatedMs = parseOptionalIsoMs(previous.updatedAt);
       const resumeFallbackAt =
@@ -14202,6 +14328,76 @@ export class TeamProvisioningService {
         memberName,
         deriveTaskActivityResumeAt(previous, observedAt, resumeFallbackAt)
       );
+    }
+  }
+
+  private pruneUnhealthyOwnerLeadNoticeDedupe(now: number): void {
+    const ttlMs = TeamProvisioningService.UNHEALTHY_OWNER_LEAD_NOTICE_TTL_MS;
+    for (const [key, sentAt] of this.unhealthyOwnerLeadNoticeSentAt) {
+      if (now - sentAt > ttlMs) {
+        this.unhealthyOwnerLeadNoticeSentAt.delete(key);
+      }
+    }
+  }
+
+  private async notifyLeadAboutUnhealthyOwnerWithActiveWork(
+    run: ProvisioningRun,
+    memberName: string,
+    status: MemberSpawnStatusEntry
+  ): Promise<void> {
+    if (run.processKilled || run.cancelRequested) {
+      return;
+    }
+    const leadName = this.getRunLeadName(run).trim().toLowerCase();
+    const normalizedMember = memberName.trim();
+    if (!normalizedMember || normalizedMember.toLowerCase() === leadName) {
+      return;
+    }
+
+    const noticeKey = `${run.teamName}:${normalizedMember.toLowerCase()}`;
+    const now = Date.now();
+    this.pruneUnhealthyOwnerLeadNoticeDedupe(now);
+    if (this.unhealthyOwnerLeadNoticeSentAt.has(noticeKey)) {
+      return;
+    }
+
+    const tasks = await new TeamTaskReader().getTasks(run.teamName).catch(() => []);
+    const reason =
+      status.hardFailureReason?.trim() ||
+      status.runtimeDiagnostic?.trim() ||
+      status.error?.trim() ||
+      (status.livenessKind ? `liveness=${status.livenessKind}` : null) ||
+      'runtime lost / stale';
+
+    const healthyTeammates = listHealthyTeammateNames({
+      members: run.request.members ?? [],
+      unhealthyMemberName: normalizedMember,
+      isHealthy: (name) => {
+        const entry = run.memberSpawnStatuses.get(name);
+        if (!entry) return false;
+        if (entry.hardFailure === true) return false;
+        if (entry.runtimeAlive !== true) return false;
+        if (entry.status === 'error') return false;
+        return true;
+      },
+    });
+
+    const message = buildUnhealthyOwnerLeadNoticeText({
+      unhealthyMemberName: normalizedMember,
+      reason,
+      ownedTasks: tasks,
+      healthyTeammates,
+    });
+    if (!message) {
+      return;
+    }
+
+    this.unhealthyOwnerLeadNoticeSentAt.set(noticeKey, now);
+    try {
+      await this.sendMessageToRun(run, message);
+    } catch (error) {
+      this.unhealthyOwnerLeadNoticeSentAt.delete(noticeKey);
+      throw error;
     }
   }
 
@@ -16281,7 +16477,12 @@ export class TeamProvisioningService {
     }
 
     for (const [candidateName, metadata] of input.liveRuntimeByMember.entries()) {
-      if (!matchesObservedMemberNameForExpected(candidateName, input.memberName)) {
+      if (
+        !matchesObservedMemberNameForExpected(candidateName, input.memberName, [
+          input.memberName,
+          ...input.liveRuntimeByMember.keys(),
+        ])
+      ) {
         continue;
       }
       if (metadata.backendType === 'in-process') {
@@ -16426,7 +16627,10 @@ export class TeamProvisioningService {
     const liveRuntimeMember =
       liveRuntimeByMember.get(memberName) ??
       [...liveRuntimeByMember.entries()].find(([candidateName]) =>
-        matchesObservedMemberNameForExpected(candidateName, memberName)
+        matchesObservedMemberNameForExpected(candidateName, memberName, [
+          memberName,
+          ...liveRuntimeByMember.keys(),
+        ])
       )?.[1];
     if (
       !replaceExistingRuntime &&
@@ -16694,7 +16898,11 @@ export class TeamProvisioningService {
     if (!run.expectedMembers.includes(memberName)) {
       return false;
     }
-    if (!spawnStatus || spawnStatus.bootstrapConfirmed === true || spawnStatus.hardFailure === true) {
+    if (
+      !spawnStatus ||
+      spawnStatus.bootstrapConfirmed === true ||
+      spawnStatus.hardFailure === true
+    ) {
       return false;
     }
     if (spawnStatus.skippedForLaunch === true) {
@@ -17992,7 +18200,10 @@ export class TeamProvisioningService {
     const liveRuntimeMember =
       liveRuntimeByMember.get(params.memberName) ??
       [...liveRuntimeByMember.entries()].find(([candidateName]) =>
-        matchesObservedMemberNameForExpected(candidateName, params.memberName)
+        matchesObservedMemberNameForExpected(candidateName, params.memberName, [
+          params.memberName,
+          ...liveRuntimeByMember.keys(),
+        ])
       )?.[1];
     return hasOpenCodeRuntimeEntryHandle(liveRuntimeMember);
   }
@@ -18106,7 +18317,10 @@ export class TeamProvisioningService {
     const metadata =
       runtimeByMember.get(memberName) ??
       [...runtimeByMember.entries()].find(([candidateName]) =>
-        matchesObservedMemberNameForExpected(candidateName, memberName)
+        matchesObservedMemberNameForExpected(candidateName, memberName, [
+          memberName,
+          ...runtimeByMember.keys(),
+        ])
       )?.[1];
     const acceptedAtMs = Date.parse(refreshedFirstSpawnAcceptedAt);
     const elapsedMs = Number.isFinite(acceptedAtMs) ? Date.now() - acceptedAtMs : Infinity;
@@ -20031,6 +20245,7 @@ export class TeamProvisioningService {
   }): Promise<TeamCreateRequest['members']> {
     const envByProvider = new Map<TeamProviderId, Promise<ProvisioningEnvResolution>>();
     const defaultModelByProvider = new Map<TeamProviderId, Promise<string>>();
+    const factsByProvider = new Map<TeamProviderId, Promise<RuntimeProviderLaunchFacts>>();
     const normalizedPrimaryProviderId = resolveTeamProviderId(params.primaryProviderId);
 
     const getProvisioningEnv = (providerId: TeamProviderId): Promise<ProvisioningEnvResolution> => {
@@ -20090,10 +20305,89 @@ export class TeamProvisioningService {
       return created;
     };
 
+    const getProviderFacts = (providerId: TeamProviderId): Promise<RuntimeProviderLaunchFacts> => {
+      const cached = factsByProvider.get(providerId);
+      if (cached) {
+        return cached;
+      }
+      const created = (async () => {
+        const envResolution = await getProvisioningEnv(providerId);
+        return this.readRuntimeProviderLaunchFacts({
+          claudePath: params.claudePath,
+          cwd: params.cwd,
+          providerId,
+          env: envResolution.env,
+          providerArgs:
+            params.providerArgsResolver?.({
+              providerId,
+              providerArgs: envResolution.providerArgs ?? [],
+              phase: 'default-model-resolution',
+            }) ??
+            envResolution.providerArgs ??
+            [],
+          limitContext: params.limitContext === true,
+        });
+      })();
+      factsByProvider.set(providerId, created);
+      return created;
+    };
+
+    const isCodexChatGptAuth = async (): Promise<boolean> => {
+      try {
+        const facts = await getProviderFacts('codex');
+        const authMethod =
+          facts.providerStatus?.authMethod ??
+          facts.providerStatus?.connection?.codex?.effectiveAuthMode ??
+          facts.providerStatus?.backend?.authMethodDetail;
+        return authMethod === 'chatgpt';
+      } catch {
+        // If we cannot prove ChatGPT auth, still remap known-sunset models —
+        // launching them with ChatGPT fails hard, while API-key users can reselect.
+        return true;
+      }
+    };
+
     const effectiveMembers: TeamCreateRequest['members'] = [];
     for (const member of params.members) {
-      const effectiveMember = buildEffectiveTeamMemberSpec(member, params.defaults);
+      let effectiveMember = buildEffectiveTeamMemberSpec(member, params.defaults);
       const providerId = normalizeTeamMemberProviderId(effectiveMember.providerId) ?? 'anthropic';
+
+      if (providerId !== 'anthropic' && !effectiveMember.model?.trim()) {
+        effectiveMember = {
+          ...effectiveMember,
+          model: await getResolvedDefaultModel(providerId),
+        };
+      }
+
+      if (providerId === 'codex' && (await isCodexChatGptAuth())) {
+        const facts = await getProviderFacts('codex').catch(() => null);
+        const safeDefault = pickCodexChatGptSafeModel(
+          [facts?.defaultModel, ...(facts?.modelIds ?? [])],
+          getCodexChatGptOfflineFallbackModel()
+        );
+        const currentModel = effectiveMember.model?.trim() ?? '';
+        // Force an explicit ChatGPT-safe model. Leaving "default"/empty lets the
+        // teammate CLI inherit ~/.codex/config.toml (often still gpt-5.3-codex).
+        if (
+          !currentModel ||
+          isDefaultProviderModelSelection(currentModel) ||
+          isCodexChatGptSunsetModel(currentModel)
+        ) {
+          effectiveMember = {
+            ...effectiveMember,
+            model: remapCodexModelForChatGptAccount(currentModel, safeDefault) ?? safeDefault,
+          };
+        }
+      } else if (providerId === 'codex' && isCodexChatGptSunsetModel(effectiveMember.model)) {
+        const facts = await getProviderFacts('codex').catch(() => null);
+        const remapped =
+          remapCodexModelForChatGptAccount(
+            effectiveMember.model,
+            facts?.defaultModel ?? getCodexChatGptOfflineFallbackModel()
+          ) ?? getCodexChatGptOfflineFallbackModel();
+        effectiveMember = { ...effectiveMember, model: remapped };
+      }
+
       if (providerId === 'anthropic' || effectiveMember.model?.trim()) {
         effectiveMembers.push(effectiveMember);
         continue;
@@ -25660,6 +25954,7 @@ export class TeamProvisioningService {
             `Internal note: for task assignments, prefer task_create and rely on the board/runtime notification path instead of sending a separate SendMessage for the same assignment.`,
             `For any MCP board tool call in this turn, teamName MUST be "${teamName}". Never use the lead/member name "${leadName}" as teamName.`,
             `Treat teammate/system/cross-team claims about task, kanban, review, PR, branch, merge, or queue state as unverified until checked. Before confirming, correcting, relaying, or acting on that state, call the relevant source-of-truth tool first (task_get/task_list/review/kanban tooling, or an available repository/GitHub command/tool). If you have not verified it in this turn, say verification is needed instead of stating the claim as fact.`,
+            `When the user asks why work is stuck / not progressing, do NOT invent "board is empty". Call lead_briefing and/or task_list in this turn. "No lead action items" ≠ empty board. If tasks exist, report real owners/status/blockers (including stale runtime / removed owners) and reassign or unblock — never claim sıfır task while inventory shows work.`,
             `A member_work_sync_status call alone is incomplete for Message kind: member_work_sync_nudge. Do not stop until member_work_sync_report succeeds or a real blocker is recorded.`,
             `Use task_create_from_message only for messages below that explicitly say "Eligible for task_create_from_message: yes" and provide a User MessageId. Never use task_create_from_message for teammate messages, system notifications, cross-team messages, or any inbox row that is not explicitly marked eligible.`,
             `If a message below is marked Source: system_notification and its summary looks like "Comment on #...", reply via task_add_comment only when you have a substantive board update (decision, blocker, clarification answer, review result, or concrete next-step change).`,
@@ -26018,7 +26313,9 @@ export class TeamProvisioningService {
     member: string,
     messages: { messageId: string }[]
   ): Promise<void> {
-    const inboxPath = path.join(getTeamsBasePath(), teamName, 'inboxes', `${member}.json`);
+    const inboxDir = path.join(getTeamsBasePath(), teamName, 'inboxes');
+    const inboxFileName = await resolveMemberInboxFileName(inboxDir, member);
+    const inboxPath = path.join(inboxDir, `${inboxFileName}.json`);
 
     await withFileLock(inboxPath, async () => {
       await withInboxLock(inboxPath, async () => {
@@ -26213,15 +26510,19 @@ export class TeamProvisioningService {
         continue;
       }
 
-      const matchedRuntimeNames = [...registeredNames].filter((name) => {
-        if (name === expected) return true;
-        const parsed = parseNumericSuffixName(name);
-        return parsed !== null && parsed.suffix >= 2 && parsed.base === expected;
-      });
+      const matchedRuntimeNames = [...registeredNames].filter((name) =>
+        matchesObservedMemberNameForExpected(name, expected, run.expectedMembers)
+      );
 
       const runtimeAlive =
-        liveAgentNames.has(expected) ||
-        matchedRuntimeNames.some((runtimeName) => liveAgentNames.has(runtimeName));
+        [...liveAgentNames].some((liveName) =>
+          matchesObservedMemberNameForExpected(liveName, expected, run.expectedMembers)
+        ) ||
+        matchedRuntimeNames.some((runtimeName) =>
+          [...liveAgentNames].some((liveName) =>
+            matchesObservedMemberNameForExpected(liveName, runtimeName, run.expectedMembers)
+          )
+        );
 
       // A teammate may intentionally stay silent after bootstrap. If Claude Code
       // registered the runtime and the OS process is still alive, treat it as
@@ -26344,11 +26645,9 @@ export class TeamProvisioningService {
     }
 
     for (const expected of run.expectedMembers) {
-      const matchedRuntimeNames = [...registeredNames].filter((name) => {
-        if (name === expected) return true;
-        const parsed = parseNumericSuffixName(name);
-        return parsed !== null && parsed.suffix >= 2 && parsed.base === expected;
-      });
+      const matchedRuntimeNames = [...registeredNames].filter((name) =>
+        matchesObservedMemberNameForExpected(name, expected, run.expectedMembers)
+      );
 
       if (matchedRuntimeNames.length > 0) {
         continue;
@@ -26453,13 +26752,14 @@ export class TeamProvisioningService {
   ): Promise<Record<string, MemberSpawnStatusEntry>> {
     const runtimeByMember = await this.getLiveTeamAgentRuntimeMetadata(teamName);
     const nextStatuses = { ...statuses };
+    const statusKeys = Object.keys(nextStatuses);
     for (const [memberName, metadata] of runtimeByMember.entries()) {
       const resolvedStatusKey =
         nextStatuses[memberName] != null
           ? memberName
           : (() => {
-              const matches = Object.keys(nextStatuses).filter((candidateName) =>
-                matchesObservedMemberNameForExpected(memberName, candidateName)
+              const matches = statusKeys.filter((candidateName) =>
+                matchesObservedMemberNameForExpected(memberName, candidateName, statusKeys)
               );
               return matches.length === 1 ? matches[0] : null;
             })();
@@ -27579,10 +27879,12 @@ export class TeamProvisioningService {
         : this.shouldPreferCurrentLaunchMemberStatus(trackedStatus, adapterStatus)
           ? adapterStatus
           : (trackedStatus ?? adapterStatus ?? launchStatus);
+      const allExpectedMemberNames = [...metadataByMember.keys()];
       const resolved = resolveTeamMemberRuntimeLiveness({
         teamName,
         memberName,
         agentId: metadata.agentId,
+        allExpectedMemberNames,
         backendType: metadata.backendType,
         providerId: metadata.providerId ?? launchMember?.providerId,
         tmuxPaneId: metadata.tmuxPaneId,
@@ -31705,7 +32007,7 @@ export class TeamProvisioningService {
       };
       const isOpenCodeSecondaryLaneMember = isPersistedOpenCodeSecondaryLaneMember(current);
       const matchedConfigNames = [...configMembers].filter((name) =>
-        matchesObservedMemberNameForExpected(name, expected)
+        matchesObservedMemberNameForExpected(name, expected, persistedMemberNames)
       );
       const configBootstrapRunId = matchedConfigNames
         .map((name) => configBootstrapRunIds.get(name))
@@ -31740,7 +32042,7 @@ export class TeamProvisioningService {
         current.lastHeartbeatAt = current.lastHeartbeatAt ?? bootstrapMember.lastHeartbeatAt;
       }
       const runtimeMetadataCandidates = [...liveRuntimeByMember.entries()].filter(([name]) =>
-        matchesObservedMemberNameForExpected(name, expected)
+        matchesObservedMemberNameForExpected(name, expected, persistedMemberNames)
       );
       const runtimeMetadata =
         runtimeMetadataCandidates.find(([, metadata]) => metadata.alive) ??
@@ -34495,8 +34797,7 @@ export class TeamProvisioningService {
       compact: true,
       providerId:
         currentMembers.find((member) => member.name === leadName)?.providerId ??
-        currentMembers.find((member) => member.role?.toLowerCase().includes('lead'))
-          ?.providerId ??
+        currentMembers.find((member) => member.role?.toLowerCase().includes('lead'))?.providerId ??
         run.request.providerId,
     });
 
@@ -37306,8 +37607,16 @@ export class TeamProvisioningService {
       }
       const nextMissing = new Set<string>();
       for (const member of missing) {
-        const inboxPath = path.join(inboxDir, `${member}.json`);
-        if (!(await this.pathExists(inboxPath))) {
+        const inboxAliases = collectMemberNameIdentityAliases(member, run.expectedMembers);
+        let found = false;
+        for (const alias of inboxAliases) {
+          const inboxPath = path.join(inboxDir, `${alias}.json`);
+          if (await this.pathExists(inboxPath)) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
           nextMissing.add(member);
         }
       }
