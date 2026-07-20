@@ -409,8 +409,9 @@
       "running": "Çalışıyor"
     },
     "telemetry": {
-      "cpu": "CPU",
-      "memory": "Bellek"
+      "cpu": "Yerel CPU",
+      "memory": "Yerel RAM",
+      "hint": "Bu makinedeki süreç yükü — ajan sağlığı değil"
     },
     "tooltips": {
       "deleteTeam": "Ekibi kalıcı sil",
@@ -1625,10 +1626,10 @@
       "worktree": "worktree"
     },
     "runtimeTelemetry": {
-      "title": "Yerel çalışma zamanı yükü",
-      "description": "Yalnızca üst ve alt süreçler. Uzak LLM çıkarımı dahil değildir.",
-      "cpu": "CPU",
-      "memory": "Bellek",
+      "title": "Yerel süreç yükü",
+      "description": "Yalnızca yerel ajan süreç ağacının CPU ve RAM kullanımı. Bu sağlık durumu değildir; uzak LLM kullanımı dahil değildir.",
+      "cpu": "Yerel CPU",
+      "memory": "Yerel RAM",
       "summedRss": "toplam RSS",
       "sharedHost": "Paylaşılan OpenCode ana bilgisayar metriği. Bu üyeye özel değildir.",
       "processTreeCapped": "Süreç ağacı bu örnek için sınırlandırıldı.",

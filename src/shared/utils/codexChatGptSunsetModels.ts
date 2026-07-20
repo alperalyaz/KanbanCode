@@ -33,6 +33,8 @@ export function normalizeCodexModelId(modelId: string | null | undefined): strin
   return modelId?.trim().toLowerCase() ?? '';
 }
 
+type CodexUnavailableModelIds = readonly (string | null | undefined)[] | ReadonlySet<string>;
+
 export function isCodexChatGptSunsetModel(modelId: string | null | undefined): boolean {
   const normalized = normalizeCodexModelId(modelId);
   return normalized.length > 0 && CODEX_CHATGPT_SUNSET_MODELS.has(normalized);
@@ -40,7 +42,7 @@ export function isCodexChatGptSunsetModel(modelId: string | null | undefined): b
 
 export function isCodexChatGptBlockedModel(
   modelId: string | null | undefined,
-  unavailableModelIds?: readonly (string | null | undefined)[] | ReadonlySet<string>
+  unavailableModelIds?: CodexUnavailableModelIds
 ): boolean {
   const trimmed = modelId?.trim() ?? '';
   if (!trimmed || isDefaultProviderModelSelection(trimmed)) {
@@ -73,7 +75,7 @@ export function isCodexChatGptBlockedModel(
 export function remapCodexModelForChatGptAccount(
   modelId: string | null | undefined,
   fallbackModelId: string | null | undefined = getCodexChatGptOfflineFallbackModel(),
-  unavailableModelIds?: readonly (string | null | undefined)[]
+  unavailableModelIds?: CodexUnavailableModelIds
 ): string | null {
   const trimmed = modelId?.trim() ?? '';
   if (!trimmed || isDefaultProviderModelSelection(trimmed)) {
@@ -93,7 +95,7 @@ export function remapCodexModelForChatGptAccount(
 export function pickCodexChatGptSafeModel(
   candidates: Iterable<string | null | undefined>,
   fallbackModelId: string | null | undefined = getCodexChatGptOfflineFallbackModel(),
-  unavailableModelIds?: readonly (string | null | undefined)[]
+  unavailableModelIds?: CodexUnavailableModelIds
 ): string {
   for (const candidate of candidates) {
     const trimmed = candidate?.trim();
@@ -120,7 +122,7 @@ export function resolveCodexChatGptLaunchModel(params: {
     launchModel?: string | null;
     hidden?: boolean;
   }[];
-  unavailableModelIds?: readonly (string | null | undefined)[];
+  unavailableModelIds?: CodexUnavailableModelIds;
 }): string {
   const catalogIds =
     params.catalogModels

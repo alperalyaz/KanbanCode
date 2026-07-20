@@ -4778,7 +4778,7 @@ export class TeamProvisioningService {
                 providerStatus?.connection?.codex?.effectiveAuthMode === 'chatgpt' ||
                 providerStatus?.backend?.authMethodDetail === 'chatgpt') &&
               isCodexChatGptSunsetModel(defaultModel)
-            ? pickCodexChatGptSafeModel(modelIds, getCodexChatGptOfflineFallbackModel())
+            ? pickCodexChatGptSafeModel([...modelIds], getCodexChatGptOfflineFallbackModel())
             : defaultModel,
       modelIds,
       modelListParsed,

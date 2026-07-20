@@ -132,14 +132,26 @@ declare module 'agent-teams-controller' {
     buildProcessProtocolText(teamName: string): string;
   }
 
+  export type MemberMessagingRuntimeProvider = 'native' | 'codex' | 'opencode';
+
   export interface MemberMessagingProtocol {
+    runtimeProvider: MemberMessagingRuntimeProvider;
     sendToolName: string;
     sendToolAliases: readonly string[];
+    sendLeadPhrase: string;
+    crossTeamPhrase: string;
     visibleMessageRule: string;
     taskToolHint: string;
     buildLeadMessageExample(options: {
       teamName: string;
       leadName: string;
+      fromName: string;
+      text: string;
+      summary: string;
+    }): string;
+    buildCrossTeamMessageExample(options: {
+      teamName: string;
+      toTeam: string;
       fromName: string;
       text: string;
       summary: string;
@@ -164,7 +176,7 @@ declare module 'agent-teams-controller' {
 
   export function createController(options: ControllerContextOptions): AgentTeamsController;
   export function createMemberMessagingProtocol(
-    runtimeProvider: 'native' | 'codex' | 'opencode'
+    runtimeProvider: MemberMessagingRuntimeProvider
   ): MemberMessagingProtocol;
 
   export const agentBlocks: AgentBlocksApi;
