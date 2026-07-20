@@ -74,6 +74,10 @@
       "user": "kullanıcı",
       "awaitingApproval": "onay bekleniyor"
     },
+    "liveStatus": {
+      "working": "çalışıyor…",
+      "title": "Canlı durum"
+    },
     "reply": {
       "replyingTo": "Şuna yanıt veriliyor:",
       "action": "Yanıtla"
@@ -112,14 +116,20 @@
       "loadProjectsFailed": "Projeler yüklenemedi"
     },
     "fields": {
-      "color": "Renk (isteğe bağlı)",
+      "color": "İnsan kullanıcı rengi (isteğe bağlı)",
       "description": "Açıklama (isteğe bağlı)",
       "prompt": "Ekip lideri için komut istemi (isteğe bağlı)",
       "teamName": "Ekip adı"
     },
     "launchAfterCreate": {
-      "description": "Ekibi yerel Claude CLI aracılığıyla hemen başlat.",
-      "label": "Oluşturduktan sonra komutu çalıştır"
+      "description": "Ekibi mevcut projede yerel Claude CLI aracılığıyla hemen başlat.",
+      "label": "Oluşturduktan sonra ekibi başlat"
+    },
+    "currentProject": {
+      "label": "{{project}} kullanılıyor",
+      "hint": "Zaten açtığınız klasör. Ekip burada çalışacak — tekrar seçmenize gerek yok.",
+      "useDifferent": "Farklı bir klasör kullan…",
+      "useCurrent": "Mevcut projeyi yeniden kullan"
     },
     "localOnly": "Yalnızca yerel Electron modunda kullanılabilir.",
     "onDisk": "Diskte:",
@@ -141,6 +151,7 @@
       "steps": {
         "name": "Ekibinize ad verin",
         "project": "Proje seçin",
+        "projectCurrent": "Projenizi onaylayın",
         "model": "Modeli onaylayın"
       },
       "description": "Ücretsiz big-pickle modeliyle tek kişilik bir OpenCode ekibiyle başlayın.",
@@ -170,6 +181,7 @@
     "prepare": {
       "unsupportedPreload": "Geçerli preload sürümü team:prepareProvisioning öğesini desteklemiyor. Geliştirme uygulamasını yeniden başlatın.",
       "selectWorkingDirectory": "Başlatma ortamını doğrulamak için bir çalışma dizini seçin.",
+      "usingCurrentProject": "Başlatma ön kontrolü için mevcut proje kullanılıyor ({{project}}).",
       "someProvidersNeedAttention": "Seçili bazı sağlayıcıların ilgilenilmesi gerekiyor.",
       "readyWithNotes": "Seçili tüm sağlayıcılar hazır, notlarla birlikte.",
       "ready": "Seçili tüm sağlayıcılar hazır.",
@@ -215,7 +227,7 @@
       "save": "Kaydet"
     },
     "addMemberLockReason": "Ekip canlıyken yeni takım arkadaşları eklemek için özel Üye ekle iletişim kutusunu kullanın.",
-    "description": "Ekip adını, açıklamasını ve rengini değiştir",
+    "description": "Ekip adını, açıklamasını ve insan kullanıcı rengini değiştir",
     "errors": {
       "changesSavedRefreshFailed": "Ekip değişiklikleri kaydedildi, ancak en son görünüm yenilenemedi: {{message}}",
       "liveRenameBlocked": "Mevcut takım arkadaşları ekip canlıyken yeniden adlandırılamaz. yeniden adlandırılan: {{names}}",
@@ -237,7 +249,8 @@
       "unsupportedMixedPrimaryMutation": "Karışık OpenCode ekiplerinde birincil sahipli takım arkadaşlarında canlı düzenlemeler henüz desteklenmiyor. Ekibi durdurun, kadroyu düzenleyin, ardından yeniden başlatın. Etkilenenler: {{names}}"
     },
     "fields": {
-      "colorOptional": "Renk (isteğe bağlı)",
+      "colorOptional": "İnsan kullanıcı rengi (isteğe bağlı)",
+      "colorHint": "Başlık vurgusu ve senin mesajların için. Ajan noktalarını değiştirmez.",
       "description": "Açıklama",
       "name": "Ad"
     },
@@ -396,8 +409,9 @@
       "running": "Çalışıyor"
     },
     "telemetry": {
-      "cpu": "CPU",
-      "memory": "Bellek"
+      "cpu": "Yerel CPU",
+      "memory": "Yerel RAM",
+      "hint": "Bu makinedeki süreç yükü — ajan sağlığı değil"
     },
     "tooltips": {
       "deleteTeam": "Ekibi kalıcı sil",
@@ -713,17 +727,10 @@
       "copyConversationFailed": "Konuşma kopyalanamadı",
       "expandAll": "Tüm mesajları genişlet",
       "expandSheet": "Sayfayı genişlet",
-      "floatComposer": "Yazma alanını kaydır",
-      "floatMessagesComposer": "Mesaj yazma alanını kaydır",
       "hideSearch": "Aramayı gizle",
       "loadOlder": "Eski mesajları yükle",
       "markAllRead": "Tümünü okundu işaretle",
       "messageActions": "Mesaj eylemleri",
-      "moveMessagesToBottomSheet": "Mesajları alt sayfaya taşı",
-      "moveMessagesToSidebar": "Mesajları kenar çubuğuna taşı",
-      "moveToBottomSheet": "Alt sayfaya taşı",
-      "moveToInline": "Satır içine taşı",
-      "moveToSidebar": "Kenar çubuğuna taşı",
       "panelActions": "Mesaj paneli eylemleri",
       "searchMessages": "Mesajlarda ara"
     },
@@ -783,9 +790,9 @@
     "actionMode": {
       "label": "Eylem modu",
       "ask": "Sor",
-      "delegate": "Devret",
-      "askTooltip": "Salt-okunur tartışma — kod/durum değişikliği veya komut yok",
-      "delegateTooltip": "Takıma devret — lider yönetir, ufak işleri yine kendisi halleder"
+      "delegate": "Görevlendir",
+      "askTooltip": "Salt-okunur tartışma — görev oluşturma, kod/durum değişikliği veya komut yok",
+      "delegateTooltip": "Takıma görevlendir — lider işi böler, kanban görevleri oluşturur ve takım arkadaşlarına atar. Küçük tek adımlı işleri kendisi yapabilir"
     },
     "search": {
       "placeholder": "Ara..."
@@ -923,6 +930,7 @@
     },
     "advisory": {
       "pingNotConfirmed": "Ping onaylanmadı",
+      "compatibilityPending": "Uyumlu, derin doğrulama beklemede",
       "note": "Not"
     },
     "placeholders": {
@@ -1035,8 +1043,8 @@
     },
     "notFound": "Görev bulunamadı",
     "related": {
-      "blockedBy": "Şununla engellendi:",
-      "blocks": "Şunu engelliyor:",
+      "blockedBy": "Şunu bekliyor:",
+      "blocks": "Şunu bekletiyor:",
       "linkedFrom": "Şuradan bağlandı:",
       "links": "Bağlantılar",
       "title": "İlgili görevler"
@@ -1112,8 +1120,8 @@
     "createTask": {
       "assignee": "Atanan kişi",
       "assigneeOptional": "Atanan kişi (isteğe bağlı)",
-      "blockedByOptional": "Engelleyen görevler (isteğe bağlı)",
-      "blockedBySummary": "Görev şununla engellenecek: {{tasks}}",
+      "blockedByOptional": "Beklenen görevler (isteğe bağlı)",
+      "blockedBySummary": "Görev şunu bekleyecek: {{tasks}}",
       "cancel": "İptal",
       "create": "Oluştur",
       "creating": "Oluşturuluyor...",
@@ -1143,8 +1151,8 @@
     },
     "list": {
       "columns": {
-        "blockedBy": "Engelleyen",
-        "blocks": "Engelliyor",
+        "blockedBy": "Bekliyor",
+        "blocks": "Bekletiyor",
         "id": "Kimlik",
         "owner": "Sahip",
         "status": "Durum",
@@ -1415,8 +1423,20 @@
       "teamFallback": "ekip",
       "placeholder": "Bir mesaj yazın... (göndermek için Enter, yeni satır için Shift+Enter)",
       "slashTip": "İpucu: Herhangi bir Claude komutunu çalıştırmak için \"/\" kullanabilirsiniz.",
+      "tipMentions": "İpucu: Üyeler/dosyalar için @, görevler için # kullanın",
+      "tipCreateTask": "İpucu: Kanban'a eklemek için \"görev oluştur\" yazın",
+      "tipDelegate": "İpucu: Ekip işi için Görevlendir modunu seçin — lider görevleri oluşturur ve takım arkadaşlarına atar",
       "charsLeft_few": "{{count}} karakter kaldı",
       "charsLeft_many": "{{count}} karakter kaldı"
+    },
+    "tips": {
+      "mentions": "İpucu: Takım arkadaşlarını anmak veya proje dosyası eklemek için @ kullanın.",
+      "tasks": "İpucu: Mevcut bir kanban görevine bağlanmak için # kullanın.",
+      "slash": "İpucu: Lider slash komutları ve skill'leri için / yazın (lider çevrimiçi olmalı).",
+      "actionMode": "İpucu: Sor = yalnızca konuş. Devret = lider ekibi yönetir. Shift+Tab modları değiştirir.",
+      "recipient": "İpucu: Lidere veya belirli bir takım arkadaşına yazmak için alıcıyı seçin.",
+      "attachments": "İpucu: Dosya eklemek için ataş, yapıştırma veya sürükle-bırak kullanın.",
+      "send": "İpucu: Enter gönderir. Shift+Enter yeni satır ekler."
     },
     "teamSelector": {
       "thisTeam": "Bu ekip",
@@ -1553,23 +1573,23 @@
       "noInput": "Girdi yok"
     },
     "blockingEdge": {
-      "title": "Engelleyen Bağımlılık",
-      "blocks": "engelliyor",
+      "title": "Bekleme Bağımlılığı",
+      "blocks": "bekletiyor",
       "close": "Kapat",
-      "blockingHiddenTasks": "Engelleyen gizli görevler",
-      "blockedHiddenTasks": "Engellenen gizli görevler",
+      "blockingHiddenTasks": "Bekleten gizli görevler",
+      "blockedHiddenTasks": "Bekleyen gizli görevler",
       "links_one": "{{count}} bağlantı",
       "links_other": "{{count}} bağlantı",
-      "hiddenBlockingLinks_one": "{{count}} gizli engelleyen bağlantı",
-      "hiddenBlockingLinks_other": "{{count}} gizli engelleyen bağlantı",
+      "hiddenBlockingLinks_one": "{{count}} gizli bekleten bağlantı",
+      "hiddenBlockingLinks_other": "{{count}} gizli bekleten bağlantı",
       "hiddenTaskStack": "Gizli görev yığını",
       "hiddenTasks_one": "{{count}} gizli görev",
       "hiddenTasks_other": "{{count}} gizli görev",
       "task": "Görev",
-      "openBlockerStack": "Engelleyici yığınını aç",
-      "openBlockedStack": "Engellenen yığınını aç",
-      "openBlockerTask": "Engelleyici görevi aç",
-      "openBlockedTask": "Engellenen görevi aç"
+      "openBlockerStack": "Bekleten yığını aç",
+      "openBlockedStack": "Bekleyen yığını aç",
+      "openBlockerTask": "Bekleten görevi aç",
+      "openBlockedTask": "Bekleyen görevi aç"
     },
     "activityHud": {
       "activity": "Etkinlik",
@@ -1615,10 +1635,10 @@
       "worktree": "worktree"
     },
     "runtimeTelemetry": {
-      "title": "Yerel çalışma zamanı yükü",
-      "description": "Yalnızca üst ve alt süreçler. Uzak LLM çıkarımı dahil değildir.",
-      "cpu": "CPU",
-      "memory": "Bellek",
+      "title": "Yerel süreç yükü",
+      "description": "Yalnızca yerel ajan süreç ağacının CPU ve RAM kullanımı. Bu sağlık durumu değildir; uzak LLM kullanımı dahil değildir.",
+      "cpu": "Yerel CPU",
+      "memory": "Yerel RAM",
       "summedRss": "toplam RSS",
       "sharedHost": "Paylaşılan OpenCode ana bilgisayar metriği. Bu üyeye özel değildir.",
       "processTreeCapped": "Süreç ağacı bu örnek için sınırlandırıldı.",
@@ -2032,8 +2052,8 @@
       "newTaskLogsArriving": "Yeni görev günlükleri geliyor",
       "awaitingUser": "Kullanıcı bekleniyor",
       "awaitingLead": "Lider bekleniyor",
-      "blockedBy": "Şununla engellendi:",
-      "blocks": "Şunu engelliyor:",
+      "blockedBy": "Şunu bekliyor:",
+      "blocks": "Şunu bekletiyor:",
       "start": "Başlat",
       "complete": "Tamamla",
       "approve": "Onayla",

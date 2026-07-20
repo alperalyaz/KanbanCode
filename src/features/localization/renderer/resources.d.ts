@@ -398,6 +398,12 @@ export default interface Resources {
       teammateFallback: 'teammate';
       unassigned: 'Unassigned';
     };
+    mentionable: {
+      tips: {
+        mentions: 'Tip: Use @ for people or files.';
+        tasks: 'Tip: Use # to link an existing task.';
+      };
+    };
     notifications: {
       actions: {
         back: 'Go back';
@@ -2993,6 +2999,10 @@ export default interface Resources {
         title: 'Awaiting replies';
         user: 'user';
       };
+      liveStatus: {
+        title: 'Live status';
+        working: 'working…';
+      };
       rawJson: 'Raw JSON';
       reply: {
         action: 'Reply';
@@ -3215,6 +3225,12 @@ export default interface Resources {
         title: 'Another team "{{team}}" is already running for this working directory';
         workingDirectory: 'Working directory:';
       };
+      currentProject: {
+        hint: 'This is the folder you already opened. The team will run here — you do not need to pick it again.';
+        label: 'Using {{project}}';
+        useCurrent: 'Use the current project again';
+        useDifferent: 'Use a different folder…';
+      };
       defaultDescription: {
         fallback: 'Team for provisioning flow';
         named: '{{teamName}} team for provisioning flow';
@@ -3233,7 +3249,7 @@ export default interface Resources {
         nameLaunching: 'A team with this name is currently launching';
       };
       fields: {
-        color: 'Color (optional)';
+        color: 'Human user color (optional)';
         description: 'Description (optional)';
         prompt: 'Prompt for team lead (optional)';
         teamName: 'Team name';
@@ -3249,11 +3265,12 @@ export default interface Resources {
           model: 'Confirm the model';
           name: 'Name your team';
           project: 'Choose a project';
+          projectCurrent: 'Confirm your project';
         };
       };
       launchAfterCreate: {
-        description: 'Start the team immediately via local Claude CLI.';
-        label: 'Run command after create';
+        description: 'Start the team immediately in the current project via local Claude CLI.';
+        label: 'Start team after create';
       };
       localOnly: 'Available only in local Electron mode.';
       memberModelLockReason: 'This teammate is synced with the lead model. Turn off sync to set a custom provider, model, or effort.';
@@ -3296,6 +3313,7 @@ export default interface Resources {
         selectedProvidersReadyWithNotes: 'Selected providers ready (with notes)';
         someProvidersNeedAttention: 'Some selected providers need attention.';
         unsupportedPreload: 'Current preload version does not support team:prepareProvisioning. Restart the dev app.';
+        usingCurrentProject: 'Using current project ({{project}}) for launch preflight.';
       };
       saved: 'Saved';
       skipPermissions: {
@@ -3399,8 +3417,9 @@ export default interface Resources {
         running: 'Running';
       };
       telemetry: {
-        cpu: 'CPU';
-        memory: 'Memory';
+        cpu: 'Local CPU';
+        hint: 'Process load meters for this machine — not agent health';
+        memory: 'Local RAM';
       };
       tooltips: {
         deleteTeam: 'Delete team permanently';
@@ -3430,7 +3449,7 @@ export default interface Resources {
         save: 'Save';
       };
       addMemberLockReason: 'Use the dedicated Add member dialog to add new teammates while the team is live.';
-      description: 'Change team name, description and color';
+      description: 'Change team name, description, and human-user color';
       errors: {
         changesSavedRefreshFailed: 'Team changes were saved, but failed to refresh the latest view: {{message}}';
         liveRenameBlocked: 'Existing teammates cannot be renamed while the team is live. renamed: {{names}}';
@@ -3452,7 +3471,8 @@ export default interface Resources {
         unsupportedMixedPrimaryMutation: 'Live edits to primary-owned teammates in mixed OpenCode teams are not supported yet. Stop the team, edit the roster, then relaunch. Affected: {{names}}';
       };
       fields: {
-        colorOptional: 'Color (optional)';
+        colorOptional: 'Human user color (optional)';
+        colorHint: 'Used for the team header accent and your messages. Does not change agent dots.';
         description: 'Description';
         name: 'Name';
       };
@@ -4001,14 +4021,14 @@ export default interface Resources {
         wrapLines: 'Wrap lines';
       };
       runtimeTelemetry: {
-        cpu: 'CPU';
-        description: 'Parent and child processes only. Remote LLM inference is not included.';
-        memory: 'Memory';
+        cpu: 'Local CPU';
+        description: 'CPU and RAM of the local agent process tree only. This is not health status, and remote LLM usage is not included.';
+        memory: 'Local RAM';
         processTreeCapped: 'Process tree was capped for this sample.';
         rssHint: 'RSS can include shared pages, so it is best read as a load signal, not exclusive memory.';
         sharedHost: 'Shared OpenCode host metric. It is not exclusive to this member.';
         summedRss: 'summed RSS';
-        title: 'Local runtime load';
+        title: 'Local process load';
       };
       stats: {
         computing: 'Computing stats...';
@@ -4065,6 +4085,9 @@ export default interface Resources {
         crossTeamPlaceholder: 'Cross-team message to {{team}}...';
         placeholder: 'Write a message... (Enter to send, Shift+Enter for new line)';
         slashTip: 'Tip: You can use "/" to run any Claude commands.';
+        tipMentions: 'Tip: Use @ for members/files and # for tasks';
+        tipCreateTask: 'Tip: Mention "create a task" to add it to the kanban';
+        tipDelegate: 'Tip: For team work, select Delegate — the lead creates kanban tasks and assigns teammates';
         teamFallback: 'team';
         teamLaunchingPlaceholder: 'Team is launching... message will be queued for inbox delivery.';
       };
@@ -4098,13 +4121,22 @@ export default interface Resources {
         onlineTitle: 'Online';
         thisTeam: 'This team';
       };
+      tips: {
+        actionMode: 'Tip: Ask = talk only. Delegate = the lead orchestrates the team. Shift+Tab cycles modes.';
+        attachments: 'Tip: Attach files with the paperclip, paste, or drag and drop.';
+        mentions: 'Tip: Use @ to mention teammates or attach project files.';
+        recipient: 'Tip: Choose the recipient to message the lead or a specific teammate.';
+        send: 'Tip: Enter sends. Shift+Enter adds a new line.';
+        slash: 'Tip: Type / to run lead slash commands and skills (lead must be online).';
+        tasks: 'Tip: Use # to link an existing kanban task in your message.';
+      };
     };
     messages: {
       actionMode: {
         ask: 'Ask';
-        askTooltip: 'Read-only discussion — no code/state changes or commands';
+        askTooltip: 'Read-only discussion — no task creation, code/state changes, or commands';
         delegate: 'Delegate';
-        delegateTooltip: 'Delegate to the team — the lead orchestrates and still handles trivial tasks itself';
+        delegateTooltip: 'Assign to the team — the lead breaks work into kanban tasks and assigns teammates. Still handles trivial one-step tasks itself';
         label: 'Action mode';
       };
       actions: {
@@ -4116,17 +4148,10 @@ export default interface Resources {
         copyConversationFailed: 'Could not copy conversation';
         expandAll: 'Expand all messages';
         expandSheet: 'Expand sheet';
-        floatComposer: 'Float composer';
-        floatMessagesComposer: 'Float messages composer';
         hideSearch: 'Hide search';
         loadOlder: 'Load older messages';
         markAllRead: 'Mark all as read';
         messageActions: 'Message actions';
-        moveMessagesToBottomSheet: 'Move messages to bottom sheet';
-        moveMessagesToSidebar: 'Move messages to sidebar';
-        moveToBottomSheet: 'Move to bottom sheet';
-        moveToInline: 'Move to inline';
-        moveToSidebar: 'Move to sidebar';
         panelActions: 'Message panel actions';
         searchMessages: 'Search messages';
       };
@@ -4189,6 +4214,7 @@ export default interface Resources {
     };
     modelSelector: {
       advisory: {
+        compatibilityPending: 'Compatible, deep verification pending';
         note: 'Note';
         pingNotConfirmed: 'Ping not confirmed';
       };

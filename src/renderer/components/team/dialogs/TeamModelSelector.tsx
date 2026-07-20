@@ -67,6 +67,7 @@ import {
 } from 'lucide-react';
 
 import { InlineProviderApiKeyPanel } from './InlineProviderApiKeyPanel';
+import { getOpenCodeModelAdvisoryBadgeLabel } from './openCodeModelAdvisoryCopy';
 
 import type { CodexRuntimeStatus } from '@features/codex-runtime-installer/contracts';
 import type { CliProviderStatus, OpenCodeRuntimeStatus, TeamProviderId } from '@shared/types';
@@ -1608,9 +1609,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
               : null;
   const activeProviderNotice = providerNoticeById?.[effectiveProviderId] ?? null;
   const getModelAdvisoryBadgeLabel = (reason: string | null): string =>
-    reason?.toLowerCase().includes('ping not confirmed')
-      ? t('modelSelector.advisory.pingNotConfirmed')
-      : t('modelSelector.advisory.note');
+    getOpenCodeModelAdvisoryBadgeLabel(reason, t);
   const renderModelOption = (opt: TeamRuntimeModelOption): React.JSX.Element => {
     const modelDisabledReason = getTeamModelUiDisabledReason(
       effectiveProviderId,

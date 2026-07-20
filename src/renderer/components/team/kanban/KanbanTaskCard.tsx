@@ -247,7 +247,14 @@ export const KanbanTaskCard = memo(
     const { isLight } = useTheme();
     const blockedByIds = task.blockedBy?.filter((id) => id.length > 0) ?? [];
     const blocksIds = task.blocks?.filter((id) => id.length > 0) ?? [];
-    const hasBlockedBy = blockedByIds.length > 0;
+    // Only unfinished blockers count as "still blocked". Completed/approved deps stay on the
+    // task record for history, but the card must not look stuck when the blocker is already Done.
+    const activeBlockedByIds = blockedByIds.filter((id) => {
+      const blocker = taskMap.get(id);
+      if (!blocker) return true;
+      return !isTeamTaskFinishedForDependency(blocker);
+    });
+    const hasBlockedBy = activeBlockedByIds.length > 0;
     const hasBlocks = blocksIds.length > 0;
     const shouldHighlightBlocked = hasBlockedBy && columnId !== 'done' && columnId !== 'approved';
     const cardSurfaceClass = isLight ? 'bg-white' : 'bg-[var(--color-surface-raised)]';
@@ -334,7 +341,7 @@ export const KanbanTaskCard = memo(
               <ArrowLeftFromLine size={10} />
               {t('kanban.taskCard.blockedBy')}
             </span>
-            {blockedByIds.map((id) => (
+            {activeBlockedByIds.map((id) => (
               <DependencyBadge
                 key={id}
                 taskId={id}

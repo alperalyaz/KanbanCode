@@ -1053,17 +1053,6 @@ function getCurrentRuntimeOfflineVisualState(
   return null;
 }
 
-function hasStoppedRuntimeLivenessKind(
-  livenessKind: TeamAgentRuntimeEntry['livenessKind'] | undefined
-): boolean {
-  return (
-    livenessKind === 'not_found' ||
-    livenessKind === 'registered_only' ||
-    livenessKind === 'shell_only' ||
-    livenessKind === 'stale_metadata'
-  );
-}
-
 function isCodexNativeProcessTeammate(member: ResolvedTeamMember): boolean {
   if (isLeadMember(member)) {
     return false;
@@ -1094,6 +1083,74 @@ function hasSpawnRuntimeLiveClaim({
     spawnLaunchState === 'confirmed_alive' ||
     spawnRuntimeAlive === true ||
     spawnBootstrapConfirmed === true
+  );
+}
+
+/**
+ * Soft probe gaps (missing pid/RSS, stale metadata, temporary alive=false) are
+ * noisy on Codex/native runtimes and must not read as "agent is dead/red".
+ */
+export function isSoftMemberRuntimeProbeGap({
+  member,
+  spawnStatus,
+  spawnLaunchState,
+  spawnRuntimeAlive,
+  spawnBootstrapConfirmed,
+  spawnEntry,
+  runtimeEntry,
+}: {
+  member: ResolvedTeamMember;
+  spawnStatus?: MemberSpawnStatus;
+  spawnLaunchState?: MemberLaunchState;
+  spawnRuntimeAlive?: boolean;
+  spawnBootstrapConfirmed?: boolean;
+  spawnEntry?: MemberSpawnStatusEntry;
+  runtimeEntry?: TeamAgentRuntimeEntry;
+}): boolean {
+  if (spawnEntry?.hardFailure === true || spawnStatus === 'error') {
+    return false;
+  }
+  if (
+    spawnEntry?.runtimeDiagnosticSeverity === 'error' ||
+    runtimeEntry?.runtimeDiagnosticSeverity === 'error'
+  ) {
+    return false;
+  }
+  if (
+    spawnLaunchState === 'failed_to_start' ||
+    spawnLaunchState === 'skipped_for_launch' ||
+    spawnStatus === 'offline' ||
+    spawnStatus === 'skipped'
+  ) {
+    return false;
+  }
+
+  // A previously verified runtime process that is now dead is a hard offline signal.
+  if (runtimeEntry?.alive === false && runtimeEntry.livenessKind === 'runtime_process') {
+    return false;
+  }
+
+  const hasSpawnLiveClaim = hasSpawnRuntimeLiveClaim({
+    spawnStatus,
+    spawnLaunchState,
+    spawnRuntimeAlive,
+    spawnBootstrapConfirmed: spawnBootstrapConfirmed ?? spawnEntry?.bootstrapConfirmed,
+  });
+
+  return (
+    runtimeEntry?.livenessKind === 'shell_only' ||
+    spawnEntry?.livenessKind === 'shell_only' ||
+    runtimeEntry?.livenessKind === 'registered_only' ||
+    spawnEntry?.livenessKind === 'registered_only' ||
+    runtimeEntry?.livenessKind === 'stale_metadata' ||
+    spawnEntry?.livenessKind === 'stale_metadata' ||
+    runtimeEntry?.livenessKind === 'not_found' ||
+    spawnEntry?.livenessKind === 'not_found' ||
+    runtimeEntry?.alive === false ||
+    spawnRuntimeAlive === false ||
+    (isCodexNativeProcessTeammate(member) &&
+      !hasLiveRuntimeProcessEvidence(runtimeEntry) &&
+      (hasSpawnLiveClaim || runtimeEntry == null))
   );
 }
 
@@ -1200,33 +1257,42 @@ export function shouldDisplayMemberCurrentTask({
   ) {
     return false;
   }
-  if (
-    !useBootstrapConfirmedVisualState &&
-    (runtimeEntry?.livenessKind === 'shell_only' ||
-      spawnEntry?.livenessKind === 'shell_only' ||
-      runtimeEntry?.livenessKind === 'registered_only' ||
-      spawnEntry?.livenessKind === 'registered_only' ||
-      runtimeEntry?.livenessKind === 'stale_metadata' ||
-      spawnEntry?.livenessKind === 'stale_metadata' ||
-      runtimeEntry?.livenessKind === 'not_found' ||
-      spawnEntry?.livenessKind === 'not_found')
-  ) {
-    return false;
-  }
   if (runtimeEntry?.runtimeDiagnosticSeverity === 'error') {
     return false;
   }
   if (spawnEntry?.runtimeDiagnosticSeverity === 'error') {
     return false;
   }
-  if (runtimeEntry?.alive === false && !useBootstrapConfirmedVisualState) {
+  if (unsafeProvisionedButNotAliveEvidence) {
     return false;
   }
-  if (effectiveSpawnRuntimeAlive === false) {
-    return false;
+
+  // Soft runtime gaps (stale metadata, missing Codex pid/RSS, temporary alive=false)
+  // must not hide board work. Kanban IN PROGRESS / review ownership is the source of
+  // truth for "this agent is working"; process health stays on the status badge.
+  const softRuntimeGap = isSoftMemberRuntimeProbeGap({
+    member,
+    spawnStatus: effectiveSpawnStatus,
+    spawnLaunchState: effectiveSpawnLaunchState,
+    spawnRuntimeAlive: effectiveSpawnRuntimeAlive,
+    spawnBootstrapConfirmed: spawnEntry?.bootstrapConfirmed,
+    spawnEntry,
+    runtimeEntry,
+  });
+
+  const hasSpawnLiveClaim = hasSpawnRuntimeLiveClaim({
+    spawnStatus: effectiveSpawnStatus,
+    spawnLaunchState: effectiveSpawnLaunchState,
+    spawnRuntimeAlive: effectiveSpawnRuntimeAlive,
+    spawnBootstrapConfirmed: spawnEntry?.bootstrapConfirmed,
+  });
+
+  if (softRuntimeGap) {
+    return hasSpawnLiveClaim || Boolean(member.currentTaskId);
   }
+
   if (isCodexNativeProcessTeammate(member) && !hasLiveRuntimeProcessEvidence(runtimeEntry)) {
-    return false;
+    return hasSpawnLiveClaim || Boolean(member.currentTaskId);
   }
   return true;
 }
@@ -1632,8 +1698,40 @@ export function buildMemberLaunchPresentation({
     }
   }
 
-  const launchStatusLabel = getMemberLaunchStatusLabel(launchVisualState);
-  const launchVisualStateDotClass = getLaunchVisualStateDotClass(launchVisualState);
+  const softProbeOnly =
+    launchVisualState === 'stale_runtime' &&
+    isSoftMemberRuntimeProbeGap({
+      member,
+      spawnStatus: visualSpawnStatus,
+      spawnLaunchState: visualSpawnLaunchState,
+      spawnRuntimeAlive: visualSpawnRuntimeAlive,
+      spawnBootstrapConfirmed,
+      spawnEntry: {
+        status: visualSpawnStatus ?? 'waiting',
+        updatedAt: spawnUpdatedAt ?? '',
+        launchState: visualSpawnLaunchState ?? 'starting',
+        runtimeAlive: visualSpawnRuntimeAlive,
+        bootstrapConfirmed: spawnBootstrapConfirmed,
+        bootstrapStalled: spawnBootstrapStalled,
+        agentToolAccepted: spawnAgentToolAccepted,
+        hardFailure: spawnHardFailure,
+        hardFailureReason: spawnHardFailureReason,
+        error: spawnError,
+        runtimeDiagnostic: spawnRuntimeDiagnostic,
+        livenessKind: spawnLivenessKind,
+        runtimeDiagnosticSeverity: spawnRuntimeDiagnosticSeverity,
+        firstSpawnAcceptedAt: spawnFirstSpawnAcceptedAt,
+        livenessSource: spawnLivenessSource,
+      },
+      runtimeEntry: visualRuntimeEntry,
+    });
+
+  const launchStatusLabel = softProbeOnly
+    ? 'runtime probe stale'
+    : getMemberLaunchStatusLabel(launchVisualState);
+  const launchVisualStateDotClass = softProbeOnly
+    ? 'bg-amber-400'
+    : getLaunchVisualStateDotClass(launchVisualState);
   const shouldShowLaunchStatusAsPresence =
     launchVisualState === 'queued' ||
     launchVisualState === 'starting_stale' ||
@@ -1708,10 +1806,16 @@ interface MemberAvatarInput {
  * Active members receive colors sequentially from MEMBER_COLOR_PALETTE,
  * which is pre-ordered for maximum visual contrast between consecutive entries.
  * If a member has a stored color that hasn't been assigned yet, it is used instead.
- * Maps "user" to a reserved color.
+ * Maps "user" to the team's chosen color when provided, otherwise the reserved gray.
  */
-export function buildMemberColorMap(members: MemberColorInput[]): Map<string, string> {
-  return buildTeamMemberColorMap(members, { preferProvidedColors: true });
+export function buildMemberColorMap(
+  members: MemberColorInput[],
+  userColor?: string
+): Map<string, string> {
+  return buildTeamMemberColorMap(members, {
+    preferProvidedColors: true,
+    userColor,
+  });
 }
 
 export function buildMemberAvatarMap(members: readonly MemberAvatarInput[]): Map<string, string> {

@@ -5,6 +5,7 @@ import { cn } from '@renderer/lib/utils';
 
 interface FirstRunCreateStepIndicatorProps {
   currentStep: 1 | 2 | 3;
+  hasCurrentProject?: boolean;
   className?: string;
 }
 
@@ -16,6 +17,7 @@ const STEPS = [
 
 export function FirstRunCreateStepIndicator({
   currentStep,
+  hasCurrentProject = false,
   className,
 }: Readonly<FirstRunCreateStepIndicatorProps>): React.JSX.Element {
   const { t } = useAppTranslation('team');
@@ -31,6 +33,16 @@ export function FirstRunCreateStepIndicator({
         {STEPS.map((step) => {
           const active = step.id === currentStep;
           const complete = step.id < currentStep;
+          const stepLabel =
+            step.key === 'name'
+              ? t('create.firstRun.steps.name')
+              : step.key === 'model'
+                ? t('create.firstRun.steps.model')
+                : t(
+                    hasCurrentProject
+                      ? 'create.firstRun.steps.projectCurrent'
+                      : 'create.firstRun.steps.project'
+                  );
           return (
             <li
               key={step.id}
@@ -43,8 +55,7 @@ export function FirstRunCreateStepIndicator({
                     : 'border-border bg-surface-overlay text-text-muted'
               )}
             >
-              <span className="font-semibold">{step.id}.</span>{' '}
-              {t(`create.firstRun.steps.${step.key}`)}
+              <span className="font-semibold">{step.id}.</span> {stepLabel}
             </li>
           );
         })}

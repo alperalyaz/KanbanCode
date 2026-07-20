@@ -1170,6 +1170,9 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     expect(sentText).toContain('Include relayOfMessageId="msg-1"');
     expect(sentText).toContain('Action mode for this message: delegate.');
     expect(sentText).toContain('Action mode DELEGATE is orchestration-only');
+    expect(sentText).toContain(
+      'Only treat the team as solo when the durable roster truly has zero teammates.'
+    );
     expect(sentText).not.toContain('If this delivered message assigns implementation');
     expect(sentText).toContain('You must not end this turn empty.');
     expect(sentText).toContain('<opencode_delivery_context>');
@@ -1179,6 +1182,50 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     expect(sentText).not.toContain('The inbound app messageId is');
     expect(sentText).toContain('Do not use SendMessage or runtime_deliver_message');
     expect(sentText).toContain('never use #00000000');
+  });
+
+  it('injects durable teammate roster into OpenCode lead DELEGATE deliveries', async () => {
+    const sendOpenCodeTeamMessage = vi.fn<
+      NonNullable<OpenCodeTeamRuntimeBridgePort['sendOpenCodeTeamMessage']>
+    >(async () => ({
+      accepted: true,
+      sessionId: 'oc-session-lead',
+      memberName: 'team-lead',
+      runtimePid: 123,
+      runtimePromptMessageId: 'msg_prompt_lead',
+      diagnostics: [],
+    }));
+    const adapter = new OpenCodeTeamRuntimeAdapter(
+      bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
+        sendOpenCodeTeamMessage,
+      })
+    );
+
+    await expect(
+      adapter.sendMessageToMember({
+        runId: 'run-1',
+        teamName: 'team-a',
+        laneId: 'primary:opencode',
+        memberName: 'team-lead',
+        cwd: '/repo',
+        text: 'delege etsene, ekibe ajan ekledik',
+        messageId: 'msg-lead-1',
+        replyRecipient: 'user',
+        actionMode: 'delegate',
+        teammateRoster: [
+          { name: 'alice', role: 'implementer' },
+          { name: 'bob', role: 'reviewer' },
+        ],
+      })
+    ).resolves.toMatchObject({ ok: true, memberName: 'team-lead' });
+
+    const sentText = sendOpenCodeTeamMessage.mock.calls[0]?.[0]?.text ?? '';
+    expect(sentText).toContain(
+      'Current durable team roster (authoritative for this turn): alice (implementer), bob (reviewer).'
+    );
+    expect(sentText).toContain('This team is NOT in solo mode.');
+    expect(sentText).toContain('Never invent a solo-team limitation while that roster lists teammates.');
+    expect(sentText).toContain('create board tasks with owners from the durable roster above');
   });
 
   it('uses observed settlement for member-work-sync nudges so turn-settled can drive reconcile', async () => {

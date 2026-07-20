@@ -1510,8 +1510,8 @@ export const TeamDetailView = memo(function TeamDetailView({
     });
   }, [hasSelectedTeamData, leadBranch, members, trackedBranches]);
   const resolvedMemberColorMap = useMemo(
-    () => buildMemberColorMap(membersWithLiveBranches),
-    [membersWithLiveBranches]
+    () => buildMemberColorMap(membersWithLiveBranches, data?.config.color),
+    [membersWithLiveBranches, data?.config.color]
   );
 
   // Filter sessions to team-only using sessionHistory + leadSessionId
@@ -2663,7 +2663,10 @@ export const TeamDetailView = memo(function TeamDetailView({
                     </div>
                   }
                   action={
-                    <div className="runtime-telemetry-legend flex items-center gap-3 pr-3 text-[11px] font-medium leading-none text-[var(--color-text-muted)] opacity-0 transition-opacity duration-150">
+                    <div
+                      className="runtime-telemetry-legend flex items-center gap-3 pr-3 text-[11px] font-medium leading-none text-[var(--color-text-muted)] opacity-0 transition-opacity duration-150"
+                      title={t('detail.telemetry.hint')}
+                    >
                       <span className="flex items-center gap-1.5">
                         <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.3)]" />
                         {t('detail.telemetry.memory')}

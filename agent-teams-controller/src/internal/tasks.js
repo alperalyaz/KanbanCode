@@ -784,11 +784,11 @@ function buildMemberTaskProtocol(teamName, messagingProtocol = createMemberMessa
    - Never do comment-driven implementation/fix work while the task is still shown as pending, review, completed, or approved.
    - After task_complete, send a notification to your team lead via ${messagingProtocol.sendLeadPhrase}. Use the comment.id you saved earlier (first 8 characters). Your message must include: (a) which task is done, (b) a brief summary of the outcome (2-4 sentences), (c) a pointer to the full comment so the lead can fetch it, (d) what you will do next. Do NOT duplicate the entire results.
      Example: ${notifyLeadExample}${runtimeVisibleMessageRule}${runtimeTaskToolHint}
-   - After task_complete, call review_request ONLY when review is explicitly expected for THIS task and a concrete reviewer is already known.
+   - After task_complete, call review_request when a concrete reviewer is known OR when the team roster includes a QA/Reviewer role member (prefer QA, then Reviewer). Pass that member as reviewer.
      Example:
      { teamName: "${teamName}", taskId: "<taskId>", from: "<your-name>", reviewer: "<reviewer-name>" }
-     Do NOT infer mandatory review just from free-form teammate roles like "reviewer", "qa", or "tech-lead".
-     If review is not explicitly requested yet or the reviewer is still undecided, leave the task completed and wait.
+     If the roster has no QA/Reviewer and review was not requested, leave the task completed and wait.
+     Do NOT invent a random developer as reviewer when a QA/Reviewer exists on the roster.
 3b. When you BEGIN reviewing a task, FIRST call review_start to ensure it appears in the REVIEW column:
    { teamName: "${teamName}", taskId: "<taskId>", from: "<your-name>" }
    This is MANDATORY before review_approve or review_request_changes. Without this step, the kanban board may not show the task in REVIEW during your review.

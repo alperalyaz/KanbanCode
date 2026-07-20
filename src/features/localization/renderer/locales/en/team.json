@@ -74,6 +74,10 @@
       "user": "user",
       "awaitingApproval": "awaiting approval"
     },
+    "liveStatus": {
+      "working": "working…",
+      "title": "Live status"
+    },
     "reply": {
       "replyingTo": "Replying to",
       "action": "Reply"
@@ -112,14 +116,20 @@
       "loadProjectsFailed": "Failed to load projects"
     },
     "fields": {
-      "color": "Color (optional)",
+      "color": "Human user color (optional)",
       "description": "Description (optional)",
       "prompt": "Prompt for team lead (optional)",
       "teamName": "Team name"
     },
     "launchAfterCreate": {
-      "description": "Start the team immediately via local Claude CLI.",
-      "label": "Run command after create"
+      "description": "Start the team immediately in the current project via local Claude CLI.",
+      "label": "Start team after create"
+    },
+    "currentProject": {
+      "label": "Using {{project}}",
+      "hint": "This is the folder you already opened. The team will run here — you do not need to pick it again.",
+      "useDifferent": "Use a different folder…",
+      "useCurrent": "Use the current project again"
     },
     "localOnly": "Available only in local Electron mode.",
     "onDisk": "On disk:",
@@ -141,6 +151,7 @@
       "steps": {
         "name": "Name your team",
         "project": "Choose a project",
+        "projectCurrent": "Confirm your project",
         "model": "Confirm the model"
       },
       "description": "Start with a solo OpenCode team on the free big-pickle model.",
@@ -170,6 +181,7 @@
     "prepare": {
       "unsupportedPreload": "Current preload version does not support team:prepareProvisioning. Restart the dev app.",
       "selectWorkingDirectory": "Select a working directory to validate the launch environment.",
+      "usingCurrentProject": "Using current project ({{project}}) for launch preflight.",
       "someProvidersNeedAttention": "Some selected providers need attention.",
       "readyWithNotes": "All selected providers are ready, with notes.",
       "ready": "All selected providers are ready.",
@@ -215,7 +227,7 @@
       "save": "Save"
     },
     "addMemberLockReason": "Use the dedicated Add member dialog to add new teammates while the team is live.",
-    "description": "Change team name, description and color",
+    "description": "Change team name, description, and human-user color",
     "errors": {
       "changesSavedRefreshFailed": "Team changes were saved, but failed to refresh the latest view: {{message}}",
       "liveRenameBlocked": "Existing teammates cannot be renamed while the team is live. renamed: {{names}}",
@@ -237,7 +249,8 @@
       "unsupportedMixedPrimaryMutation": "Live edits to primary-owned teammates in mixed OpenCode teams are not supported yet. Stop the team, edit the roster, then relaunch. Affected: {{names}}"
     },
     "fields": {
-      "colorOptional": "Color (optional)",
+      "colorOptional": "Human user color (optional)",
+      "colorHint": "Used for the team header accent and your messages. Does not change agent dots.",
       "description": "Description",
       "name": "Name"
     },
@@ -396,8 +409,9 @@
       "running": "Running"
     },
     "telemetry": {
-      "cpu": "CPU",
-      "memory": "Memory"
+      "cpu": "Local CPU",
+      "memory": "Local RAM",
+      "hint": "Process load meters for this machine — not agent health"
     },
     "tooltips": {
       "deleteTeam": "Delete team permanently",
@@ -714,17 +728,10 @@
       "copyConversationFailed": "Could not copy conversation",
       "expandAll": "Expand all messages",
       "expandSheet": "Expand sheet",
-      "floatComposer": "Float composer",
-      "floatMessagesComposer": "Float messages composer",
       "hideSearch": "Hide search",
       "loadOlder": "Load older messages",
       "markAllRead": "Mark all as read",
       "messageActions": "Message actions",
-      "moveMessagesToBottomSheet": "Move messages to bottom sheet",
-      "moveMessagesToSidebar": "Move messages to sidebar",
-      "moveToBottomSheet": "Move to bottom sheet",
-      "moveToInline": "Move to inline",
-      "moveToSidebar": "Move to sidebar",
       "panelActions": "Message panel actions",
       "searchMessages": "Search messages"
     },
@@ -785,8 +792,8 @@
       "label": "Action mode",
       "ask": "Ask",
       "delegate": "Delegate",
-      "askTooltip": "Read-only discussion — no code/state changes or commands",
-      "delegateTooltip": "Delegate to the team — the lead orchestrates and still handles trivial tasks itself"
+      "askTooltip": "Read-only discussion — no task creation, code/state changes, or commands",
+      "delegateTooltip": "Assign to the team — the lead breaks work into kanban tasks and assigns teammates. Still handles trivial one-step tasks itself"
     },
     "search": {
       "placeholder": "Search..."
@@ -924,6 +931,7 @@
     },
     "advisory": {
       "pingNotConfirmed": "Ping not confirmed",
+      "compatibilityPending": "Compatible, deep verification pending",
       "note": "Note"
     },
     "placeholders": {
@@ -1416,8 +1424,20 @@
       "teamFallback": "team",
       "placeholder": "Write a message... (Enter to send, Shift+Enter for new line)",
       "slashTip": "Tip: You can use \"/\" to run any Claude commands.",
+      "tipMentions": "Tip: Use @ for members/files and # for tasks",
+      "tipCreateTask": "Tip: Mention \"create a task\" to add it to the kanban",
+      "tipDelegate": "Tip: For team work, select Delegate — the lead creates kanban tasks and assigns teammates",
       "charsLeft_few": "{{count}} chars left",
       "charsLeft_many": "{{count}} chars left"
+    },
+    "tips": {
+      "mentions": "Tip: Use @ to mention teammates or attach project files.",
+      "tasks": "Tip: Use # to link an existing kanban task in your message.",
+      "slash": "Tip: Type / to run lead slash commands and skills (lead must be online).",
+      "actionMode": "Tip: Ask = talk only. Delegate = the lead orchestrates the team. Shift+Tab cycles modes.",
+      "recipient": "Tip: Choose the recipient to message the lead or a specific teammate.",
+      "attachments": "Tip: Attach files with the paperclip, paste, or drag and drop.",
+      "send": "Tip: Enter sends. Shift+Enter adds a new line."
     },
     "teamSelector": {
       "thisTeam": "This team",
@@ -1616,10 +1636,10 @@
       "worktree": "worktree"
     },
     "runtimeTelemetry": {
-      "title": "Local runtime load",
-      "description": "Parent and child processes only. Remote LLM inference is not included.",
-      "cpu": "CPU",
-      "memory": "Memory",
+      "title": "Local process load",
+      "description": "CPU and RAM of the local agent process tree only. This is not health status, and remote LLM usage is not included.",
+      "cpu": "Local CPU",
+      "memory": "Local RAM",
       "summedRss": "summed RSS",
       "sharedHost": "Shared OpenCode host metric. It is not exclusive to this member.",
       "processTreeCapped": "Process tree was capped for this sample.",

@@ -1917,12 +1917,20 @@ describe('agent-teams-controller API', () => {
       'Primary lead queue. Sections below already represent lead-owned actions or watch-only context.'
     );
     expect(leadBriefing).toContain(
+      'This is NOT the full kanban board. Member-owned pending/in_progress tasks are intentionally omitted here.'
+    );
+    expect(leadBriefing).toContain(
       'Use task_list only for search, filtering, and drill-down inventory lookups.'
     );
+    expect(leadBriefing).toMatch(
+      /Board inventory \(ALL tasks\): total=3, pending=\d+, in_progress=\d+, completed=\d+/
+    );
+    expect(leadBriefing).toContain('memberOwnedActive=');
     expect(leadBriefing).toContain('Needs owner assignment:');
     expect(leadBriefing).toContain(`#${unassignedTask.displayId}`);
     expect(leadBriefing).toContain('Lead-owned follow-up:');
     expect(leadBriefing).toContain(`#${reviewTask.displayId}`);
+    expect(leadBriefing).not.toContain(`#${queuedTask.displayId}`);
 
     const reviewInventory = controller.tasks.listTaskInventory({ reviewState: 'review' });
     expect(reviewInventory).toHaveLength(1);
@@ -1933,6 +1941,34 @@ describe('agent-teams-controller API', () => {
       status: 'pending',
     });
     expect(ownerPendingInventory.map((task) => task.id)).toEqual([queuedTask.id]);
+  });
+
+  it('does not describe an empty board when lead queue is empty but member work exists', async () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+
+    controller.tasks.createTask({
+      subject: 'Member owned pending work',
+      owner: 'bob',
+      notifyOwner: false,
+    });
+    controller.tasks.createTask({
+      subject: 'Member owned in progress work',
+      owner: 'bob',
+      status: 'in_progress',
+      notifyOwner: false,
+    });
+
+    const leadBriefing = await controller.tasks.leadBriefing();
+    expect(leadBriefing).toContain('Board inventory (ALL tasks): total=2');
+    expect(leadBriefing).toContain('pending=1');
+    expect(leadBriefing).toContain('in_progress=1');
+    expect(leadBriefing).toContain('memberOwnedActive=2');
+    expect(leadBriefing).toContain('No lead action items (your oversight queue is empty).');
+    expect(leadBriefing).toContain(
+      'This does NOT mean the kanban board is empty. Member-owned work may still exist'
+    );
+    expect(leadBriefing).not.toMatch(/\nNo lead action items\.\n/);
   });
 
   it('uses legacy kanban reviewer as a migration fallback for active review tasks', async () => {

@@ -32,10 +32,11 @@ const ACTION_MODE_BLOCKS: Record<AgentActionMode, string[]> = {
     '- HARD RULE: no actionable work without a board card first (including small ops like git push, run tests, rename a file). Pure chat may stay off-board; everything else must be a task.',
     '- HARD RULE: never create-and-start only one task per teammate leaving TODO empty. Always leave visible pending follow-ups in TODO.',
     '- In this mode, do NOT inspect code, do root-cause research, run project commands, or spend time narrowing scope yourself before delegating unless the human explicitly asked you to do that work yourself, or you are truly in SOLO MODE.',
-    '- If the request is underspecified, create one coarse investigation/triage task in pending/TODO for the most relevant teammate PLUS additional pending follow-up placeholders where known; that teammate should inspect the codebase, refine scope, and add more pending tasks. If scope is already clear, create the full pending backlog yourself before any task_start.',
+    '- If the request is a clear but technically underspecified complete ask, create one coarse investigation/triage task in pending/TODO for the most relevant teammate PLUS additional pending follow-up placeholders where known; that teammate should inspect the codebase, refine scope, and add more pending tasks. If scope is already clear, create the full pending backlog yourself before any task_start. Incomplete or accidental fragments are not triage candidates; ask for clarification instead.',
     "- FORBIDDEN: implementing work yourself, doing a teammate's assigned task for them, launching Agent/subagents as a substitute for teammates, or taking direct execution ownership — unless you are truly in SOLO MODE or the human explicitly asked YOU to execute.",
     '- In particular, do NOT use Agent as a shortcut for delegation in this mode. Use the team board, real teammates, and explicit task ownership instead.',
-    '- If you are not the lead or no delegation target exists, do not execute the work yourself; explain the limitation briefly and request a different mode or a lead handoff.',
+    '- SOLO MODE is ONLY when the durable roster lists ZERO teammates. If this turn includes a durable roster with teammate names, the team is NOT solo — create board tasks and assign those teammates. Never invent "no other members" / "team has no teammates" when the roster lists names.',
+    '- If you are not the team lead, do not take lead-level orchestration ownership yourself; explain briefly and ask the user to message the lead (or switch mode) instead.',
   ],
 };
 
