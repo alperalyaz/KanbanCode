@@ -353,21 +353,22 @@ describe('teamSlice actions', () => {
     vi.useRealTimers();
   });
 
-  it('restores the selected messages panel mode from localStorage', () => {
+  it('keeps the messages panel pinned to the left sidebar', () => {
     window.localStorage.setItem('team:messagesPanelMode', 'bottom-sheet');
 
     const store = createSliceStore();
 
-    expect(store.getState().messagesPanelMode).toBe('bottom-sheet');
+    expect(store.getState().messagesPanelMode).toBe('sidebar');
   });
 
-  it('persists messages panel mode changes and ignores invalid stored values', () => {
+  it('ignores relocate requests and always persists sidebar', () => {
     const store = createSliceStore();
 
     store.getState().setMessagesPanelMode('floating-composer');
 
-    expect(window.localStorage.getItem('team:messagesPanelMode')).toBe('floating-composer');
-    expect(loadPersistedMessagesPanelMode()).toBe('floating-composer');
+    expect(window.localStorage.getItem('team:messagesPanelMode')).toBe('sidebar');
+    expect(loadPersistedMessagesPanelMode()).toBe('sidebar');
+    expect(store.getState().messagesPanelMode).toBe('sidebar');
 
     window.localStorage.setItem('team:messagesPanelMode', 'bad-mode');
 
@@ -375,7 +376,7 @@ describe('teamSlice actions', () => {
 
     savePersistedMessagesPanelMode('inline');
 
-    expect(window.localStorage.getItem('team:messagesPanelMode')).toBe('inline');
+    expect(window.localStorage.getItem('team:messagesPanelMode')).toBe('sidebar');
   });
 
   it('updates selected team task change presence in one batch', () => {
