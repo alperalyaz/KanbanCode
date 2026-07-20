@@ -1200,7 +1200,23 @@ export function shouldDisplayMemberCurrentTask({
   ) {
     return false;
   }
-  if (
+  if (runtimeEntry?.runtimeDiagnosticSeverity === 'error') {
+    return false;
+  }
+  if (spawnEntry?.runtimeDiagnosticSeverity === 'error') {
+    return false;
+  }
+
+  // Soft runtime gaps (stale metadata, missing Codex pid/RSS, temporary alive=false)
+  // must not hide board work. Kanban IN PROGRESS / review ownership is the source of
+  // truth for "this agent is working"; process health stays on the status badge.
+  const hasSpawnLiveClaim = hasSpawnRuntimeLiveClaim({
+    spawnStatus: effectiveSpawnStatus,
+    spawnLaunchState: effectiveSpawnLaunchState,
+    spawnRuntimeAlive: effectiveSpawnRuntimeAlive,
+    spawnBootstrapConfirmed: spawnEntry?.bootstrapConfirmed,
+  });
+  const softRuntimeGap =
     !useBootstrapConfirmedVisualState &&
     (runtimeEntry?.livenessKind === 'shell_only' ||
       spawnEntry?.livenessKind === 'shell_only' ||
@@ -1209,24 +1225,17 @@ export function shouldDisplayMemberCurrentTask({
       runtimeEntry?.livenessKind === 'stale_metadata' ||
       spawnEntry?.livenessKind === 'stale_metadata' ||
       runtimeEntry?.livenessKind === 'not_found' ||
-      spawnEntry?.livenessKind === 'not_found')
-  ) {
-    return false;
+      spawnEntry?.livenessKind === 'not_found' ||
+      runtimeEntry?.alive === false ||
+      effectiveSpawnRuntimeAlive === false ||
+      (isCodexNativeProcessTeammate(member) && !hasLiveRuntimeProcessEvidence(runtimeEntry)));
+
+  if (softRuntimeGap) {
+    return hasSpawnLiveClaim || Boolean(member.currentTaskId);
   }
-  if (runtimeEntry?.runtimeDiagnosticSeverity === 'error') {
-    return false;
-  }
-  if (spawnEntry?.runtimeDiagnosticSeverity === 'error') {
-    return false;
-  }
-  if (runtimeEntry?.alive === false && !useBootstrapConfirmedVisualState) {
-    return false;
-  }
-  if (effectiveSpawnRuntimeAlive === false) {
-    return false;
-  }
+
   if (isCodexNativeProcessTeammate(member) && !hasLiveRuntimeProcessEvidence(runtimeEntry)) {
-    return false;
+    return hasSpawnLiveClaim || Boolean(member.currentTaskId);
   }
   return true;
 }

@@ -55,23 +55,23 @@ function createConfirmedCodexSpawn(): {
 }
 
 describe('member runtime presentation', () => {
-  it('hides Codex native task activity when no spawn or runtime snapshot has loaded', () => {
+  it('hides Codex native task activity when no spawn claim and no board task are available', () => {
     expect(
       shouldDisplayMemberCurrentTask({
-        member: createMember(),
+        member: createMember({ currentTaskId: null }),
         isTeamAlive: true,
       })
     ).toBe(false);
   });
 
-  it('hides Codex native task activity when confirmed spawn state has no live runtime evidence', () => {
+  it('shows Codex board work even when confirmed spawn state has no live process evidence', () => {
     expect(
       shouldDisplayMemberCurrentTask({
         member: createMember(),
         isTeamAlive: true,
         ...createConfirmedCodexSpawn(),
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('keeps Codex native task activity visible when the runtime process is live', () => {
@@ -85,7 +85,7 @@ describe('member runtime presentation', () => {
     ).toBe(true);
   });
 
-  it('hides Codex native task activity for runtime process candidates without verified process evidence', () => {
+  it('shows Codex board work for runtime process candidates without verified process evidence', () => {
     expect(
       shouldDisplayMemberCurrentTask({
         member: createMember(),
@@ -96,10 +96,10 @@ describe('member runtime presentation', () => {
           rssBytes: undefined,
         }),
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it('hides Codex native task activity for bootstrap-only runtime evidence without a verified process', () => {
+  it('shows Codex board work for bootstrap-only runtime evidence without a verified process', () => {
     expect(
       shouldDisplayMemberCurrentTask({
         member: createMember(),
@@ -111,7 +111,7 @@ describe('member runtime presentation', () => {
           rssBytes: undefined,
         }),
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('marks stale confirmed Codex native spawn state as non-green runtime status', () => {
@@ -146,13 +146,13 @@ describe('member runtime presentation', () => {
     expect(presentation.dotClass).toContain('bg-red-400');
   });
 
-  it('hides Codex native activity until runtime evidence arrives', () => {
+  it('shows assigned board work before runtime process evidence arrives', () => {
     expect(
       shouldDisplayMemberCurrentTask({
         member: createMember(),
         isTeamAlive: true,
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('does not let a global launch settling state keep stale Codex native status green', () => {
