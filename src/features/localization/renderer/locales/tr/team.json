@@ -928,6 +928,7 @@
     },
     "advisory": {
       "pingNotConfirmed": "Ping onaylanmadı",
+      "compatibilityPending": "Uyumlu, derin doğrulama beklemede",
       "note": "Not"
     },
     "placeholders": {

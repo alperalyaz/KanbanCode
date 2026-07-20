@@ -4197,6 +4197,7 @@ export default interface Resources {
     };
     modelSelector: {
       advisory: {
+        compatibilityPending: 'Compatible, deep verification pending';
         note: 'Note';
         pingNotConfirmed: 'Ping not confirmed';
       };
