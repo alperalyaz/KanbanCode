@@ -66,6 +66,7 @@ export type LaunchFailureArtifactClassificationCode =
   | 'stdin_missing'
   | 'provider_quota'
   | 'provider_auth'
+  | 'provider_model_unsupported'
   | 'process_readiness_timeout'
   | 'model_no_bootstrap'
   | 'process_exited'
@@ -296,6 +297,12 @@ export function classifyLaunchFailureArtifact(
         /401 unauthorized|not_logged_in|login required|auth(?:entication)? failed|api key.*(?:missing|invalid)|token refresh failed/i,
     },
     {
+      code: 'provider_model_unsupported',
+      confidence: 0.97,
+      pattern:
+        /model is not supported when using Codex with a ChatGPT account|chatgpt account.*(?:does not support|not supported).*model/i,
+    },
+    {
       code: 'process_readiness_timeout',
       confidence: 0.9,
       pattern:
@@ -304,8 +311,10 @@ export function classifyLaunchFailureArtifact(
     {
       code: 'opencode_protocol',
       confidence: 0.84,
+      // Do not match bare `runtime_bootstrap_checkin` — that string appears in
+      // MCP tool lists in CLI init payloads and false-positive Codex failures.
       pattern:
-        /visible_reply_still_required|non_visible_tool_without_task_progress|empty_assistant_turn|runtime_bootstrap_checkin/i,
+        /visible_reply_still_required|non_visible_tool_without_task_progress|empty_assistant_turn|opencode.*bootstrap.?checkin|bootstrap checkin (?:failed|timeout|unconfirmed)/i,
     },
     {
       code: 'model_no_bootstrap',

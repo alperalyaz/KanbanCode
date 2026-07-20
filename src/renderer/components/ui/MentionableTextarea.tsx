@@ -1070,13 +1070,16 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       : style;
 
     // --- Rotating tips ---
+    // Prefer caller-provided localized tips. Keep a short English fallback only when
+    // no tips were passed (other surfaces that reuse this textarea).
     const rotatingTips = React.useMemo(
-      () => [
-        'Tip: Use @ for members/files and # for tasks',
-        'Tip: Mention "create a task" to add it to the kanban',
-        "Tip: Don't overload the team lead with tasks — ask them to delegate to teammates",
-        ...extraTips,
-      ],
+      () =>
+        extraTips.length > 0
+          ? extraTips
+          : [
+              'Tip: Use @ for members/files and # for tasks',
+              'Tip: Mention "create a task" to add it to the kanban',
+            ],
       [extraTips]
     );
     const [tipIndex, setTipIndex] = React.useState(0);

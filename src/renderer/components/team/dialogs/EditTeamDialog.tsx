@@ -193,8 +193,8 @@ export const EditTeamDialog = ({
   useFileListCacheWarmer(projectPath ?? null);
   const clearTransientErrors = useEditTeamErrorReset(setError, setSaveOutcomeError);
   const effectiveResolvedMemberColorMap = useMemo(
-    () => resolvedMemberColorMap ?? buildMemberColorMap(currentMembers),
-    [currentMembers, resolvedMemberColorMap]
+    () => resolvedMemberColorMap ?? buildMemberColorMap(currentMembers, color || currentColor),
+    [color, currentColor, currentMembers, resolvedMemberColorMap]
   );
   const leadDraft = useMemo(() => {
     if (!leadMember) return null;
@@ -598,112 +598,111 @@ export const EditTeamDialog = ({
         </DialogHeader>
 
         <div className="space-y-3">
-              <div>
-                <label
-                  htmlFor="edit-team-name"
-                  className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]"
-                >
-                  {t('editTeam.fields.name')}
-                </label>
-                <input
-                  id="edit-team-name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => {
-                    clearTransientErrors();
-                    setName(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (!isImeComposing(e) && e.key === 'Enter' && !saving && name.trim())
-                      handleSave();
-                  }}
-                  className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-border-emphasis)]"
-                  placeholder={t('editTeam.placeholders.teamName')}
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="edit-team-description"
-                  className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]"
-                >
-                  {t('editTeam.fields.description')}
-                </label>
-                <textarea
-                  id="edit-team-description"
-                  value={description}
-                  onChange={(e) => {
-                    clearTransientErrors();
-                    setDescription(e.target.value);
-                  }}
-                  rows={3}
-                  className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-border-emphasis)]"
-                  placeholder={t('editTeam.placeholders.description')}
-                />
-              </div>
-          {showRoster ? (
           <div>
-            <MembersEditorSection
-              members={members}
-              onChange={(nextMembers) => {
+            <label
+              htmlFor="edit-team-name"
+              className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]"
+            >
+              {t('editTeam.fields.name')}
+            </label>
+            <input
+              id="edit-team-name"
+              type="text"
+              value={name}
+              onChange={(e) => {
                 clearTransientErrors();
-                setMembers(nextMembers);
+                setName(e.target.value);
               }}
-              fieldError={invalidMemberNamesError ?? undefined}
-              validateMemberName={validateMemberNameInline}
-              showWorkflow
-              draftKeyPrefix={`editTeam:${teamName}`}
-              projectPath={projectPath ?? null}
-              headerExtra={
-                leadDraft ? (
-                  <div className="space-y-2">
-                    <MemberDraftRow
-                      member={leadDraft}
-                      index={0}
-                      resolvedColor={effectiveResolvedMemberColorMap.get(
-                        leadDraft.originalName ?? leadDraft.name
-                      )}
-                      nameError={null}
-                      onNameChange={() => undefined}
-                      onRoleChange={() => undefined}
-                      onCustomRoleChange={() => undefined}
-                      onRemove={() => undefined}
-                      onProviderChange={() => undefined}
-                      onModelChange={() => undefined}
-                      onEffortChange={() => undefined}
-                      projectPath={projectPath ?? null}
-                      lockProviderModel
-                      lockRole
-                      lockedRoleLabel={t('editTeam.teamLead.role')}
-                      lockIdentity
-                      hideActionButton
-                      modelLockReason={t('editTeam.teamLead.modelLockReason')}
-                      lockedModelAction={{
-                        label: t('editTeam.teamLead.changeRuntime'),
-                        description: t('editTeam.teamLead.changeRuntimeDescription'),
-                        onClick: onChangeLeadRuntime,
-                        disabled: isTeamProvisioning,
-                      }}
-                    />
-                    <p className="text-[11px] text-[var(--color-text-muted)]">
-                      {t('editTeam.teamLead.readOnlyHint')}
-                    </p>
-                  </div>
-                ) : null
-              }
-              existingMembers={currentMembers}
-              existingMemberColorMap={effectiveResolvedMemberColorMap}
-              showWorktreeIsolationControls
-              teammateWorktreeDefault={teammateWorktreeDefault}
-              onTeammateWorktreeDefaultChange={setTeammateWorktreeDefault}
-              lockProviderModel={false}
-              lockExistingMemberIdentity={isTeamAlive}
-              identityLockReason={undefined}
-              disableAddMember={isTeamAlive}
-              addMemberLockReason={t('editTeam.addMemberLockReason')}
-              memberWarningById={memberWarningById}
-              disableGeminiOption={isGeminiUiFrozen()}
+              onKeyDown={(e) => {
+                if (!isImeComposing(e) && e.key === 'Enter' && !saving && name.trim()) handleSave();
+              }}
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-border-emphasis)]"
+              placeholder={t('editTeam.placeholders.teamName')}
             />
           </div>
+          <div>
+            <label
+              htmlFor="edit-team-description"
+              className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]"
+            >
+              {t('editTeam.fields.description')}
+            </label>
+            <textarea
+              id="edit-team-description"
+              value={description}
+              onChange={(e) => {
+                clearTransientErrors();
+                setDescription(e.target.value);
+              }}
+              rows={3}
+              className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-border-emphasis)]"
+              placeholder={t('editTeam.placeholders.description')}
+            />
+          </div>
+          {showRoster ? (
+            <div>
+              <MembersEditorSection
+                members={members}
+                onChange={(nextMembers) => {
+                  clearTransientErrors();
+                  setMembers(nextMembers);
+                }}
+                fieldError={invalidMemberNamesError ?? undefined}
+                validateMemberName={validateMemberNameInline}
+                showWorkflow
+                draftKeyPrefix={`editTeam:${teamName}`}
+                projectPath={projectPath ?? null}
+                headerExtra={
+                  leadDraft ? (
+                    <div className="space-y-2">
+                      <MemberDraftRow
+                        member={leadDraft}
+                        index={0}
+                        resolvedColor={effectiveResolvedMemberColorMap.get(
+                          leadDraft.originalName ?? leadDraft.name
+                        )}
+                        nameError={null}
+                        onNameChange={() => undefined}
+                        onRoleChange={() => undefined}
+                        onCustomRoleChange={() => undefined}
+                        onRemove={() => undefined}
+                        onProviderChange={() => undefined}
+                        onModelChange={() => undefined}
+                        onEffortChange={() => undefined}
+                        projectPath={projectPath ?? null}
+                        lockProviderModel
+                        lockRole
+                        lockedRoleLabel={t('editTeam.teamLead.role')}
+                        lockIdentity
+                        hideActionButton
+                        modelLockReason={t('editTeam.teamLead.modelLockReason')}
+                        lockedModelAction={{
+                          label: t('editTeam.teamLead.changeRuntime'),
+                          description: t('editTeam.teamLead.changeRuntimeDescription'),
+                          onClick: onChangeLeadRuntime,
+                          disabled: isTeamProvisioning,
+                        }}
+                      />
+                      <p className="text-[11px] text-[var(--color-text-muted)]">
+                        {t('editTeam.teamLead.readOnlyHint')}
+                      </p>
+                    </div>
+                  ) : null
+                }
+                existingMembers={currentMembers}
+                existingMemberColorMap={effectiveResolvedMemberColorMap}
+                showWorktreeIsolationControls
+                teammateWorktreeDefault={teammateWorktreeDefault}
+                onTeammateWorktreeDefaultChange={setTeammateWorktreeDefault}
+                lockProviderModel={false}
+                lockExistingMemberIdentity={isTeamAlive}
+                identityLockReason={undefined}
+                disableAddMember={isTeamAlive}
+                addMemberLockReason={t('editTeam.addMemberLockReason')}
+                memberWarningById={memberWarningById}
+                disableGeminiOption={isGeminiUiFrozen()}
+              />
+            </div>
           ) : null}
           {isTeamProvisioning ? (
             <p className="text-xs text-amber-300">{t('editTeam.notices.provisioning')}</p>
@@ -737,6 +736,9 @@ export const EditTeamDialog = ({
             <label className="label-optional mb-1 block text-xs font-medium">
               {t('editTeam.fields.colorOptional')}
             </label>
+            <p className="mb-2 text-[11px] leading-snug text-[var(--color-text-muted)]">
+              {t('editTeam.fields.colorHint')}
+            </p>
             <div className="flex flex-wrap gap-2">
               {TEAM_COLOR_NAMES.map((colorName) => {
                 const colorSet = getTeamColorSet(colorName);

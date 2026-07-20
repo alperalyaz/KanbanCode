@@ -2600,6 +2600,24 @@ export class TeamDataService {
     }
   }
 
+  private async readMembersForReviewRouting(
+    teamName: string
+  ): Promise<ReadonlyArray<{ name?: string | null; role?: string | null; removedAt?: unknown }>> {
+    const storeGetMembers = (
+      this.membersMetaStore as Partial<Pick<TeamMembersMetaStore, 'getMembers'>>
+    ).getMembers;
+    if (typeof storeGetMembers === 'function') {
+      const members = await storeGetMembers.call(this.membersMetaStore, teamName).catch(() => []);
+      if (members.length > 0) {
+        return members;
+      }
+    }
+
+    return (
+      (await readConfigForUiSnapshot(this.configReader, teamName).catch(() => null))?.members ?? []
+    );
+  }
+
   private isLeadOwner(owner: string, leadName: string): boolean {
     const normalized = owner.trim().toLowerCase();
     if (!normalized) return false;
@@ -3286,7 +3304,7 @@ export class TeamDataService {
 
   async requestReview(teamName: string, taskId: string): Promise<void> {
     const { leadName, leadSessionId } = await this.resolveLeadRuntimeContext(teamName);
-    const members = await this.membersMetaStore.getMembers(teamName).catch(() => []);
+    const members = await this.readMembersForReviewRouting(teamName);
     const preferredReviewer = pickPreferredReviewerName(members);
     this.getController(teamName).review.requestReview(taskId, {
       from: leadName,
@@ -3907,7 +3925,7 @@ export class TeamDataService {
     if (patch.op === 'set_column') {
       if (patch.column === 'review') {
         const { leadName, leadSessionId } = await this.resolveLeadRuntimeContext(teamName);
-        const members = await this.membersMetaStore.getMembers(teamName).catch(() => []);
+        const members = await this.readMembersForReviewRouting(teamName);
         const preferredReviewer = pickPreferredReviewerName(members);
         controller.review.requestReview(taskId, {
           from: leadName,

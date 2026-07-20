@@ -42,14 +42,10 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   ClipboardCopy,
-  Dock,
   MessageSquare,
   MoreHorizontal,
-  PanelBottom,
   PanelBottomClose,
   PanelBottomOpen,
-  PanelLeft,
-  PanelLeftClose,
   Search,
   X,
 } from 'lucide-react';
@@ -461,6 +457,7 @@ export const MessagesPanel = memo(function MessagesPanel({
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const floatingComposerMeasureRef = useRef<HTMLDivElement | null>(null);
   const sidebarScrollRef = useRef<HTMLDivElement | null>(null);
+  const stickToLiveEdgeRef = useRef(true);
   const bottomSheetRef = useRef<SheetRef>(null);
   const bottomSheetStickyTopRef = useRef<HTMLDivElement | null>(null);
   // Scroll container inside `Sheet.Content` for the bottom-sheet layout.
@@ -543,6 +540,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     messagesScrollPersistTeamRef.current = teamName;
     setMessagesScrollTop(initialSidebarStateRef.current.messagesScrollTop);
     setBottomSheetSnapIndex(initialSidebarStateRef.current.bottomSheetSnapIndex);
+    stickToLiveEdgeRef.current = true;
   }, [teamName]);
 
   useEffect(() => {
@@ -591,7 +589,10 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   const handleSidebarScroll = useCallback(
     (event: React.UIEvent<HTMLDivElement>): void => {
-      persistMessagesScrollTop(event.currentTarget.scrollTop);
+      const el = event.currentTarget;
+      const distanceFromLiveEdge = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToLiveEdgeRef.current = distanceFromLiveEdge <= 240;
+      persistMessagesScrollTop(el.scrollTop);
     },
     [persistMessagesScrollTop]
   );
@@ -718,29 +719,73 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   // Chat-order auto-scroll for the sidebar: jump to the newest message (bottom)
   // when opening a team, and follow new messages while the user is near the
-  // bottom. If they scrolled up to read history, don't yank them down.
+  // live edge. If they scrolled up to read history, don't yank them down.
   const chatInitialBottomTeamRef = useRef<string | null>(null);
   const chatPrevMessageCountRef = useRef(0);
+  const chatPrevNewestKeyRef = useRef<string | null>(null);
+  const newestTimelineMessage = activityTimelineMessages[0];
+  const newestTimelineMessageKey =
+    newestTimelineMessage?.messageId ??
+    newestTimelineMessage?.relayOfMessageId ??
+    (newestTimelineMessage
+      ? `${newestTimelineMessage.from}:${newestTimelineMessage.timestamp}:${newestTimelineMessage.text.slice(0, 48)}`
+      : null);
+
+  const isNearLiveEdge = useCallback((el: HTMLElement): boolean => {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= 240;
+  }, []);
+
+  const scrollSidebarToLiveEdge = useCallback((el: HTMLElement): void => {
+    el.scrollTop = el.scrollHeight;
+    stickToLiveEdgeRef.current = true;
+  }, []);
+
   useLayoutEffect(() => {
     if (position !== 'sidebar') return;
     const el = sidebarScrollRef.current;
     if (!el) return;
     const count = activityTimelineMessages.length;
     const prevCount = chatPrevMessageCountRef.current;
+    const prevNewestKey = chatPrevNewestKeyRef.current;
     chatPrevMessageCountRef.current = count;
+    chatPrevNewestKeyRef.current = newestTimelineMessageKey;
 
-    if (chatInitialBottomTeamRef.current !== teamName && count > 0) {
+    const followLiveEdge = (): void => {
+      scrollSidebarToLiveEdge(el);
+      requestAnimationFrame(() => {
+        if (sidebarScrollRef.current === el) {
+          scrollSidebarToLiveEdge(el);
+        }
+      });
+    };
+
+    if (chatInitialBottomTeamRef.current !== teamName) {
       chatInitialBottomTeamRef.current = teamName;
-      el.scrollTop = el.scrollHeight;
+      stickToLiveEdgeRef.current = true;
+      if (count > 0) {
+        followLiveEdge();
+      }
       return;
     }
-    if (count > prevCount) {
-      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (distanceFromBottom < 160) {
-        el.scrollTop = el.scrollHeight;
-      }
+
+    const hasNewerMessage =
+      count > prevCount ||
+      (newestTimelineMessageKey != null && newestTimelineMessageKey !== prevNewestKey);
+    if (!hasNewerMessage) {
+      return;
     }
-  }, [position, teamName, activityTimelineMessages.length]);
+
+    if (stickToLiveEdgeRef.current || isNearLiveEdge(el)) {
+      followLiveEdge();
+    }
+  }, [
+    activityTimelineMessages.length,
+    isNearLiveEdge,
+    newestTimelineMessageKey,
+    position,
+    scrollSidebarToLiveEdge,
+    teamName,
+  ]);
 
   const firstTimelineMessage = activityTimelineMessages[0];
   const hasVisibleCurrentLeadThought =
@@ -1036,21 +1081,8 @@ export const MessagesPanel = memo(function MessagesPanel({
     [teamName, sendCrossTeamMessage]
   );
 
-  const moveToInline = useCallback(() => {
-    onPositionChange('inline');
-  }, [onPositionChange]);
-
   const moveToSidebar = useCallback(() => {
     onPositionChange('sidebar');
-  }, [onPositionChange]);
-
-  const moveToBottomSheet = useCallback(() => {
-    setBottomSheetSnapIndex(BOTTOM_SHEET_COMPOSER_SNAP_INDEX);
-    onPositionChange('bottom-sheet');
-  }, [onPositionChange]);
-
-  const moveToFloatingComposer = useCallback(() => {
-    onPositionChange('floating-composer');
   }, [onPositionChange]);
 
   useLayoutEffect(() => {
@@ -1160,18 +1192,6 @@ export const MessagesPanel = memo(function MessagesPanel({
             <ClipboardCopy size={14} className="shrink-0" />
             <span>{t('messages.actions.copyConversation')}</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={moveToInline}>
-            <PanelBottom size={14} className="shrink-0" />
-            <span>{t('messages.actions.moveToInline')}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={moveToBottomSheet}>
-            <PanelBottomOpen size={14} className="shrink-0" />
-            <span>{t('messages.actions.moveToBottomSheet')}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={moveToSidebar}>
-            <PanelLeft size={14} className="shrink-0" />
-            <span>{t('messages.actions.moveToSidebar')}</span>
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -1221,6 +1241,7 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   const renderInlineStatusSection = (): React.JSX.Element => (
     <MessagesStatusSection
+      teamName={teamName}
       members={members}
       tasks={tasks}
       messages={effectiveMessages}
@@ -1234,6 +1255,7 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   const renderSidebarStatusSection = (): React.JSX.Element => (
     <MessagesStatusSection
+      teamName={teamName}
       members={members}
       tasks={tasks}
       messages={effectiveMessages}
@@ -1446,18 +1468,6 @@ export const MessagesPanel = memo(function MessagesPanel({
                   <ClipboardCopy size={14} className="shrink-0" />
                   <span>{t('messages.actions.copyConversation')}</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={moveToInline}>
-                  <PanelLeftClose size={14} className="shrink-0" />
-                  <span>{t('messages.actions.moveToInline')}</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={moveToBottomSheet}>
-                  <PanelBottomOpen size={14} className="shrink-0" />
-                  <span>{t('messages.actions.moveToBottomSheet')}</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={moveToFloatingComposer}>
-                  <Dock size={14} className="shrink-0" />
-                  <span>{t('messages.actions.floatComposer')}</span>
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -1514,7 +1524,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       <Sheet
         ref={bottomSheetRef}
         isOpen
-        onClose={moveToInline}
+        onClose={moveToSidebar}
         mountPoint={mountPoint}
         avoidKeyboard={false}
         detent="full"
@@ -1646,18 +1656,6 @@ export const MessagesPanel = memo(function MessagesPanel({
                             : t('messages.actions.collapseSheet')}
                         </span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={moveToInline}>
-                        <PanelBottom size={14} className="shrink-0" />
-                        <span>{t('messages.actions.moveToInline')}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={moveToSidebar}>
-                        <PanelLeft size={14} className="shrink-0" />
-                        <span>{t('messages.actions.moveToSidebar')}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={moveToFloatingComposer}>
-                        <Dock size={14} className="shrink-0" />
-                        <span>{t('messages.actions.floatComposer')}</span>
-                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -1723,61 +1721,7 @@ export const MessagesPanel = memo(function MessagesPanel({
           </Tooltip>
         ) : undefined
       }
-      headerExtra={
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="pointer-events-auto size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  moveToBottomSheet();
-                }}
-                aria-label={t('messages.actions.moveMessagesToBottomSheet')}
-              >
-                <PanelBottom size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">{t('messages.actions.moveToBottomSheet')}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="pointer-events-auto size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  moveToFloatingComposer();
-                }}
-                aria-label={t('messages.actions.floatMessagesComposer')}
-              >
-                <Dock size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">{t('messages.actions.floatComposer')}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="pointer-events-auto size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  moveToSidebar();
-                }}
-                aria-label={t('messages.actions.moveMessagesToSidebar')}
-              >
-                <PanelLeft size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">{t('messages.actions.moveToSidebar')}</TooltipContent>
-          </Tooltip>
-        </div>
-      }
+      headerExtra={undefined}
       defaultOpen
       action={<div className="flex items-center gap-2 px-2">{renderSearchAndFilterBar()}</div>}
     >
