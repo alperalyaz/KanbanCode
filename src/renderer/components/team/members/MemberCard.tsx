@@ -836,14 +836,20 @@ export const MemberCard = memo(function MemberCard({
     member.gitBranch ? `Branch: ${member.gitBranch}` : null,
   ].filter((line): line is string => Boolean(line));
   const activityTask = visibleCurrentTask ?? visibleReviewTask ?? null;
-  const isActivelyWorking = Boolean(activityTask) && !isRemoved;
+  const isActivelyWorking =
+    !isRemoved &&
+    (Boolean(activityTask) || inProgress > 0 || (isLead && leadActivity === 'active'));
   const workPresenceLabel = visibleCurrentTask
     ? 'working'
     : visibleReviewTask
       ? reviewTaskTimer
         ? 'reviewing'
         : 'review requested'
-      : null;
+      : inProgress > 0
+        ? 'working'
+        : isLead && leadActivity === 'active'
+          ? 'processing'
+          : null;
   const resolvedPresenceLabel =
     isActivelyWorking && workPresenceLabel ? workPresenceLabel : displayPresenceLabel;
   const resolvedDotClass = isActivelyWorking

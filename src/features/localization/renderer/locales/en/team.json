@@ -396,8 +396,9 @@
       "running": "Running"
     },
     "telemetry": {
-      "cpu": "CPU",
-      "memory": "Memory"
+      "cpu": "Local CPU",
+      "memory": "Local RAM",
+      "hint": "Process load meters for this machine — not agent health"
     },
     "tooltips": {
       "deleteTeam": "Delete team permanently",
@@ -1616,10 +1617,10 @@
       "worktree": "worktree"
     },
     "runtimeTelemetry": {
-      "title": "Local runtime load",
-      "description": "Parent and child processes only. Remote LLM inference is not included.",
-      "cpu": "CPU",
-      "memory": "Memory",
+      "title": "Local process load",
+      "description": "CPU and RAM of the local agent process tree only. This is not health status, and remote LLM usage is not included.",
+      "cpu": "Local CPU",
+      "memory": "Local RAM",
       "summedRss": "summed RSS",
       "sharedHost": "Shared OpenCode host metric. It is not exclusive to this member.",
       "processTreeCapped": "Process tree was capped for this sample.",

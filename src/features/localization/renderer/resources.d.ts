@@ -3399,8 +3399,9 @@ export default interface Resources {
         running: 'Running';
       };
       telemetry: {
-        cpu: 'CPU';
-        memory: 'Memory';
+        cpu: 'Local CPU';
+        hint: 'Process load meters for this machine — not agent health';
+        memory: 'Local RAM';
       };
       tooltips: {
         deleteTeam: 'Delete team permanently';
@@ -4001,14 +4002,14 @@ export default interface Resources {
         wrapLines: 'Wrap lines';
       };
       runtimeTelemetry: {
-        cpu: 'CPU';
-        description: 'Parent and child processes only. Remote LLM inference is not included.';
-        memory: 'Memory';
+        cpu: 'Local CPU';
+        description: 'CPU and RAM of the local agent process tree only. This is not health status, and remote LLM usage is not included.';
+        memory: 'Local RAM';
         processTreeCapped: 'Process tree was capped for this sample.';
         rssHint: 'RSS can include shared pages, so it is best read as a load signal, not exclusive memory.';
         sharedHost: 'Shared OpenCode host metric. It is not exclusive to this member.';
         summedRss: 'summed RSS';
-        title: 'Local runtime load';
+        title: 'Local process load';
       };
       stats: {
         computing: 'Computing stats...';
