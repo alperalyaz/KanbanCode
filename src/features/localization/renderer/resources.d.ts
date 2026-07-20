@@ -3215,6 +3215,12 @@ export default interface Resources {
         title: 'Another team "{{team}}" is already running for this working directory';
         workingDirectory: 'Working directory:';
       };
+      currentProject: {
+        hint: 'This is the folder you already opened. The team will run here — you do not need to pick it again.';
+        label: 'Using {{project}}';
+        useCurrent: 'Use the current project again';
+        useDifferent: 'Use a different folder…';
+      };
       defaultDescription: {
         fallback: 'Team for provisioning flow';
         named: '{{teamName}} team for provisioning flow';
@@ -3249,11 +3255,12 @@ export default interface Resources {
           model: 'Confirm the model';
           name: 'Name your team';
           project: 'Choose a project';
+          projectCurrent: 'Confirm your project';
         };
       };
       launchAfterCreate: {
-        description: 'Start the team immediately via local Claude CLI.';
-        label: 'Run command after create';
+        description: 'Start the team immediately in the current project via local Claude CLI.';
+        label: 'Start team after create';
       };
       localOnly: 'Available only in local Electron mode.';
       memberModelLockReason: 'This teammate is synced with the lead model. Turn off sync to set a custom provider, model, or effort.';
@@ -3296,6 +3303,7 @@ export default interface Resources {
         selectedProvidersReadyWithNotes: 'Selected providers ready (with notes)';
         someProvidersNeedAttention: 'Some selected providers need attention.';
         unsupportedPreload: 'Current preload version does not support team:prepareProvisioning. Restart the dev app.';
+        usingCurrentProject: 'Using current project ({{project}}) for launch preflight.';
       };
       saved: 'Saved';
       skipPermissions: {
