@@ -140,22 +140,22 @@ declare module 'agent-teams-controller' {
     sendToolAliases: readonly string[];
     sendLeadPhrase: string;
     crossTeamPhrase: string;
-    buildLeadMessageExample(args: {
+    visibleMessageRule: string;
+    taskToolHint: string;
+    buildLeadMessageExample(options: {
       teamName: string;
       leadName: string;
       fromName: string;
       text: string;
       summary: string;
     }): string;
-    buildCrossTeamMessageExample(args: {
+    buildCrossTeamMessageExample(options: {
       teamName: string;
       toTeam: string;
       fromName: string;
       text: string;
       summary: string;
     }): string;
-    visibleMessageRule: string;
-    taskToolHint: string;
   }
 
   export type AgentTeamsMcpToolGroupId =

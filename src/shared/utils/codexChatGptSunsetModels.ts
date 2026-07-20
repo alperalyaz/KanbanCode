@@ -93,7 +93,7 @@ export function remapCodexModelForChatGptAccount(
  * when every candidate is missing or blocked.
  */
 export function pickCodexChatGptSafeModel(
-  candidates: readonly (string | null | undefined)[],
+  candidates: Iterable<string | null | undefined>,
   fallbackModelId: string | null | undefined = getCodexChatGptOfflineFallbackModel(),
   unavailableModelIds?: CodexUnavailableModelIds
 ): string {

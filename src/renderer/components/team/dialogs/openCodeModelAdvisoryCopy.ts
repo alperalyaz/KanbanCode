@@ -1,19 +1,17 @@
+import type { TranslationNamespace } from '@features/localization/contracts';
+import type { TFunction } from 'i18next';
+
+type AppTranslator = TFunction<TranslationNamespace, undefined>;
+
 /**
  * Maps raw OpenCode prepare advisory strings into short UI copy.
  * Keeps unknown reasons intact so new diagnostics still surface.
  *
  * Expects a `team`-scoped translator (`useAppTranslation('team').t`).
  */
-type OpenCodeModelAdvisoryTranslationKey =
-  | 'modelSelector.advisory.pingNotConfirmed'
-  | 'modelSelector.advisory.compatibilityPending'
-  | 'modelSelector.advisory.note';
-
-type OpenCodeModelAdvisoryTranslator = (key: OpenCodeModelAdvisoryTranslationKey) => string;
-
 export function localizeOpenCodeModelAdvisoryReason(
   reason: string | null | undefined,
-  t: OpenCodeModelAdvisoryTranslator
+  t: AppTranslator
 ): string | null {
   const trimmed = reason?.trim() ?? '';
   if (!trimmed) {
@@ -33,7 +31,7 @@ export function localizeOpenCodeModelAdvisoryReason(
 
 export function getOpenCodeModelAdvisoryBadgeLabel(
   reason: string | null | undefined,
-  t: OpenCodeModelAdvisoryTranslator
+  t: AppTranslator
 ): string {
   const lower = reason?.trim().toLowerCase() ?? '';
   if (lower.includes('ping not confirmed')) {

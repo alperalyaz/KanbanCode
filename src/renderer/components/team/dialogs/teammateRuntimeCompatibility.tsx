@@ -43,10 +43,7 @@ export interface TeammateRuntimeCompatibility {
 }
 
 type RuntimeCompatibilityTranslationKey =
-  | 'runtimeCompatibility.providers.anthropic'
-  | 'runtimeCompatibility.providers.codex'
-  | 'runtimeCompatibility.providers.gemini'
-  | 'runtimeCompatibility.providers.opencode'
+  | `runtimeCompatibility.providers.${TeamProviderId}`
   | 'runtimeCompatibility.details.mixedProvidersNamed'
   | 'runtimeCompatibility.details.mixedProviders'
   | 'runtimeCompatibility.details.openCodeLedMixedNamed'
@@ -95,12 +92,12 @@ export interface TmuxRuntimeReadiness {
   refresh: () => Promise<void>;
 }
 
-const PROVIDER_LABEL_KEYS: Record<TeamProviderId, RuntimeCompatibilityTranslationKey> = {
+const PROVIDER_LABEL_KEYS = {
   anthropic: 'runtimeCompatibility.providers.anthropic',
   codex: 'runtimeCompatibility.providers.codex',
   gemini: 'runtimeCompatibility.providers.gemini',
   opencode: 'runtimeCompatibility.providers.opencode',
-};
+} as const satisfies Record<TeamProviderId, RuntimeCompatibilityTranslationKey>;
 
 function getProviderLabel(t: RuntimeCompatibilityTranslate, providerId: TeamProviderId): string {
   return t(PROVIDER_LABEL_KEYS[providerId]);

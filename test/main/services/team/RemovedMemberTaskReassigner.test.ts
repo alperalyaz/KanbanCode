@@ -145,15 +145,15 @@ describe('RemovedMemberTaskReassigner', () => {
       ],
       tasks: [
         { id: 'ip-1', subject: 'Active handoff', status: 'in_progress', owner: 'Beberuhi' },
-        { id: 'p-1', subject: 'Pending handoff', status: 'pending', owner: 'Beberuhi' },
+        { id: 'p-1', subject: 'Pending same owner', status: 'pending', owner: 'Beberuhi' },
         {
           id: 'p-2',
-          subject: 'Blocked handoff',
+          subject: 'Blocked pending',
           status: 'pending',
           owner: 'Hacivat',
           blockedBy: ['ip-1'],
         },
-        { id: 'p-3', subject: 'Ready handoff', status: 'pending', owner: 'Tiryaki' },
+        { id: 'p-3', subject: 'Pending available owner', status: 'pending', owner: 'Tiryaki' },
       ],
     });
 

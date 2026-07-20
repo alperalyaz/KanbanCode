@@ -16,7 +16,7 @@ describe('UnhealthyOwnerLeadNotifier', () => {
     ).toBe(true);
     expect(
       isActiveOwnedTaskForUnhealthyOwner(
-        { id: 'b', subject: 'Queued work', status: 'pending', owner: 'Karagöz' },
+        { id: 'b', subject: 'Pending work', status: 'pending', owner: 'Karagöz' },
         'Karagöz'
       )
     ).toBe(true);
@@ -91,7 +91,7 @@ describe('UnhealthyOwnerLeadNotifier', () => {
         ownedTasks: [
           {
             id: 'x',
-            subject: 'Finished work',
+            subject: 'Done work',
             status: 'completed',
             owner: 'Karagöz',
           },
