@@ -42,7 +42,38 @@ export interface TeammateRuntimeCompatibility {
   memberWarningById: Record<string, string>;
 }
 
-type RuntimeCompatibilityTranslate = (key: string, options?: Record<string, unknown>) => string;
+type RuntimeCompatibilityTranslationKey =
+  | 'runtimeCompatibility.providers.anthropic'
+  | 'runtimeCompatibility.providers.codex'
+  | 'runtimeCompatibility.providers.gemini'
+  | 'runtimeCompatibility.providers.opencode'
+  | 'runtimeCompatibility.details.mixedProvidersNamed'
+  | 'runtimeCompatibility.details.mixedProviders'
+  | 'runtimeCompatibility.details.openCodeLedMixedNamed'
+  | 'runtimeCompatibility.details.openCodeLedMixed'
+  | 'runtimeCompatibility.details.codexNativeNamed'
+  | 'runtimeCompatibility.details.codexNative'
+  | 'runtimeCompatibility.details.explicitTmux'
+  | 'runtimeCompatibility.details.explicitInProcess'
+  | 'runtimeCompatibility.details.fixOpenCodeLead'
+  | 'runtimeCompatibility.details.fixInProcess'
+  | 'runtimeCompatibility.details.fixTmux'
+  | 'runtimeCompatibility.member.mixedProvider'
+  | 'runtimeCompatibility.member.codexNative'
+  | 'runtimeCompatibility.member.openCodeLedMixed'
+  | 'runtimeCompatibility.title.checkingTmux'
+  | 'runtimeCompatibility.title.openCodeLedMixed'
+  | 'runtimeCompatibility.title.inProcessBlocked'
+  | 'runtimeCompatibility.title.tmuxNotReady'
+  | 'runtimeCompatibility.message.checkingTmux'
+  | 'runtimeCompatibility.message.openCodeLedMixed'
+  | 'runtimeCompatibility.message.inProcessBlocked'
+  | 'runtimeCompatibility.message.tmuxNotReady';
+
+type RuntimeCompatibilityTranslate = (
+  key: RuntimeCompatibilityTranslationKey,
+  options?: Record<string, unknown>
+) => string;
 
 interface AnalyzeTeammateRuntimeCompatibilityInput {
   leadProviderId: TeamProviderId;
@@ -64,7 +95,7 @@ export interface TmuxRuntimeReadiness {
   refresh: () => Promise<void>;
 }
 
-const PROVIDER_LABEL_KEYS: Record<TeamProviderId, string> = {
+const PROVIDER_LABEL_KEYS: Record<TeamProviderId, RuntimeCompatibilityTranslationKey> = {
   anthropic: 'runtimeCompatibility.providers.anthropic',
   codex: 'runtimeCompatibility.providers.codex',
   gemini: 'runtimeCompatibility.providers.gemini',
@@ -72,7 +103,7 @@ const PROVIDER_LABEL_KEYS: Record<TeamProviderId, string> = {
 };
 
 function getProviderLabel(t: RuntimeCompatibilityTranslate, providerId: TeamProviderId): string {
-  return t(PROVIDER_LABEL_KEYS[providerId] ?? providerId);
+  return t(PROVIDER_LABEL_KEYS[providerId]);
 }
 
 function getExplicitTeammateMode(

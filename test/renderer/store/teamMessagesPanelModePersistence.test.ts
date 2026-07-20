@@ -22,7 +22,7 @@ describe('teamMessagesPanelModePersistence', () => {
     expect(loadPersistedMessagesPanelMode()).toBe('sidebar');
   });
 
-  it('loads each supported persisted mode', () => {
+  it('migrates every legacy relocate mode back to sidebar', () => {
     const modes: TeamMessagesPanelMode[] = [
       'sidebar',
       'inline',
@@ -33,7 +33,8 @@ describe('teamMessagesPanelModePersistence', () => {
     for (const mode of modes) {
       window.localStorage.setItem(STORAGE_KEY, mode);
 
-      expect(loadPersistedMessagesPanelMode()).toBe(mode);
+      expect(loadPersistedMessagesPanelMode()).toBe('sidebar');
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe('sidebar');
     }
   });
 
@@ -43,10 +44,10 @@ describe('teamMessagesPanelModePersistence', () => {
     expect(loadPersistedMessagesPanelMode()).toBe('sidebar');
   });
 
-  it('persists the selected mode', () => {
+  it('always persists sidebar even when another mode is requested', () => {
     savePersistedMessagesPanelMode('inline');
 
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('inline');
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('sidebar');
   });
 
   it('falls back to sidebar when localStorage read fails', () => {

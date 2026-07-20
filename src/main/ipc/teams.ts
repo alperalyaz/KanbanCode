@@ -151,12 +151,20 @@ import {
   mergeLiveLeadProcessMessagesPage,
 } from '../services/team/mergeLiveLeadProcessMessages';
 import { isAutoClearableLaunchFailureReason } from '../services/team/provisioning/TeamProvisioningLaunchFailurePolicy';
+import {
+  buildRemovedMemberOwnerHandoffText,
+  buildRemovedMemberReassignmentLeadNotice,
+  planRemovedMemberReassignments,
+  type RemovedMemberReassignment,
+  selectPendingReassignmentsToAutoStart,
+} from '../services/team/RemovedMemberTaskReassigner';
 import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
 import { TeamConfigReader } from '../services/team/TeamConfigReader';
 import { readTeamLaunchFailureDiagnosticsBundle } from '../services/team/TeamLaunchFailureArtifactPack';
 import { TeamMembersMetaStore } from '../services/team/TeamMembersMetaStore';
 import { TeamMetaStore } from '../services/team/TeamMetaStore';
 import { TeamTaskAttachmentStore } from '../services/team/TeamTaskAttachmentStore';
+import { TeamTaskReader } from '../services/team/TeamTaskReader';
 import { TeamWorktreeGitService } from '../services/team/TeamWorktreeGitService';
 
 import { teamMessageNotificationScanner } from './teams/teamMessageNotificationScanner';
@@ -594,6 +602,179 @@ function invalidateTeamRosterSnapshotCaches(teamName: string): void {
   const workerClient = getTeamDataWorkerClient();
   workerClient.invalidateTeamConfig(teamName);
   workerClient.invalidateMemberRuntimeAdvisory(teamName);
+}
+
+async function autoReassignTasksAfterMemberRemoval(args: {
+  teamName: string;
+  removedMemberName: string;
+  teamDataService: TeamDataService;
+  provisioning: TeamProvisioningService;
+  notifyLead: boolean;
+}): Promise<RemovedMemberReassignment[]> {
+  const { teamName, removedMemberName, teamDataService, provisioning, notifyLead } = args;
+  try {
+    const [tasks, remainingMembers, spawnSnapshot] = await Promise.all([
+      new TeamTaskReader().getTasks(teamName).catch(() => []),
+      new TeamMembersMetaStore().getMembers(teamName).catch(() => []),
+      provisioning.getMemberSpawnStatuses(teamName).catch(() => null),
+    ]);
+
+    const ownedCount = tasks.filter(
+      (task) =>
+        (task.status === 'pending' || task.status === 'in_progress') &&
+        task.owner?.trim().toLowerCase() === removedMemberName.trim().toLowerCase()
+    ).length;
+
+    const plan = planRemovedMemberReassignments({
+      removedMemberName,
+      tasks,
+      remainingMembers,
+      spawnStatuses: spawnSnapshot?.statuses,
+    });
+
+    const applied: RemovedMemberReassignment[] = [];
+    for (const item of plan) {
+      try {
+        await teamDataService.updateTaskOwner(teamName, item.taskId, item.toOwner);
+        applied.push(item);
+      } catch (error) {
+        logger.warn(
+          `[${teamName}] Failed to reassign task ${item.taskId} from removed member "${removedMemberName}" to "${item.toOwner}": ${getErrorMessage(error)}`
+        );
+      }
+    }
+
+    // Wake new owners immediately — do not wait for the lead to hand off.
+    for (const item of applied.filter((entry) => entry.status === 'in_progress')) {
+      try {
+        await teamDataService.sendMessage(teamName, {
+          member: item.toOwner,
+          from: 'system',
+          summary: `Resume ${item.displayId ? `#${item.displayId}` : item.taskId} after teammate removal`,
+          text: buildRemovedMemberOwnerHandoffText({
+            removedMemberName,
+            taskId: item.taskId,
+            displayId: item.displayId,
+            subject: item.subject,
+            status: 'in_progress',
+            teamName,
+          }),
+          taskRefs: [
+            {
+              taskId: item.taskId,
+              displayId: item.displayId ?? item.taskId,
+              teamName,
+            },
+          ],
+          source: 'system_notification',
+          actionMode: 'do',
+        });
+      } catch (error) {
+        logger.warn(
+          `[${teamName}] Failed to hand off in_progress task ${item.taskId} to "${item.toOwner}": ${getErrorMessage(error)}`
+        );
+      }
+    }
+
+    for (const item of selectPendingReassignmentsToAutoStart({
+      reassignments: applied,
+      tasks,
+    })) {
+      try {
+        await teamDataService.startTask(teamName, item.taskId);
+      } catch (error) {
+        logger.warn(
+          `[${teamName}] Failed to auto-start reassigned pending task ${item.taskId} for "${item.toOwner}": ${getErrorMessage(error)}`
+        );
+      }
+    }
+
+    if (notifyLead) {
+      const message = buildRemovedMemberReassignmentLeadNotice({
+        removedMemberName,
+        reassignments: applied,
+        orphanedTaskCount: ownedCount > applied.length ? ownedCount - applied.length : 0,
+      });
+      try {
+        await provisioning.sendMessageToTeam(teamName, message);
+      } catch {
+        logger.warn(
+          `Failed to notify lead about auto-reassignment after removal of "${removedMemberName}" in ${teamName}`
+        );
+      }
+    }
+
+    return applied;
+  } catch (error) {
+    logger.warn(
+      `[${teamName}] auto-reassign after removal of "${removedMemberName}" failed: ${getErrorMessage(error)}`
+    );
+    return [];
+  }
+}
+
+const orphanedRemovedOwnerRepairAtByTeam = new Map<string, number>();
+const ORPHANED_REMOVED_OWNER_REPAIR_TTL_MS = 30_000;
+
+async function repairOrphanedRemovedOwnerTasks(teamName: string): Promise<void> {
+  const now = Date.now();
+  const last = orphanedRemovedOwnerRepairAtByTeam.get(teamName) ?? 0;
+  if (now - last < ORPHANED_REMOVED_OWNER_REPAIR_TTL_MS) {
+    return;
+  }
+  orphanedRemovedOwnerRepairAtByTeam.set(teamName, now);
+
+  try {
+    const teamDataService = getTeamDataService();
+    const provisioning = getTeamProvisioningService();
+    const [tasks, members] = await Promise.all([
+      new TeamTaskReader().getTasks(teamName).catch(() => []),
+      new TeamMembersMetaStore().getMembers(teamName).catch(() => []),
+    ]);
+
+    const removedOwners = new Set(
+      members
+        .filter((member) => member.removedAt != null)
+        .map((member) => member.name.trim().toLowerCase())
+        .filter(Boolean)
+    );
+    if (removedOwners.size === 0) {
+      return;
+    }
+
+    const orphanOwners = new Set<string>();
+    for (const task of tasks) {
+      if (task.status !== 'pending' && task.status !== 'in_progress') continue;
+      const owner = task.owner?.trim();
+      if (!owner) continue;
+      if (removedOwners.has(owner.toLowerCase())) {
+        orphanOwners.add(owner);
+      }
+    }
+
+    for (const removedMemberName of orphanOwners) {
+      const reassignments = await autoReassignTasksAfterMemberRemoval({
+        teamName,
+        removedMemberName,
+        teamDataService,
+        provisioning,
+        notifyLead: false,
+      });
+      if (reassignments.length === 0) continue;
+      if (!provisioning.isTeamAlive(teamName)) continue;
+      const message = buildRemovedMemberReassignmentLeadNotice({
+        removedMemberName,
+        reassignments,
+      });
+      await provisioning.sendMessageToTeam(teamName, message).catch(() => {
+        logger.warn(
+          `Failed to notify lead about orphaned-owner repair for "${removedMemberName}" in ${teamName}`
+        );
+      });
+    }
+  } catch (error) {
+    logger.warn(`[${teamName}] orphaned removed-owner repair failed: ${getErrorMessage(error)}`);
+  }
 }
 
 async function getDurableLeadTeammateRoster(
@@ -1132,6 +1313,7 @@ async function handleGetData(
   // The UI is fetching this team, so keep its team-root/task artifacts watched
   // (idle teams the UI never opens are not watched, to scale with team count).
   markTeamEngaged(tn);
+  void repairOrphanedRemovedOwnerTasks(tn);
   const getDataOptions = optionsResult.value;
   const startedAt = Date.now();
   let data: TeamViewSnapshot;
@@ -4358,9 +4540,10 @@ async function handleMemberSpawnStatuses(
   if (!validated.valid) {
     return { success: false, error: validated.error ?? 'Invalid teamName' };
   }
-  return wrapTeamHandler('memberSpawnStatuses', async () =>
-    getTeamProvisioningService().getMemberSpawnStatuses(validated.value!)
-  );
+  return wrapTeamHandler('memberSpawnStatuses', async () => {
+    void repairOrphanedRemovedOwnerTasks(validated.value!);
+    return getTeamProvisioningService().getMemberSpawnStatuses(validated.value!);
+  });
 }
 
 async function handleGetAgentRuntime(
@@ -4867,15 +5050,44 @@ async function handleReplaceMembers(
       throw error;
     }
 
-    const summaryMessage = buildReplaceMembersSummaryMessage({
-      ...primaryDiff,
-      updated: [],
+    const removedNames = [
+      ...primaryDiff.removed,
+      ...removedOpenCodeMembers.map((member) => member.name),
+    ];
+    const uniqueRemovedNames = [
+      ...new Set(removedNames.map((name) => name.trim()).filter(Boolean)),
+    ];
+    const reassignmentNotices: string[] = [];
+    for (const removedName of uniqueRemovedNames) {
+      const reassignments = await autoReassignTasksAfterMemberRemoval({
+        teamName: tn,
+        removedMemberName: removedName,
+        teamDataService,
+        provisioning,
+        notifyLead: false,
+      });
+      reassignmentNotices.push(
+        buildRemovedMemberReassignmentLeadNotice({
+          removedMemberName: removedName,
+          reassignments,
+        })
+      );
+    }
+
+    const messageParts = [...reassignmentNotices];
+    const updateOnly = buildReplaceMembersSummaryMessage({
+      added: [],
+      removed: [],
+      updated: primaryDiff.updated,
     });
-    if (!summaryMessage) {
+    if (updateOnly) {
+      messageParts.push(updateOnly);
+    }
+    if (messageParts.length === 0) {
       return;
     }
     try {
-      await provisioning.sendMessageToTeam(tn, summaryMessage);
+      await provisioning.sendMessageToTeam(tn, messageParts.join('\n\n'));
     } catch {
       logger.warn(`Failed to notify lead about member updates in ${tn}`);
     }
@@ -4934,14 +5146,31 @@ async function handleRemoveMember(
         );
       }
 
-      const message =
-        `Teammate "${name}" has been removed from the team. ` +
-        `They will no longer participate in team activities. Please reassign their tasks if needed.`;
+      const reassignments = await autoReassignTasksAfterMemberRemoval({
+        teamName: tn,
+        removedMemberName: name,
+        teamDataService,
+        provisioning,
+        notifyLead: false,
+      });
+      const message = buildRemovedMemberReassignmentLeadNotice({
+        removedMemberName: name,
+        reassignments,
+      });
       try {
         await provisioning.sendMessageToTeam(tn, message);
       } catch {
         logger.warn(`Failed to notify lead about removal of "${name}" in ${tn}`);
       }
+    } else {
+      // Team not live — still clean ownership so the board is not stuck on a removed member.
+      await autoReassignTasksAfterMemberRemoval({
+        teamName: tn,
+        removedMemberName: name,
+        teamDataService,
+        provisioning,
+        notifyLead: false,
+      });
     }
   });
 }

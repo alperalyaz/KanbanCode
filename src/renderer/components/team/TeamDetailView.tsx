@@ -1510,8 +1510,8 @@ export const TeamDetailView = memo(function TeamDetailView({
     });
   }, [hasSelectedTeamData, leadBranch, members, trackedBranches]);
   const resolvedMemberColorMap = useMemo(
-    () => buildMemberColorMap(membersWithLiveBranches),
-    [membersWithLiveBranches]
+    () => buildMemberColorMap(membersWithLiveBranches, data?.config.color),
+    [membersWithLiveBranches, data?.config.color]
   );
 
   // Filter sessions to team-only using sessionHistory + leadSessionId
