@@ -1,6 +1,7 @@
 import {
   buildGeminiPostLaunchHydrationPrompt,
   buildMemberSpawnPrompt,
+  buildMembersPrompt,
   buildPersistentLeadContext,
 } from '@main/services/team/provisioning/TeamProvisioningPromptBuilders';
 import { describe, expect, it } from 'vitest';
@@ -32,6 +33,43 @@ describe('TeamProvisioningPromptBuilders', () => {
     expect(prompt).toContain(
       'If an assigned task requires implementation, fixes, review follow-up, or concrete investigation, you may inspect, read/search, and edit files in your working directory as needed.'
     );
+    expect(prompt).toContain('Role duty: implement assigned tasks');
+  });
+
+  it('embeds QA role duty into spawn prompts so reviewers do not sit idle', () => {
+    const prompt = buildMemberSpawnPrompt(
+      { name: 'Tiryaki', role: 'qa' },
+      'atlas-hq',
+      'atlas-hq',
+      'Lider'
+    );
+
+    expect(prompt).toContain('Role duty: after substantial implementation is completed');
+    expect(prompt).toContain('review_start');
+  });
+
+  it('requires leads to assign by role and route completed work to QA', () => {
+    const prompt = buildPersistentLeadContext({
+      teamName: 'atlas-hq',
+      leadName: 'Lider',
+      isSolo: false,
+      members: [
+        { name: 'Lider', role: 'team-lead' },
+        { name: 'Beberuhi', role: 'mimar' },
+        { name: 'Hacivat', role: 'geliştirici' },
+        { name: 'Tiryaki', role: 'qa' },
+      ] as TeamCreateRequest['members'],
+    });
+
+    expect(prompt).toContain('ROLE ASSIGNMENT POLICY');
+    expect(prompt).toContain('Do NOT treat roles as decorative labels');
+    expect(prompt).toContain('you MUST review_request that task to the QA member');
+    expect(prompt).toContain('Leaving QA idle while completed work sits unreviewed is a lead failure');
+    expect(prompt).toContain('Prefer roster members with role QA or Reviewer');
+    expect(buildMembersPrompt([
+      { name: 'Tiryaki', role: 'qa' },
+      { name: 'Hacivat', role: 'developer' },
+    ] as TeamCreateRequest['members'])).toContain('Role duty: after substantial implementation');
   });
 
   it('keeps non-solo lead delegation first while excluding assigned teammates from that restriction', () => {
@@ -48,6 +86,24 @@ describe('TeamProvisioningPromptBuilders', () => {
     expect(prompt).toContain('your top priority as team lead');
     expect(prompt).toContain(
       'This lead-only delegation rule does NOT restrict assigned teammates.'
+    );
+  });
+
+  it('forbids inventing an empty board from an empty lead_briefing queue', () => {
+    const prompt = buildPersistentLeadContext({
+      teamName: 'atlas-hq',
+      leadName: 'Lider',
+      isSolo: false,
+      members: [
+        { name: 'Lider', role: 'team-lead' },
+        { name: 'Hacivat', role: 'developer' },
+      ] as TeamCreateRequest['members'],
+    });
+
+    expect(prompt).toContain('do NOT say "board is empty"');
+    expect(prompt).toContain('"No lead action items" from lead_briefing is NOT an empty board');
+    expect(prompt).toContain(
+      'lead_briefing showing "No lead action items" means YOUR oversight queue is empty'
     );
   });
 

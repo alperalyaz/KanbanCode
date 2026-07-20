@@ -33,6 +33,8 @@ export function normalizeCodexModelId(modelId: string | null | undefined): strin
   return modelId?.trim().toLowerCase() ?? '';
 }
 
+type CodexUnavailableModelIds = readonly (string | null | undefined)[] | ReadonlySet<string>;
+
 export function isCodexChatGptSunsetModel(modelId: string | null | undefined): boolean {
   const normalized = normalizeCodexModelId(modelId);
   return normalized.length > 0 && CODEX_CHATGPT_SUNSET_MODELS.has(normalized);
@@ -40,7 +42,7 @@ export function isCodexChatGptSunsetModel(modelId: string | null | undefined): b
 
 export function isCodexChatGptBlockedModel(
   modelId: string | null | undefined,
-  unavailableModelIds?: readonly (string | null | undefined)[] | ReadonlySet<string>
+  unavailableModelIds?: CodexUnavailableModelIds
 ): boolean {
   const trimmed = modelId?.trim() ?? '';
   if (!trimmed || isDefaultProviderModelSelection(trimmed)) {
@@ -53,15 +55,17 @@ export function isCodexChatGptBlockedModel(
     return false;
   }
   const normalized = normalizeCodexModelId(trimmed);
-  if (unavailableModelIds instanceof Set) {
-    for (const entry of unavailableModelIds) {
-      if (normalizeCodexModelId(entry) === normalized) {
-        return true;
-      }
-    }
-    return false;
+  if (Array.isArray(unavailableModelIds)) {
+    return unavailableModelIds.some(
+      (entry: string | null | undefined) => normalizeCodexModelId(entry) === normalized
+    );
   }
-  return unavailableModelIds.some((entry) => normalizeCodexModelId(entry) === normalized);
+  for (const entry of unavailableModelIds) {
+    if (normalizeCodexModelId(entry) === normalized) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -71,7 +75,7 @@ export function isCodexChatGptBlockedModel(
 export function remapCodexModelForChatGptAccount(
   modelId: string | null | undefined,
   fallbackModelId: string | null | undefined = getCodexChatGptOfflineFallbackModel(),
-  unavailableModelIds?: readonly (string | null | undefined)[]
+  unavailableModelIds?: CodexUnavailableModelIds
 ): string | null {
   const trimmed = modelId?.trim() ?? '';
   if (!trimmed || isDefaultProviderModelSelection(trimmed)) {
@@ -89,9 +93,9 @@ export function remapCodexModelForChatGptAccount(
  * when every candidate is missing or blocked.
  */
 export function pickCodexChatGptSafeModel(
-  candidates: readonly (string | null | undefined)[],
+  candidates: Iterable<string | null | undefined>,
   fallbackModelId: string | null | undefined = getCodexChatGptOfflineFallbackModel(),
-  unavailableModelIds?: readonly (string | null | undefined)[]
+  unavailableModelIds?: CodexUnavailableModelIds
 ): string {
   for (const candidate of candidates) {
     const trimmed = candidate?.trim();
@@ -118,7 +122,7 @@ export function resolveCodexChatGptLaunchModel(params: {
     launchModel?: string | null;
     hidden?: boolean;
   }[];
-  unavailableModelIds?: readonly (string | null | undefined)[];
+  unavailableModelIds?: CodexUnavailableModelIds;
 }): string {
   const catalogIds =
     params.catalogModels

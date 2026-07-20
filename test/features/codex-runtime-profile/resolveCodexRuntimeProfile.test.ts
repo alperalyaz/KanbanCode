@@ -332,7 +332,7 @@ describe('resolveCodexRuntimeProfile', () => {
             configurableAuthModes: ['auto', 'chatgpt', 'api_key'],
             configuredAuthMode: 'api_key',
             apiKeyConfigured: true,
-            apiKeySource: 'env',
+            apiKeySource: 'environment',
             codex: {
               preferredAuthMode: 'api_key',
               effectiveAuthMode: 'api_key',

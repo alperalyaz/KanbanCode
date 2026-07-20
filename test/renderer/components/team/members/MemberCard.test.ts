@@ -696,7 +696,7 @@ describe('MemberCard starting-state visuals', () => {
     });
   });
 
-  it('shows member color on the avatar ring instead of a colored card rail', async () => {
+  it('shows member color on the avatar dot instead of a colored card rail', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -707,7 +707,6 @@ describe('MemberCard starting-state visuals', () => {
         React.createElement(MemberCard, {
           member,
           memberColor: 'blue',
-          avatarUrl: 'https://example.com/alice.png',
           isTeamAlive: true,
           isTeamProvisioning: false,
         })
@@ -715,13 +714,11 @@ describe('MemberCard starting-state visuals', () => {
       await Promise.resolve();
     });
 
-    const img = host.querySelector('img');
-    const avatarRing = img?.parentElement;
+    const avatarDot = host.querySelector('[aria-hidden="true"].size-7') as HTMLElement | null;
     const clickableCard = host.querySelector('[role="button"]') as HTMLElement | null;
 
-    expect(avatarRing).not.toBeNull();
-    expect(img?.getAttribute('src')).toBe('https://example.com/alice.png');
-    expect(avatarRing?.style.borderColor).toBe('#3b82f6');
+    expect(avatarDot).not.toBeNull();
+    expect(avatarDot?.getAttribute('style')).toMatch(/#3b82f6|rgb\(59, 130, 246\)/);
     expect(clickableCard?.style.borderLeft).toBe('');
     expect(clickableCard?.style.background).toBe('');
 
