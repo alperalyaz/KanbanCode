@@ -498,6 +498,7 @@ export const CreateTeamDialog = ({
   const prepareIdleHandlesRef = useRef(new Set<ScheduledIdleHandle>());
   const prepareUnmountGenerationRef = useRef(0);
   const appliedDefaultProjectPathRef = useRef<string | null>(null);
+  const projectPathTouchedByUserRef = useRef(false);
   const lastAutoDescriptionRef = useRef<string | null>(null);
   const legacyMemberNamesMigratedRef = useRef(false);
   const [fieldErrors, setFieldErrors] = useState<{
@@ -1513,13 +1514,18 @@ export const CreateTeamDialog = ({
     }
   }, [descriptionDraft, initialData, open, suggestedTeamName, t, teamName]);
 
-  // Pre-select defaultProjectPath when projects loaded (only while dialog is open)
+  // Pre-select the currently open app project when the dialog opens.
+  // Keep syncing to defaultProjectPath until the user manually changes project/cwd.
   useEffect(() => {
     if (!open) {
       appliedDefaultProjectPathRef.current = null;
+      projectPathTouchedByUserRef.current = false;
       return;
     }
     if (cwdMode !== 'project') {
+      return;
+    }
+    if (projectPathTouchedByUserRef.current) {
       return;
     }
     const selectableProjects = projects.filter(isSelectableProjectPathProject);
@@ -1528,12 +1534,10 @@ export const CreateTeamDialog = ({
     }
     if (defaultProjectPath && !isEphemeralProjectPath(defaultProjectPath)) {
       const normalizedDefaultProjectPath = normalizePath(defaultProjectPath);
-      const defaultAlreadyApplied =
-        appliedDefaultProjectPathRef.current === normalizedDefaultProjectPath;
       const match = selectableProjects.find(
         (p) => normalizePath(p.path) === normalizedDefaultProjectPath
       );
-      if (match && !defaultAlreadyApplied) {
+      if (match) {
         appliedDefaultProjectPathRef.current = normalizedDefaultProjectPath;
         if (normalizePath(selectedProjectPath) !== normalizedDefaultProjectPath) {
           setSelectedProjectPath(match.path);
@@ -1543,16 +1547,6 @@ export const CreateTeamDialog = ({
     }
     if (selectedProjectPath) {
       return;
-    }
-    if (defaultProjectPath && !isEphemeralProjectPath(defaultProjectPath)) {
-      const normalizedDefaultProjectPath = normalizePath(defaultProjectPath);
-      const match = selectableProjects.find(
-        (p) => normalizePath(p.path) === normalizedDefaultProjectPath
-      );
-      if (match) {
-        setSelectedProjectPath(match.path);
-        return;
-      }
     }
     setSelectedProjectPath(selectableProjects[0].path);
   }, [open, cwdMode, projects, selectedProjectPath, defaultProjectPath, setSelectedProjectPath]);
@@ -1569,6 +1563,30 @@ export const CreateTeamDialog = ({
     }
     setSelectedProjectPath('');
   }, [open, cwdMode, projects, selectedProjectPath, setSelectedProjectPath]);
+
+  const handleCwdModeChange = useCallback(
+    (mode: 'project' | 'custom') => {
+      projectPathTouchedByUserRef.current = true;
+      setCwdMode(mode);
+    },
+    [setCwdMode]
+  );
+
+  const handleSelectedProjectPathChange = useCallback(
+    (path: string) => {
+      projectPathTouchedByUserRef.current = true;
+      setSelectedProjectPath(path);
+    },
+    [setSelectedProjectPath]
+  );
+
+  const handleCustomCwdChange = useCallback(
+    (path: string) => {
+      projectPathTouchedByUserRef.current = true;
+      setCustomCwd(path);
+    },
+    [setCustomCwd]
+  );
 
   const { suggestions: taskSuggestions } = useTaskSuggestions(null, {
     enabled: workflowMentionSuggestionsEnabled,
@@ -2594,11 +2612,11 @@ export const CreateTeamDialog = ({
                   <div className="mt-4 space-y-4">
                     <ProjectPathSelector
                       cwdMode={cwdMode}
-                      onCwdModeChange={setCwdMode}
+                      onCwdModeChange={handleCwdModeChange}
                       selectedProjectPath={selectedProjectPath}
-                      onSelectedProjectPathChange={setSelectedProjectPath}
+                      onSelectedProjectPathChange={handleSelectedProjectPathChange}
                       customCwd={customCwd}
-                      onCustomCwdChange={setCustomCwd}
+                      onCustomCwdChange={handleCustomCwdChange}
                       projects={projects}
                       projectsLoading={projectsLoading}
                       projectsError={projectsError}

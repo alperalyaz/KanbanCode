@@ -16,7 +16,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createMemberDraft } from '@renderer/components/team/members/membersEditorUtils';
-import type { ResolvedAppLocale } from '@features/localization/contracts';
 import {
   type CreateTeamDraftSnapshot,
   createTeamDraftStorage,
@@ -29,6 +28,7 @@ import {
 } from '@renderer/services/createTeamPreferences';
 import { normalizeTeamMemberMcpPolicy } from '@shared/utils/teamMemberMcpPolicy';
 
+import type { ResolvedAppLocale } from '@features/localization/contracts';
 import type { MemberDraft } from '@renderer/components/team/members/membersEditorTypes';
 
 // ---------------------------------------------------------------------------
@@ -248,9 +248,10 @@ export function useCreateTeamDraft(
       membersRef.current = deserialized;
       syncModelsWithLeadRef.current = nextSyncModelsWithLead;
       teammateWorktreeDefaultRef.current = snap.teammateWorktreeDefault === true;
-      cwdModeRef.current = snap.cwdMode;
-      selectedProjectPathRef.current = snap.selectedProjectPath;
-      customCwdRef.current = snap.customCwd;
+      // Do NOT restore cwd/project path from draft. The Create Team dialog must
+      // use the currently selected app project (defaultProjectPath). Restoring a
+      // stale path made users re-pick HushDown after the form remembered another
+      // repo from a previous attempt.
       launchTeamRef.current = snap.launchTeam;
       teamColorRef.current = snap.teamColor;
 
@@ -258,9 +259,6 @@ export function useCreateTeamDraft(
       setMembersState(deserialized);
       setSyncModelsWithLeadState(nextSyncModelsWithLead);
       setTeammateWorktreeDefaultState(snap.teammateWorktreeDefault === true);
-      setCwdModeState(snap.cwdMode);
-      setSelectedProjectPathState(snap.selectedProjectPath);
-      setCustomCwdState(snap.customCwd);
       setLaunchTeamState(snap.launchTeam);
       setTeamColorState(snap.teamColor);
     },
