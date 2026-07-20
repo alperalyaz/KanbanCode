@@ -31,15 +31,15 @@ function createFallbackModel(options: {
 export function createStaticCodexModelCatalogModels(): CliProviderModelCatalogItem[] {
   return [
     createFallbackModel({
-      id: 'gpt-5.4',
-      displayName: 'GPT-5.4',
-      badgeLabel: '5.4',
-      isDefault: true,
-    }),
-    createFallbackModel({
       id: 'gpt-5.5',
       displayName: 'GPT-5.5',
       badgeLabel: '5.5',
+      isDefault: true,
+    }),
+    createFallbackModel({
+      id: 'gpt-5.4',
+      displayName: 'GPT-5.4',
+      badgeLabel: '5.4',
     }),
     createFallbackModel({
       id: 'gpt-5.4-mini',
@@ -63,4 +63,14 @@ export function createStaticCodexModelCatalogModels(): CliProviderModelCatalogIt
       efforts: MINI_CODEX_EFFORTS,
     }),
   ];
+}
+
+/** Offline last resort: whatever the static catalog marks as default (tracks catalog bumps). */
+export function getStaticCodexDefaultLaunchModel(): string {
+  const models = createStaticCodexModelCatalogModels();
+  return (
+    models.find((model) => model.isDefault)?.launchModel?.trim() ||
+    models[0]?.launchModel?.trim() ||
+    'gpt-5.5'
+  );
 }

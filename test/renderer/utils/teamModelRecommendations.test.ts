@@ -5,8 +5,8 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('getTeamModelRecommendation', () => {
-  it('marks all visible Codex Agent Teams models as recommended', () => {
-    for (const modelId of ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-5.2']) {
+  it('marks current Codex Agent Teams models as recommended and sunsets older ChatGPT models', () => {
+    for (const modelId of ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini']) {
       expect(getTeamModelRecommendation('codex', modelId)).toMatchObject({
         level: 'recommended',
         label: 'Recommended',
@@ -14,7 +14,7 @@ describe('getTeamModelRecommendation', () => {
       expect(isTeamModelRecommended('codex', modelId)).toBe(true);
     }
 
-    for (const modelId of ['gpt-5.3-codex-spark']) {
+    for (const modelId of ['gpt-5.3-codex', 'gpt-5.2', 'gpt-5.3-codex-spark']) {
       expect(getTeamModelRecommendation('codex', modelId)).toBeNull();
       expect(isTeamModelRecommended('codex', modelId)).toBe(false);
     }
