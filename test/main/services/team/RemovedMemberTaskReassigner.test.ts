@@ -19,9 +19,25 @@ describe('RemovedMemberTaskReassigner', () => {
         { name: 'Tiryaki', role: 'qa' },
       ],
       spawnStatuses: {
-        Beberuhi: { status: 'online', runtimeAlive: true, updatedAt: 't' },
-        Hacivat: { status: 'online', runtimeAlive: true, updatedAt: 't' },
-        Tiryaki: { status: 'error', runtimeAlive: false, hardFailure: true, updatedAt: 't' },
+        Beberuhi: {
+          status: 'online',
+          launchState: 'confirmed_alive',
+          runtimeAlive: true,
+          updatedAt: 't',
+        },
+        Hacivat: {
+          status: 'online',
+          launchState: 'confirmed_alive',
+          runtimeAlive: true,
+          updatedAt: 't',
+        },
+        Tiryaki: {
+          status: 'error',
+          launchState: 'failed_to_start',
+          runtimeAlive: false,
+          hardFailure: true,
+          updatedAt: 't',
+        },
       },
     });
 
@@ -128,10 +144,16 @@ describe('RemovedMemberTaskReassigner', () => {
         },
       ],
       tasks: [
-        { id: 'ip-1', status: 'in_progress', owner: 'Beberuhi' },
-        { id: 'p-1', status: 'pending', owner: 'Beberuhi' },
-        { id: 'p-2', status: 'pending', owner: 'Hacivat', blockedBy: ['ip-1'] },
-        { id: 'p-3', status: 'pending', owner: 'Tiryaki' },
+        { id: 'ip-1', subject: 'Active handoff', status: 'in_progress', owner: 'Beberuhi' },
+        { id: 'p-1', subject: 'Pending same owner', status: 'pending', owner: 'Beberuhi' },
+        {
+          id: 'p-2',
+          subject: 'Blocked pending',
+          status: 'pending',
+          owner: 'Hacivat',
+          blockedBy: ['ip-1'],
+        },
+        { id: 'p-3', subject: 'Pending available owner', status: 'pending', owner: 'Tiryaki' },
       ],
     });
 

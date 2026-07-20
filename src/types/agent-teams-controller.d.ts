@@ -132,6 +132,20 @@ declare module 'agent-teams-controller' {
     buildProcessProtocolText(teamName: string): string;
   }
 
+  export interface MemberMessagingProtocol {
+    sendToolName: string;
+    sendToolAliases: readonly string[];
+    visibleMessageRule: string;
+    taskToolHint: string;
+    buildLeadMessageExample(options: {
+      teamName: string;
+      leadName: string;
+      fromName: string;
+      text: string;
+      summary: string;
+    }): string;
+  }
+
   export type AgentTeamsMcpToolGroupId =
     | 'task'
     | 'lead'
@@ -149,6 +163,9 @@ declare module 'agent-teams-controller' {
   }
 
   export function createController(options: ControllerContextOptions): AgentTeamsController;
+  export function createMemberMessagingProtocol(
+    runtimeProvider: 'native' | 'codex' | 'opencode'
+  ): MemberMessagingProtocol;
 
   export const agentBlocks: AgentBlocksApi;
 

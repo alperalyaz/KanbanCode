@@ -88,7 +88,9 @@ describe('TeamTaskStallNotifier', () => {
   });
 
   it('sends lead alerts that demand reassignment off unhealthy owners', async () => {
-    const sendSystemNotificationToLead = vi.fn(async () => undefined);
+    const sendSystemNotificationToLead = vi.fn(
+      async (_payload: { teamName: string; summary: string; text: string }) => undefined
+    );
     const notifier = new TeamTaskStallNotifier(
       { sendSystemNotificationToLead } as never,
       undefined,

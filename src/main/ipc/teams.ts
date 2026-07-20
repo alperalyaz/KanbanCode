@@ -662,7 +662,7 @@ async function autoReassignTasksAfterMemberRemoval(args: {
           taskRefs: [
             {
               taskId: item.taskId,
-              displayId: item.displayId,
+              displayId: item.displayId ?? item.taskId.slice(0, 8),
               teamName,
             },
           ],

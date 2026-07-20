@@ -10,25 +10,25 @@ describe('UnhealthyOwnerLeadNotifier', () => {
   it('detects pending and in_progress ownership only', () => {
     expect(
       isActiveOwnedTaskForUnhealthyOwner(
-        { id: 'a', status: 'in_progress', owner: 'Karagöz' },
+        { id: 'a', subject: 'Active work', status: 'in_progress', owner: 'Karagöz' },
         'Karagöz'
       )
     ).toBe(true);
     expect(
       isActiveOwnedTaskForUnhealthyOwner(
-        { id: 'b', status: 'pending', owner: 'Karagöz' },
+        { id: 'b', subject: 'Pending work', status: 'pending', owner: 'Karagöz' },
         'Karagöz'
       )
     ).toBe(true);
     expect(
       isActiveOwnedTaskForUnhealthyOwner(
-        { id: 'c', status: 'completed', owner: 'Karagöz' },
+        { id: 'c', subject: 'Done work', status: 'completed', owner: 'Karagöz' },
         'Karagöz'
       )
     ).toBe(false);
     expect(
       isActiveOwnedTaskForUnhealthyOwner(
-        { id: 'd', status: 'in_progress', owner: 'Beberuhi' },
+        { id: 'd', subject: 'Other work', status: 'in_progress', owner: 'Beberuhi' },
         'Karagöz'
       )
     ).toBe(false);
@@ -91,6 +91,7 @@ describe('UnhealthyOwnerLeadNotifier', () => {
         ownedTasks: [
           {
             id: 'x',
+            subject: 'Done work',
             status: 'completed',
             owner: 'Karagöz',
           },

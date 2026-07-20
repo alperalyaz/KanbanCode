@@ -1,4 +1,7 @@
+import type { TranslationNamespace } from '@features/localization/contracts';
 import type { TFunction } from 'i18next';
+
+type AppTranslator = TFunction<TranslationNamespace, undefined>;
 
 /**
  * Maps raw OpenCode prepare advisory strings into short UI copy.
@@ -8,7 +11,7 @@ import type { TFunction } from 'i18next';
  */
 export function localizeOpenCodeModelAdvisoryReason(
   reason: string | null | undefined,
-  t: TFunction
+  t: AppTranslator
 ): string | null {
   const trimmed = reason?.trim() ?? '';
   if (!trimmed) {
@@ -28,7 +31,7 @@ export function localizeOpenCodeModelAdvisoryReason(
 
 export function getOpenCodeModelAdvisoryBadgeLabel(
   reason: string | null | undefined,
-  t: TFunction
+  t: AppTranslator
 ): string {
   const lower = reason?.trim().toLowerCase() ?? '';
   if (lower.includes('ping not confirmed')) {

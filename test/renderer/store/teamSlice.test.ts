@@ -2998,7 +2998,9 @@ describe('teamSlice actions', () => {
     expect(hoisted.deleteTeam).toHaveBeenCalledWith('my-team');
     expect(store.getState().selectedTeamName).toBeNull();
     expect(store.getState().selectedTeamData).toBeNull();
-    expect(store.getState().teams.find((team) => team.teamName === 'my-team')).toBeUndefined();
+    expect(
+      store.getState().teams.find((team: { teamName: string }) => team.teamName === 'my-team')
+    ).toBeUndefined();
     expect(store.getState().teamDataCacheByName['my-team']).toBeUndefined();
   });
 
@@ -3041,7 +3043,9 @@ describe('teamSlice actions', () => {
 
     const deletePromise = store.getState().permanentlyDeleteTeam('my-team');
 
-    expect(store.getState().teams.map((team) => team.teamName)).toEqual(['other-team']);
+    expect(store.getState().teams.map((team: { teamName: string }) => team.teamName)).toEqual([
+      'other-team',
+    ]);
     expect(store.getState().teamByName['my-team']).toBeUndefined();
     expect(hoisted.permanentlyDeleteTeam).toHaveBeenCalledWith('my-team');
 

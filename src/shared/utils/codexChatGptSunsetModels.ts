@@ -53,15 +53,17 @@ export function isCodexChatGptBlockedModel(
     return false;
   }
   const normalized = normalizeCodexModelId(trimmed);
-  if (unavailableModelIds instanceof Set) {
-    for (const entry of unavailableModelIds) {
-      if (normalizeCodexModelId(entry) === normalized) {
-        return true;
-      }
-    }
-    return false;
+  if (Array.isArray(unavailableModelIds)) {
+    return unavailableModelIds.some(
+      (entry: string | null | undefined) => normalizeCodexModelId(entry) === normalized
+    );
   }
-  return unavailableModelIds.some((entry) => normalizeCodexModelId(entry) === normalized);
+  for (const entry of unavailableModelIds) {
+    if (normalizeCodexModelId(entry) === normalized) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -89,7 +91,7 @@ export function remapCodexModelForChatGptAccount(
  * when every candidate is missing or blocked.
  */
 export function pickCodexChatGptSafeModel(
-  candidates: readonly (string | null | undefined)[],
+  candidates: Iterable<string | null | undefined>,
   fallbackModelId: string | null | undefined = getCodexChatGptOfflineFallbackModel(),
   unavailableModelIds?: readonly (string | null | undefined)[]
 ): string {

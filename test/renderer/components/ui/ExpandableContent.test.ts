@@ -45,11 +45,11 @@ describe('ExpandableContent', () => {
 
     await act(async () => {
       root.render(
-        React.createElement(
-          ExpandableContent,
-          { defaultExpanded: true, collapsedHeight: 40 },
-          React.createElement('div', null, 'long user message')
-        )
+        React.createElement(ExpandableContent, {
+          defaultExpanded: true,
+          collapsedHeight: 40,
+          children: React.createElement('div', null, 'long user message'),
+        })
       );
     });
 
@@ -76,11 +76,10 @@ describe('ExpandableContent', () => {
 
     await act(async () => {
       root.render(
-        React.createElement(
-          ExpandableContent,
-          { collapsedHeight: 40 },
-          React.createElement('div', null, 'agent chatter')
-        )
+        React.createElement(ExpandableContent, {
+          collapsedHeight: 40,
+          children: React.createElement('div', null, 'agent chatter'),
+        })
       );
     });
 
