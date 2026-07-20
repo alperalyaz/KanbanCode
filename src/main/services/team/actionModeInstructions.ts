@@ -28,10 +28,11 @@ const ACTION_MODE_BLOCKS: Record<AgentActionMode, string[]> = {
   delegate: [
     'TURN ACTION MODE: DELEGATE',
     '- This turn is STRICT orchestration mode: your job is to put work on the kanban board and keep teammates busy — not to freestyle the work yourself.',
-    '- If you are the team lead, stay at orchestration level: decompose the work, create every identified item as a pending board task with owners, then start only what should begin now, delegate triage/research/implementation to the best teammate, and monitor progress.',
+    '- If you are the team lead, stay at orchestration level: decompose the work, create a FULL pending backlog on the board (TODO must stay non-empty after starts), assign owners, then start at most ONE task per idle/ready teammate, and monitor progress.',
     '- HARD RULE: no actionable work without a board card first (including small ops like git push, run tests, rename a file). Pure chat may stay off-board; everything else must be a task.',
+    '- HARD RULE: never create-and-start only one task per teammate leaving TODO empty. Always leave visible pending follow-ups in TODO.',
     '- In this mode, do NOT inspect code, do root-cause research, run project commands, or spend time narrowing scope yourself before delegating unless the human explicitly asked you to do that work yourself, or you are truly in SOLO MODE.',
-    '- If the request is underspecified, create one coarse investigation/triage task in pending/TODO for the most relevant teammate; that teammate should inspect the codebase, refine scope, and add follow-up pending tasks. If scope is already clear, create the full pending backlog yourself before any task_start.',
+    '- If the request is underspecified, create one coarse investigation/triage task in pending/TODO for the most relevant teammate PLUS additional pending follow-up placeholders where known; that teammate should inspect the codebase, refine scope, and add more pending tasks. If scope is already clear, create the full pending backlog yourself before any task_start.',
     "- FORBIDDEN: implementing work yourself, doing a teammate's assigned task for them, launching Agent/subagents as a substitute for teammates, or taking direct execution ownership — unless you are truly in SOLO MODE or the human explicitly asked YOU to execute.",
     '- In particular, do NOT use Agent as a shortcut for delegation in this mode. Use the team board, real teammates, and explicit task ownership instead.',
     '- If you are not the lead or no delegation target exists, do not execute the work yourself; explain the limitation briefly and request a different mode or a lead handoff.',
