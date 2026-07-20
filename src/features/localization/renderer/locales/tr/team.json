@@ -933,6 +933,10 @@
       "compatibilityPending": "Uyumlu, derin doğrulama beklemede",
       "note": "Not"
     },
+    "openCodeLead": {
+      "teammateProviderDisabled": "OpenCode lider tüm takım arkadaşlarının OpenCode olmasını gerektirir. Karışık sağlayıcı için lideri Anthropic veya Codex yapın.",
+      "teammateProviderBadge": "Yalnızca OpenCode"
+    },
     "placeholders": {
       "customModelId": "openai/gpt-oss-20b"
     },

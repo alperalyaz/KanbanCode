@@ -112,6 +112,11 @@ import {
   clearInheritedMemberModelsUnavailableForProvider,
   resolveProviderScopedMemberModel,
 } from './memberModelScope';
+import {
+  buildOpenCodeLeadTeammateProviderDisabledBadges,
+  buildOpenCodeLeadTeammateProviderDisabledReasons,
+  coerceTeammatesToOpenCodeForOpenCodeLead,
+} from './openCodeLeadProviderLocks';
 import { OptionalSettingsSection } from './OptionalSettingsSection';
 import {
   isDeletedProjectPathSelection,
@@ -843,6 +848,16 @@ export const CreateTeamDialog = ({
       setMembers(sanitized.members);
     }
   }, [members, runtimeProviderStatusById, selectedProviderId, setMembers]);
+
+  useEffect(() => {
+    if (selectedProviderId !== 'opencode' || syncModelsWithLead) {
+      return;
+    }
+    const coerced = coerceTeammatesToOpenCodeForOpenCodeLead(members);
+    if (coerced.changed) {
+      setMembers(coerced.members);
+    }
+  }, [members, selectedProviderId, setMembers, syncModelsWithLead]);
 
   useEffect(() => {
     prepareChecksRef.current = prepareChecks;
@@ -1715,6 +1730,20 @@ export const CreateTeamDialog = ({
       tmuxRuntime.loading,
       tmuxRuntime.status,
     ]
+  );
+  const openCodeLeadTeammateProviderDisabledReasonById = useMemo(
+    () =>
+      selectedProviderId === 'opencode' && !syncModelsWithLead
+        ? buildOpenCodeLeadTeammateProviderDisabledReasons(t)
+        : undefined,
+    [selectedProviderId, syncModelsWithLead, t]
+  );
+  const openCodeLeadTeammateProviderDisabledBadgeById = useMemo(
+    () =>
+      selectedProviderId === 'opencode' && !syncModelsWithLead
+        ? buildOpenCodeLeadTeammateProviderDisabledBadges(t)
+        : undefined,
+    [selectedProviderId, syncModelsWithLead, t]
   );
   const teammateRuntimeProviderNoticeById:
     | Partial<Record<TeamProviderId, React.ReactNode>>
@@ -2616,6 +2645,8 @@ export const CreateTeamDialog = ({
                   worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
                   onTeammateWorktreeDefaultChange={setTeammateWorktreeDefault}
                   disableGeminiOption={isGeminiUiFrozen()}
+                  providerDisabledReasonById={openCodeLeadTeammateProviderDisabledReasonById}
+                  providerDisabledBadgeLabelById={openCodeLeadTeammateProviderDisabledBadgeById}
                   leadModelIssueText={leadModelIssueText}
                   memberWarningById={teammateRuntimeCompatibility.memberWarningById}
                   memberModelIssueById={memberModelIssueById}

@@ -4218,6 +4218,10 @@ export default interface Resources {
         note: 'Note';
         pingNotConfirmed: 'Ping not confirmed';
       };
+      openCodeLead: {
+        teammateProviderBadge: 'OpenCode only';
+        teammateProviderDisabled: 'OpenCode lead requires every teammate on OpenCode. Switch the lead to Anthropic or Codex to mix providers.';
+      };
       anthropicExtraUsage: {
         pricingDocs: 'Read Anthropic pricing docs';
       };

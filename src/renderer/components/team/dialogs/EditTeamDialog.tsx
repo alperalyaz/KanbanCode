@@ -38,6 +38,11 @@ import {
   getMemberRuntimeContractKey,
   getMembersRequiringRuntimeRestart,
 } from './editTeamRuntimeChanges';
+import {
+  buildOpenCodeLeadTeammateProviderDisabledBadges,
+  buildOpenCodeLeadTeammateProviderDisabledReasons,
+  coerceTeammatesToOpenCodeForOpenCodeLead,
+} from './openCodeLeadProviderLocks';
 
 import type { ResolvedAppLocale } from '@features/localization/contracts';
 import type { ResolvedTeamMember } from '@shared/types';
@@ -252,6 +257,16 @@ export const EditTeamDialog = ({
     wasOpenRef.current = open;
   }, [open, teamName, currentName, currentDescription, currentColor, currentMembers]);
 
+  useEffect(() => {
+    if (!open || leadMember?.providerId !== 'opencode') {
+      return;
+    }
+    const coerced = coerceTeammatesToOpenCodeForOpenCodeLead(members);
+    if (coerced.changed) {
+      setMembers(coerced.members);
+    }
+  }, [leadMember?.providerId, members, open]);
+
   const builtMembers = useMemo(() => buildMembersFromDrafts(members), [members]);
   const invalidMemberNamesError = useMemo(
     () =>
@@ -271,6 +286,20 @@ export const EditTeamDialog = ({
       .filter(Boolean);
     return new Set(names).size !== names.length;
   }, [members]);
+  const openCodeLeadTeammateProviderDisabledReasonById = useMemo(
+    () =>
+      leadMember?.providerId === 'opencode'
+        ? buildOpenCodeLeadTeammateProviderDisabledReasons(t)
+        : undefined,
+    [leadMember?.providerId, t]
+  );
+  const openCodeLeadTeammateProviderDisabledBadgeById = useMemo(
+    () =>
+      leadMember?.providerId === 'opencode'
+        ? buildOpenCodeLeadTeammateProviderDisabledBadges(t)
+        : undefined,
+    [leadMember?.providerId, t]
+  );
   const membersToRestart = useMemo(
     () =>
       isTeamAlive
@@ -701,6 +730,8 @@ export const EditTeamDialog = ({
                 addMemberLockReason={t('editTeam.addMemberLockReason')}
                 memberWarningById={memberWarningById}
                 disableGeminiOption={isGeminiUiFrozen()}
+                providerDisabledReasonById={openCodeLeadTeammateProviderDisabledReasonById}
+                providerDisabledBadgeLabelById={openCodeLeadTeammateProviderDisabledBadgeById}
               />
             </div>
           ) : null}
