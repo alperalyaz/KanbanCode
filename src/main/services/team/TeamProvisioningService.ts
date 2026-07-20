@@ -34493,6 +34493,11 @@ export class TeamProvisioningService {
       isSolo,
       members: currentMembers,
       compact: true,
+      providerId:
+        currentMembers.find((member) => member.name === leadName)?.providerId ??
+        currentMembers.find((member) => member.role?.toLowerCase().includes('lead'))
+          ?.providerId ??
+        run.request.providerId,
     });
 
     // Best-effort: fetch fresh task board snapshot.

@@ -29,7 +29,53 @@ import type {
   TeamTask,
 } from '@shared/types';
 
-const { protocols } = agentTeamsControllerModule;
+const { createMemberMessagingProtocol, protocols } = agentTeamsControllerModule;
+
+type LeadMessagingRuntimeProvider = 'native' | 'codex' | 'opencode';
+
+function resolveLeadMessagingRuntimeProvider(
+  providerId?: TeamProviderId | null
+): LeadMessagingRuntimeProvider {
+  const resolved = resolveTeamProviderId(providerId);
+  if (resolved === 'codex') return 'codex';
+  if (resolved === 'opencode') return 'opencode';
+  return 'native';
+}
+
+/**
+ * Codex/OpenCode leads do not get Claude-native SendMessage/TaskCreate.
+ * Their board surface is the agent-teams MCP server under several possible names.
+ */
+export function buildLeadRuntimeToolSurfaceBlock(opts: {
+  teamName: string;
+  leadName: string;
+  providerId?: TeamProviderId | null;
+}): string {
+  const runtimeProvider = resolveLeadMessagingRuntimeProvider(opts.providerId);
+  if (runtimeProvider === 'native') {
+    return '';
+  }
+
+  const messaging = createMemberMessagingProtocol(runtimeProvider);
+  const runtimeLabel = runtimeProvider === 'opencode' ? 'OpenCode' : 'Codex Native';
+
+  return [
+    `LEAD RUNTIME TOOL SURFACE (${runtimeLabel} — CRITICAL):`,
+    `- This lead session does NOT expose Claude-native TeamCreate / TaskCreate / SendMessage board tools.`,
+    `- Board/task tools come from the agent-teams MCP server. Call them with whichever name your current tool list exposes:`,
+    `  - create task: agent-teams_task_create OR mcp__agent-teams__task_create OR task_create`,
+    `  - create from user message: agent-teams_task_create_from_message OR mcp__agent-teams__task_create_from_message OR task_create_from_message`,
+    `  - list/get/start/complete/comment/owner: agent-teams_task_* OR mcp__agent-teams__task_* OR task_*`,
+    `  - lead queue: agent-teams_lead_briefing OR mcp__agent-teams__lead_briefing OR lead_briefing`,
+    `  - visible messages to user/teammates: ${messaging.sendToolName} (aliases: ${messaging.sendToolAliases.join(', ')})`,
+    `- ${messaging.visibleMessageRule}`,
+    `- ${messaging.taskToolHint}`,
+    `- Wherever standing rules below say "SendMessage", interpret that as ${messaging.sendToolName} with teamName: "${opts.teamName}", to, from: "${opts.leadName}", text, and summary.`,
+    `- Wherever standing rules below say "task_create" / "task_create_from_message", use the matching agent-teams_* or mcp__agent-teams__* name if the bare name is not listed.`,
+    `- NEVER refuse board work by claiming "board tools / TaskCreate / task_create_from_message are missing" when any agent-teams_* or mcp__agent-teams__* alias is present in your tools.`,
+    `- If tools appear only via deferred discovery / tool search, search for "agent-teams" or "task_create" and call the namespaced tool — do not stop at the default Claude-native tool list.`,
+  ].join('\n');
+}
 
 export interface TeamProvisioningHydrationRun {
   teamName: string;
@@ -732,11 +778,30 @@ export function buildRestartMemberSpawnMessage(
   );
 }
 
-export function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string {
+export function buildTeamCtlOpsInstructions(
+  teamName: string,
+  leadName: string,
+  providerId?: TeamProviderId | null
+): string {
+  const runtimeProvider = resolveLeadMessagingRuntimeProvider(providerId);
+  const messaging = createMemberMessagingProtocol(runtimeProvider);
+  const aliasHint =
+    runtimeProvider === 'native'
+      ? []
+      : [
+          `Name aliases for this ${runtimeProvider === 'opencode' ? 'OpenCode' : 'Codex'} lead session:`,
+          `- Prefer ${messaging.sendToolName} for visible messages (not SendMessage).`,
+          `- Prefer agent-teams_task_create / mcp__agent-teams__task_create when bare task_create is not listed.`,
+          `- Prefer agent-teams_task_create_from_message / mcp__agent-teams__task_create_from_message when bare task_create_from_message is not listed.`,
+          `- Prefer agent-teams_lead_briefing / mcp__agent-teams__lead_briefing when bare lead_briefing is not listed.`,
+          ``,
+        ];
+
   return wrapInAgentBlock(
     [
       `Internal task board tooling (MCP):`,
       `- Use the board-management MCP tools for tasks that must appear on the team board (assigned work, substantial work, or when the user explicitly asks to create a task).`,
+      ...aliasHint,
       ``,
       `Execution discipline (CRITICAL — prevents misleading task boards):`,
       `- BACKLOG SEEDING (MANDATORY): When you decompose a user request into multiple work items, create ALL identified items as pending board tasks first (task_create without startImmediately, or startImmediately: false). Assign owners when known. Do NOT call task_start on any of them until you or the assigned owner is actually beginning that specific item.`,
@@ -872,12 +937,43 @@ export function buildPersistentLeadContext(opts: {
   members: TeamCreateRequest['members'];
   /** When true, emit a compact roster (name + role only, no workflows). Used for post-compact reminders. */
   compact?: boolean;
+  /** Lead/runtime provider — Codex/OpenCode leads need MCP tool aliases, not Claude-native SendMessage/TaskCreate. */
+  providerId?: TeamProviderId | null;
 }): string {
-  const { teamName, leadName, isSolo, members, compact } = opts;
+  const { teamName, leadName, isSolo, members, compact, providerId } = opts;
   const languageInstruction = getAgentLanguageInstruction();
   const agentBlockPolicy = buildAgentBlockUsagePolicy();
   const actionModeProtocol = buildActionModeProtocol();
-  const teamCtlOps = buildTeamCtlOpsInstructions(teamName, leadName);
+  const teamCtlOps = buildTeamCtlOpsInstructions(teamName, leadName, providerId);
+  const runtimeToolSurface = buildLeadRuntimeToolSurfaceBlock({
+    teamName,
+    leadName,
+    providerId,
+  });
+  const runtimeProvider = resolveLeadMessagingRuntimeProvider(providerId);
+  const messaging = createMemberMessagingProtocol(runtimeProvider);
+  const sendToolLabel =
+    runtimeProvider === 'native' ? 'SendMessage' : messaging.sendToolName;
+  const sendExample =
+    runtimeProvider === 'native'
+      ? `SendMessage(${buildCanonicalSendMessageExample({ to: 'alice', summary: 'short reply', message: 'your reply' })})`
+      : messaging.buildLeadMessageExample({
+          teamName,
+          leadName: 'alice',
+          fromName: leadName,
+          text: 'your reply',
+          summary: 'short reply',
+        });
+  const sendClarifyExample =
+    runtimeProvider === 'native'
+      ? `SendMessage(${buildCanonicalSendMessageExample({ to: 'alice', summary: 'need clarification', message: 'Уточни, пожалуйста, до чего именно нужно время.' })})`
+      : messaging.buildLeadMessageExample({
+          teamName,
+          leadName: 'alice',
+          fromName: leadName,
+          text: 'Уточни, пожалуйста, до чего именно нужно время.',
+          summary: 'need clarification',
+        });
 
   const teamConstraint = !isSolo
     ? `\n- BOARD PLAN FIRST (MANDATORY for teams with teammates): After you decompose a substantial user request, create EVERY identified work item as a pending board task via task_create (startImmediately: false) with owners before anyone begins execution.` +
@@ -917,17 +1013,17 @@ export function buildPersistentLeadContext(opts: {
     : 'Members: (none — solo team lead)';
 
   return `${languageInstruction}
-
+${runtimeToolSurface ? `\n${runtimeToolSurface}\n` : ''}
 Constraints:
 - Do NOT call TeamDelete under any circumstances.
 - Do NOT use TodoWrite.
-- Do NOT send shutdown_request messages (SendMessage type: "shutdown_request" is FORBIDDEN).
+- Do NOT send shutdown_request messages (${sendToolLabel} type: "shutdown_request" is FORBIDDEN).
 - Do NOT shut down, terminate, or clean up the team or its members.
 - Do NOT spawn or create a member named "user". "user" is a reserved system name for the human operator — it is NOT a teammate.
 - Keep assistant text minimal. NEVER produce text about internal routing decisions — if you receive a notification, relay request, or message and decide no action is needed, produce ZERO text output. No "(Already relayed…)", "(No additional relay needed…)", "(Duplicate…)", or any similar meta-commentary. If there is nothing to do, say nothing.
-- NEVER send duplicate messages to the same member. One SendMessage per member per topic is enough.
+- NEVER send duplicate messages to the same member. One ${sendToolLabel} per member per topic is enough.
 - DO NOT RE-ANNOUNCE ALREADY-DONE / ALREADY-APPROVED STATUS (no "already approved" spam): A task's terminal state is reported to the user ONCE — the first time it actually reaches Done/approved. After that, NEVER message the user again just to restate it. Repeatedly sending "#X zaten onaylı / already approved", "all tasks done", "11/11 done, todo empty", or "everything is already approved" every turn is pure noise, not progress — if a task is already approved and nothing changed, produce ZERO user-facing text about it. Crucially, "everything is already done" is NEVER a useful reply when the user just asked for MORE work: if the user tells you to keep the board busy / set up new work (e.g. "todo boş kalmasın, yeni işler ayarla"), the correct action is to actually CREATE and assign new tasks (propose concrete next steps, task_create, assign owners), NOT to reply that the existing work is already approved. Re-reporting the finished state instead of doing the requested new work is the exact behavior that makes the user feel ignored — do the work instead.
-- NEVER use SendMessage with to="*" (broadcast). The "*" address is NOT supported — it will create a phantom participant named "*" instead of reaching all teammates. To message multiple teammates, send a separate SendMessage to each one by name.
+- NEVER use ${sendToolLabel} with to="*" (broadcast). The "*" address is NOT supported — it will create a phantom participant named "*" instead of reaching all teammates. To message multiple teammates, send a separate ${sendToolLabel} to each one by name.
 - Keep the task board high-signal: avoid creating tasks for trivial micro-items.
 - Use the team task board for assigned/substantial work.
 - DELEGATION-FIRST (behavior rule for ALL future lead turns): When "user" gives you work, your top priority as team lead is to (a) decompose into tasks, (b) create ALL decomposed tasks on the team board in pending/TODO with owners, (c) only then task_start the item(s) that should begin now, and (d) SendMessage "user" a short confirmation (task IDs + owners + which are pending vs in progress). Do NOT start implementing yourself unless the team is truly in SOLO MODE (no teammates).
@@ -949,7 +1045,7 @@ Constraints:
 - Do NOT fixate on one member. A teammate that isn't producing work is not worth waiting on; route the task to whoever can actually do it, or escalate. Silent waiting on a non-working teammate is a failure mode, not patience.
 - REPORT THE BOARD ACCURATELY — match what the user actually sees (do NOT say "TODO is full" when TODO is empty): The user is looking at the SAME kanban board you are, with real columns — TODO holds only PENDING (not-yet-started) tasks, IN PROGRESS holds started/in-progress tasks, DONE holds finished ones. After BOARD PLAN FIRST seeding, TODO should show the planned backlog; only started work belongs in IN PROGRESS. When a task is created and then started, it LEAVES the TODO column and moves to IN PROGRESS — so if you create and immediately start everything in one turn, TODO will look empty even though work is running. Prefer seeding pending tasks first, then starting only what begins now. Never tell the user "TODO dolu / TODO is full" (or similar) as a loose shorthand for "I queued up work", because the user then looks at an empty TODO column and is confused about whether you see a different board. Describe the ACTUAL state in the ACTUAL column names: e.g. "5 görev oluşturdum — 3'ü TODO'da bekliyor, 2'si IN PROGRESS'te @Frodo ve @Sam'de" ("created 5 tasks — 3 pending in TODO, 2 in progress with Frodo and Sam"). Your words about the board must match the columns the user is staring at, task IDs and all.
 - Built-in Agent usage rule: the built-in Agent tool is allowed only for normal Claude Code-style subagents WITHOUT team_name, and only on turns whose action mode is DO. In ASK or DELEGATE mode, treat Agent as forbidden. Never use Agent with team_name to relaunch the team or create persistent teammates from ordinary lead work.
-- Do NOT use the built-in TaskCreate tool for team-board tasks. In this team runtime, create board tasks only via the MCP task tools (task_create, task_create_from_message, etc.).
+- Do NOT use the built-in TaskCreate tool for team-board tasks. In this team runtime, create board tasks only via the MCP task tools (task_create, task_create_from_message, or their agent-teams_* / mcp__agent-teams__* aliases).
 - When messaging "user" (the human): write plain human language. If a task needs a status update, do it yourself via the board MCP tools; never ask the user to run a command.${teamConstraint}${soloConstraint}
 
 ${teamCtlOps}
@@ -957,12 +1053,12 @@ ${teamCtlOps}
 ${actionModeProtocol}
 
 Communication protocol (CRITICAL — you are running headless, no one sees your text output):
-- When you receive a <teammate-message> from a teammate and that message expects any reaction from you, your default action is to reply to THAT teammate using the SendMessage tool. Do NOT answer with plain assistant text for teammate-to-lead communication because that text is not delivered back to the teammate.
+- When you receive a <teammate-message> from a teammate and that message expects any reaction from you, your default action is to reply to THAT teammate using ${sendToolLabel}. Do NOT answer with plain assistant text for teammate-to-lead communication because that text is not delivered back to the teammate.
 - A teammate-message expects a reaction when it asks a question, requests a decision, asks for clarification, reports a blocker, requests review/approval, asks you to relay or check something, or would otherwise change what happens next.
-- If you need clarification from the human user before you can answer a teammate, SendMessage the teammate with a short clarification request or next step. Do NOT put that clarification question only into your plain assistant text output.
+- If you need clarification from the human user before you can answer a teammate, ${sendToolLabel} the teammate with a short clarification request or next step. Do NOT put that clarification question only into your plain assistant text output.
 - Your plain text output is invisible to teammates — they are separate processes and can only read their inbox.
-- Example: if you receive <teammate-message teammate_id="alice">...</teammate-message>, respond with SendMessage(${buildCanonicalSendMessageExample({ to: 'alice', summary: 'short reply', message: 'your reply' })}).
-- Example: if alice asks "Сколько времени осталось?" and you need clarification, reply with SendMessage(${buildCanonicalSendMessageExample({ to: 'alice', summary: 'need clarification', message: 'Уточни, пожалуйста, до чего именно нужно время.' })}) instead of asking that question in plain assistant text.
+- Example: if you receive <teammate-message teammate_id="alice">...</teammate-message>, respond with ${sendExample}.
+- Example: if alice asks "Сколько времени осталось?" and you need clarification, reply with ${sendClarifyExample} instead of asking that question in plain assistant text.
 - Do NOT reply to low-value acknowledgements or presence pings such as "ready", "online", "status accepted", "awaiting task", or "received" unless you need to give the teammate a concrete next action.
 - Treat pure teammate idle/availability heartbeat notifications (for example idle_notification / "available" without task/failure state) as informational runtime noise. Do NOT message "user" or the teammate solely because someone became idle or available. If an idle notification only carries passive peer-summary context, do not send a user-facing reply just for that summary. Only react when the inbox item reflects interruption, failure, or concrete task-terminal state that requires action.
 - Cross-team communication: when work needs expertise, coordination, review, or a decision from ANOTHER team, CALL the MCP tool named "cross_team_send" with teamName: "${teamName}" and a focused actionable message.
@@ -1075,8 +1171,9 @@ export function buildDeterministicLaunchHydrationPrompt(
   tasks: TeamTask[],
   isResume: boolean
 ): string {
-  const leadName =
-    members.find((member) => member.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
+  const leadMember =
+    members.find((member) => member.role?.toLowerCase().includes('lead')) ?? null;
+  const leadName = leadMember?.name || 'team-lead';
   const isSolo = members.length === 0;
   const projectName = path.basename(request.cwd);
   const startLabel = isResume ? 'Team Start (resume)' : 'Team Start';
@@ -1092,6 +1189,7 @@ export function buildDeterministicLaunchHydrationPrompt(
     leadName,
     isSolo,
     members,
+    providerId: leadMember?.providerId ?? request.providerId,
   });
   const nextSteps = isSolo
     ? `This ${startupLabel} step has already been completed deterministically by the runtime.
@@ -1156,6 +1254,9 @@ export function buildGeminiPostLaunchHydrationPrompt(
     leadName,
     isSolo,
     members,
+    providerId:
+      members.find((member) => member.name === leadName)?.providerId ??
+      members.find((member) => member.role?.toLowerCase().includes('lead'))?.providerId,
   });
   const nextStepInstruction = isSolo
     ? hasOriginalUserPrompt

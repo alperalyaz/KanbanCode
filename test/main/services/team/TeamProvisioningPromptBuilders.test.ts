@@ -79,6 +79,51 @@ describe('TeamProvisioningPromptBuilders', () => {
     expect(prompt).not.toContain('BOARD PLAN FIRST (MANDATORY for teams with teammates)');
   });
 
+  it('teaches Codex leads agent-teams MCP aliases instead of Claude-native TaskCreate/SendMessage', () => {
+    const prompt = buildPersistentLeadContext({
+      teamName: 'forge-labs',
+      leadName: 'Lider',
+      isSolo: false,
+      providerId: 'codex',
+      members: [
+        { name: 'Lider', role: 'team-lead', providerId: 'codex' },
+        { name: 'Karagöz', role: 'developer', providerId: 'codex' },
+      ] as TeamCreateRequest['members'],
+    });
+
+    expect(prompt).toContain('LEAD RUNTIME TOOL SURFACE (Codex Native — CRITICAL)');
+    expect(prompt).toContain('agent-teams_task_create');
+    expect(prompt).toContain('agent-teams_task_create_from_message');
+    expect(prompt).toContain('mcp__agent-teams__task_create');
+    expect(prompt).toContain('agent-teams_message_send');
+    expect(prompt).toContain('This lead session does NOT expose Claude-native TeamCreate / TaskCreate / SendMessage');
+    expect(prompt).toContain(
+      'NEVER refuse board work by claiming "board tools / TaskCreate / task_create_from_message are missing"'
+    );
+    expect(prompt).toContain('agent-teams_message_send { teamName: "forge-labs", to: "alice"');
+    expect(prompt).not.toContain(
+      'respond with SendMessage({ to: "alice", summary: "short reply", message: "your reply" })'
+    );
+  });
+
+  it('keeps Claude leads on native SendMessage wording', () => {
+    const prompt = buildPersistentLeadContext({
+      teamName: 'forge-labs',
+      leadName: 'Lider',
+      isSolo: false,
+      providerId: 'anthropic',
+      members: [
+        { name: 'Lider', role: 'team-lead', providerId: 'anthropic' },
+        { name: 'tom', role: 'developer' },
+      ] as TeamCreateRequest['members'],
+    });
+
+    expect(prompt).not.toContain('LEAD RUNTIME TOOL SURFACE');
+    expect(prompt).toContain(
+      'respond with SendMessage({ to: "alice", summary: "short reply", message: "your reply" })'
+    );
+  });
+
   it('keeps errored provisioned-but-not-alive members failed in Gemini hydration prompts', () => {
     const prompt = buildPromptWithStatus({
       status: 'error',
