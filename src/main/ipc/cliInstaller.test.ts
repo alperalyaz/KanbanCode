@@ -143,7 +143,11 @@ function setupHandlers(service: CliInstallerService): ReturnType<typeof createIp
 }
 
 describe('cliInstaller IPC provider runtime scheduling', () => {
-  test('runs provider status requests sequentially by default', async () => {
+  test('runs provider status requests sequentially when the parallel flag is disabled', async () => {
+    // Parallel provider status (limit 3) is the DEFAULT now — it is what keeps
+    // startup fast. '0' is the opt-out back to one-at-a-time.
+    vi.stubEnv(PARALLEL_PROVIDER_STATUS_ENV, '0');
+
     const started: CliProviderId[] = [];
     const deferredByProvider = new Map<CliProviderId, Deferred<CliProviderStatus | null>>();
     const service = createInstallerService({
@@ -182,9 +186,7 @@ describe('cliInstaller IPC provider runtime scheduling', () => {
     expect(results.every((result) => result.success)).toBe(true);
   });
 
-  test('runs different provider status requests concurrently when the parallel flag is enabled', async () => {
-    vi.stubEnv(PARALLEL_PROVIDER_STATUS_ENV, '1');
-
+  test('runs different provider status requests concurrently by default', async () => {
     const started: CliProviderId[] = [];
     const deferredByProvider = new Map<CliProviderId, Deferred<CliProviderStatus | null>>();
     const service = createInstallerService({
@@ -284,6 +286,10 @@ describe('cliInstaller IPC provider runtime scheduling', () => {
   });
 
   test('does not strand queued provider requests if handlers are reinitialized', async () => {
+    // These assertions are about the QUEUE (stranding / slot release), which is
+    // only observable one-at-a-time. Force the sequential limit explicitly.
+    vi.stubEnv(PARALLEL_PROVIDER_STATUS_ENV, '0');
+
     const started: CliProviderId[] = [];
     const deferredByProvider = new Map<CliProviderId, Deferred<CliProviderStatus | null>>();
     const originalService = createInstallerService({
@@ -329,6 +335,10 @@ describe('cliInstaller IPC provider runtime scheduling', () => {
   });
 
   test('releases a provider runtime slot after a failed request', async () => {
+    // These assertions are about the QUEUE (stranding / slot release), which is
+    // only observable one-at-a-time. Force the sequential limit explicitly.
+    vi.stubEnv(PARALLEL_PROVIDER_STATUS_ENV, '0');
+
     const started: CliProviderId[] = [];
     const deferredByProvider = new Map<CliProviderId, Deferred<CliProviderStatus | null>>();
     const service = createInstallerService({
@@ -369,6 +379,10 @@ describe('cliInstaller IPC provider runtime scheduling', () => {
   });
 
   test('does not patch a fresh status cache with stale provider results after invalidation', async () => {
+    // These assertions are about the QUEUE (stranding / slot release), which is
+    // only observable one-at-a-time. Force the sequential limit explicitly.
+    vi.stubEnv(PARALLEL_PROVIDER_STATUS_ENV, '0');
+
     const providerDeferred = createDeferred<CliProviderStatus | null>();
     const service = createInstallerService({
       getStatus: vi.fn(() => Promise.resolve(createCliStatus())),

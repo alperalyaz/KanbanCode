@@ -242,7 +242,7 @@ describe('teamModelAvailability', () => {
         expect.objectContaining({
           value: 'opencode/big-pickle',
           label: 'Big Pickle',
-          badgeLabel: 'Free',
+          badgeLabel: 'big-pickle',
         }),
       ])
     );
@@ -314,7 +314,7 @@ describe('teamModelAvailability', () => {
             isDefault: false,
             upgrade: false,
             source: 'app-server',
-            badgeLabel: 'Free',
+            badgeLabel: 'big-pickle',
           },
           {
             id: 'opencode/big-pickle',
@@ -328,7 +328,7 @@ describe('teamModelAvailability', () => {
             isDefault: true,
             upgrade: false,
             source: 'app-server',
-            badgeLabel: 'Free',
+            badgeLabel: 'big-pickle',
           },
           {
             id: 'openrouter/hidden-model',
@@ -397,7 +397,7 @@ describe('teamModelAvailability', () => {
             isDefault: true,
             upgrade: false,
             source: 'app-server',
-            badgeLabel: 'Free',
+            badgeLabel: 'big-pickle',
           },
           {
             id: 'openai/gpt-5.4',

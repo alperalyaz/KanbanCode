@@ -250,7 +250,12 @@ function getTeamNotificationWhere(
   return team;
 }
 
-function buildTeamNotificationPresentation(
+/**
+ * Pure toast presentation for a team event. Exported so the per-event-type
+ * wording can be tested without going through addTeamNotification, which
+ * deliberately stores only `task_done` (see shouldStoreTeamNotification).
+ */
+export function buildTeamNotificationPresentation(
   payload: TeamNotificationPayload,
   body: string
 ): { title: string; where: string; body: string } {
@@ -1210,7 +1215,9 @@ export class NotificationManager extends EventEmitter {
    * list at all. Systemic-critical and user-facing events are always stored;
    * routine teammate chatter is stored only when its per-type toggle is on.
    */
-  private shouldStoreTeamNotification(teamEventType: TeamNotificationPayload['teamEventType']): boolean {
+  private shouldStoreTeamNotification(
+    teamEventType: TeamNotificationPayload['teamEventType']
+  ): boolean {
     // Done-only policy (per user request): the ONLY event that surfaces a
     // notification is a task landing in Done. Everything else — lead→user
     // chatter, clarifications, status churn, comments, blocks, reviews,

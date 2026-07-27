@@ -1230,7 +1230,9 @@ describe('CliInstallerService', () => {
       ).mockReturnValue(providerStatuses);
 
       const statusPromise = service.getStatus();
-      await vi.advanceTimersByTimeAsync(1_600);
+      // Must exceed MULTIMODEL_PROVIDER_STATUS_INITIAL_TIMEOUT_MS (5s) for getStatus()
+      // to give up waiting on provider hydration and return the partial snapshot.
+      await vi.advanceTimersByTimeAsync(5_100);
 
       const status = await statusPromise;
       expect(status.installed).toBe(true);
@@ -1286,7 +1288,9 @@ describe('CliInstallerService', () => {
       ).mockReturnValue(providerStatuses);
 
       const statusPromise = service.getStatus();
-      await vi.advanceTimersByTimeAsync(1_600);
+      // Must exceed MULTIMODEL_PROVIDER_STATUS_INITIAL_TIMEOUT_MS (5s) for getStatus()
+      // to give up waiting on provider hydration and return the partial snapshot.
+      await vi.advanceTimersByTimeAsync(5_100);
       await statusPromise;
 
       service.invalidateStatusCache();

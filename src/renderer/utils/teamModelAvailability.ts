@@ -10,7 +10,7 @@ import {
   getTeamProviderLabel,
   getTeamProviderModelOptions,
   getVisibleTeamProviderModels,
-  hasExplicitFreeOpenCodeModelMarker,
+  isOpenCodeFreeFloorModel,
   isSupportedAnthropicTeamModel,
   normalizeTeamModelForUi as normalizeCatalogTeamModelForUi,
   sortTeamProviderModels,
@@ -906,7 +906,10 @@ export function getTeamModelSelectionError(
   // and block team creation entirely with a dead Create button. The floor model
   // is always launchable once the OpenCode CLI exists, so never report it as
   // unavailable just because the catalog has not caught up.
-  if (providerId === 'opencode' && hasExplicitFreeOpenCodeModelMarker(trimmed)) {
+  //
+  // Scoped to the floor model ONLY. Matching every "-free"/":free" name here
+  // would let any free-looking id bypass a healthy, authoritative catalog.
+  if (providerId === 'opencode' && isOpenCodeFreeFloorModel(trimmed)) {
     return null;
   }
 

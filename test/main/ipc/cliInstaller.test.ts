@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const claudeBinaryResolverClearCacheMock = vi.hoisted(() => vi.fn());
 const codexBinaryResolverClearCacheMock = vi.hoisted(() => vi.fn());
@@ -140,6 +140,12 @@ function status(providers: CliProviderStatus[]): CliInstallationStatus {
   };
 }
 
+const PARALLEL_PROVIDER_STATUS_ENV = 'CLAUDE_TEAM_PARALLEL_PROVIDER_STATUS';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('cliInstaller IPC handlers', () => {
   let ipcMain: ReturnType<typeof createMockIpcMain>;
   let service: {
@@ -222,6 +228,10 @@ describe('cliInstaller IPC handlers', () => {
   });
 
   it('serializes explicit provider runtime status requests to avoid startup memory spikes', async () => {
+    // Parallel provider status (limit 3) is the default; these tests assert the
+    // one-at-a-time queue, so opt back into the sequential limit explicitly.
+    vi.stubEnv(PARALLEL_PROVIDER_STATUS_ENV, '0');
+
     const codexRequest = deferred<CliProviderStatus>();
     const opencodeRequest = deferred<CliProviderStatus>();
     const startedProviders: CliProviderId[] = [];
@@ -471,6 +481,10 @@ describe('cliInstaller IPC handlers', () => {
   });
 
   it('does not let a stale in-flight provider refresh patch the cache after invalidation', async () => {
+    // Parallel provider status (limit 3) is the default; these tests assert the
+    // one-at-a-time queue, so opt back into the sequential limit explicitly.
+    vi.stubEnv(PARALLEL_PROVIDER_STATUS_ENV, '0');
+
     const staleProviderRequest = deferred<CliProviderStatus | null>();
     service.getStatus
       .mockResolvedValueOnce(
@@ -531,6 +545,10 @@ describe('cliInstaller IPC handlers', () => {
   });
 
   it('does not let a stale model verification patch the cache after invalidation', async () => {
+    // Parallel provider status (limit 3) is the default; these tests assert the
+    // one-at-a-time queue, so opt back into the sequential limit explicitly.
+    vi.stubEnv(PARALLEL_PROVIDER_STATUS_ENV, '0');
+
     const staleVerificationRequest = deferred<CliProviderStatus | null>();
     service.getStatus
       .mockResolvedValueOnce(

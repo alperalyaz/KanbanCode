@@ -173,7 +173,10 @@ const TEAM_PROVIDER_MODEL_OPTIONS: Record<SupportedProviderId, readonly TeamProv
       {
         value: 'opencode/big-pickle',
         label: 'Big Pickle',
-        badgeLabel: 'Free',
+        // The badge must name the MODEL. "Free" is a separate chip rendered from
+        // the catalog metadata next to it — using it as the badge label hid the
+        // model name entirely and made every free model render as just "Free".
+        badgeLabel: 'big-pickle',
       },
     ],
   };
@@ -552,6 +555,18 @@ export function getRuntimeAwareTeamModelBadgeLabel(
   }
 
   return getTeamModelBadgeLabel(providerId, model);
+}
+
+/**
+ * OpenCode's zero-setup free floor model. It ships with the CLI itself, so it is
+ * launchable even before the 200+ model catalog hydrates. Kept separate from the
+ * loose "-free"/":free" name marker below: that marker is a display/ordering
+ * heuristic and must never be used to override an authoritative catalog.
+ */
+export const OPENCODE_FREE_FLOOR_MODEL = 'opencode/big-pickle';
+
+export function isOpenCodeFreeFloorModel(model: string): boolean {
+  return model.trim().toLowerCase() === OPENCODE_FREE_FLOOR_MODEL;
 }
 
 export function hasExplicitFreeOpenCodeModelMarker(model: string): boolean {

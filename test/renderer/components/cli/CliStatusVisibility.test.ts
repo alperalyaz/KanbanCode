@@ -59,6 +59,10 @@ interface StoreState {
     };
   };
   updateConfig: ReturnType<typeof vi.fn>;
+  // CliStatusBanner derives its first-run behaviour from the team list; without
+  // these two fields the component throws on `teams.some(...)` before rendering.
+  teams: { deletedAt?: string | null }[];
+  teamsLoading: boolean;
 }
 
 const storeState = {} as StoreState;
@@ -446,6 +450,8 @@ describe('CLI status visibility during completed install state', () => {
       },
     };
     storeState.updateConfig = vi.fn().mockResolvedValue(undefined);
+    storeState.teams = [];
+    storeState.teamsLoading = false;
     window.localStorage.clear();
   });
 
@@ -487,7 +493,10 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
-    expect(host.textContent).toContain('Extensions');
+    // The Extensions surface was removed from the app; the authenticated banner
+    // now shows the runtime version and auth state instead.
+    expect(host.textContent).toContain('Authenticated');
+    expect(host.textContent).not.toContain('Extensions');
 
     await act(async () => {
       root.unmount();
@@ -2169,6 +2178,9 @@ describe('CLI status visibility during completed install state', () => {
 
   it('starts with the dashboard provider banner collapsed by default', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    // A returning user (already has a team). First-run users deliberately get the
+    // provider banner expanded, so "collapsed by default" only holds once teams exist.
+    storeState.teams = [{ deletedAt: null }];
     storeState.cliInstallerState = 'idle';
     storeState.cliStatus = createInstalledCliStatus({
       flavor: 'agent_teams_orchestrator',
@@ -2254,6 +2266,9 @@ describe('CLI status visibility during completed install state', () => {
 
   it('starts collapsed again after remount even if previously expanded', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    // A returning user (already has a team). First-run users deliberately get the
+    // provider banner expanded, so "collapsed by default" only holds once teams exist.
+    storeState.teams = [{ deletedAt: null }];
     storeState.cliInstallerState = 'idle';
     storeState.cliStatus = createInstalledCliStatus({
       flavor: 'agent_teams_orchestrator',

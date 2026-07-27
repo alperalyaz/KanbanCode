@@ -74,7 +74,10 @@ vi.mock('@main/utils/textFormatting', () => ({
 }));
 
 import { ConfigManager } from '@main/services/infrastructure/ConfigManager';
-import { NotificationManager } from '@main/services/infrastructure/NotificationManager';
+import {
+  buildTeamNotificationPresentation,
+  NotificationManager,
+} from '@main/services/infrastructure/NotificationManager';
 import { Notification as ElectronNotification } from 'electron';
 
 function decodeXmlText(value: string): string {
@@ -109,7 +112,9 @@ function makeTeamPayload(
   overrides: Partial<TeamNotificationPayload> = {}
 ): TeamNotificationPayload {
   return {
-    teamEventType: 'user_inbox',
+    // addTeamNotification stores ONLY task_done (see shouldStoreTeamNotification).
+    // Pipeline tests below must use that type or they assert on a suppressed path.
+    teamEventType: 'task_done',
     teamName: 'test-team',
     teamDisplayName: 'Test Team',
     from: 'alice',
@@ -153,7 +158,7 @@ describe('NotificationManager.addTeamNotification', () => {
 
     expect(result).not.toBeNull();
     expect(result!.category).toBe('team');
-    expect(result!.teamEventType).toBe('user_inbox');
+    expect(result!.teamEventType).toBe('task_done');
     expect(result!.isRead).toBe(false);
     expect(result!.createdAt).toBeGreaterThan(0);
     expect(result!.sessionId).toBe('team:test-team');
@@ -296,93 +301,110 @@ describe('NotificationManager.addTeamNotification', () => {
     expect(result.notifications).toHaveLength(0);
   });
 
-  it('formats clarification as a reply-needed notification', async () => {
-    await manager.addTeamNotification(
+  it('formats clarification as a reply-needed notification', () => {
+    const presentation = buildTeamNotificationPresentation(
       makeTeamPayload({
         teamEventType: 'task_clarification',
         from: 'jack',
         summary: 'Clarification needed - Task #55c51f15',
         body: 'Can you confirm the reviewer?',
-        dedupeKey: 'presentation-reply',
-      })
+      }),
+      'Can you confirm the reviewer?'
     );
 
-    expect(getLastNotificationOptions().title).toBe('@jack needs your reply on #55c51f15');
+    expect(presentation.title).toBe('@jack needs your reply on #55c51f15');
   });
 
-  it('formats review requests as action-needed notifications', async () => {
-    await manager.addTeamNotification(
+  it('formats review requests as action-needed notifications', () => {
+    const presentation = buildTeamNotificationPresentation(
       makeTeamPayload({
         teamEventType: 'task_review_requested',
         from: 'alice',
         summary: 'Review requested #46cceca0: Landing page',
         body: 'Please review the implementation.',
-        dedupeKey: 'presentation-review',
-      })
+      }),
+      'Please review the implementation.'
     );
 
-    expect(getLastNotificationOptions().title).toBe('@alice requested review on #46cceca0');
+    expect(presentation.title).toBe('@alice requested review on #46cceca0');
   });
 
-  it('formats blocked tasks as action-needed notifications', async () => {
-    await manager.addTeamNotification(
+  it('formats blocked tasks as action-needed notifications', () => {
+    const presentation = buildTeamNotificationPresentation(
       makeTeamPayload({
         teamEventType: 'task_blocked',
         from: 'bob',
         summary: 'Blocked #6002830d: API contract',
         body: 'Blocked by #11111111',
-        dedupeKey: 'presentation-blocked',
-      })
+      }),
+      'Blocked by #11111111'
     );
 
-    expect(getLastNotificationOptions().title).toBe('@bob is blocked on #6002830d');
+    expect(presentation.title).toBe('@bob is blocked on #6002830d');
   });
 
-  it('formats rate limits with human restart guidance', async () => {
-    await manager.addTeamNotification(
+  it('formats rate limits with human restart guidance', () => {
+    const presentation = buildTeamNotificationPresentation(
       makeTeamPayload({
         teamEventType: 'rate_limit',
         from: 'tom',
         summary: 'Rate limit',
         body: 'Auto-resume scheduled at 14:30',
-        dedupeKey: 'presentation-rate',
-      })
+      }),
+      'Auto-resume scheduled at 14:30'
     );
 
-    const options = getLastNotificationOptions();
-    expect(options.title).toBe('@tom paused: rate limit');
-    expect(options.body).toContain('Auto-resume scheduled at 14:30');
+    expect(presentation.title).toBe('@tom paused: rate limit');
+    expect(presentation.body).toContain('Auto-resume scheduled at 14:30');
   });
 
-  it('formats API errors with manual restart guidance', async () => {
-    await manager.addTeamNotification(
+  it('formats API errors with manual restart guidance', () => {
+    const presentation = buildTeamNotificationPresentation(
       makeTeamPayload({
         teamEventType: 'api_error',
         from: 'tom',
         summary: 'API Error 500',
         body: 'Manual restart needed',
-        dedupeKey: 'presentation-api',
-      })
+      }),
+      'Manual restart needed'
     );
 
-    const options = getLastNotificationOptions();
-    expect(options.title).toBe('@tom paused: API error');
-    expect(options.body).toContain('Manual restart needed');
+    expect(presentation.title).toBe('@tom paused: API error');
+    expect(presentation.body).toContain('Manual restart needed');
   });
 
-  it('formats incomplete launches without a System prefix', async () => {
-    await manager.addTeamNotification(
+  it('formats incomplete launches without a System prefix', () => {
+    const presentation = buildTeamNotificationPresentation(
       makeTeamPayload({
         teamEventType: 'team_launch_incomplete',
         from: 'system',
         summary: 'Team launch incomplete',
         body: '3/4 joined · @tom did not join',
-        dedupeKey: 'presentation-launch-incomplete',
-      })
+      }),
+      '3/4 joined · @tom did not join'
     );
 
-    const options = getLastNotificationOptions();
-    expect(options.title).toBe('Team launch incomplete');
-    expect(options.body).toContain('3/4 joined · @tom did not join');
+    expect(presentation.title).toBe('Team launch incomplete');
+    expect(presentation.body).toContain('3/4 joined · @tom did not join');
+  });
+
+  it('suppresses every team event type except task_done', async () => {
+    for (const teamEventType of [
+      'user_inbox',
+      'task_clarification',
+      'task_review_requested',
+      'task_blocked',
+      'rate_limit',
+      'api_error',
+      'team_launch_incomplete',
+    ] as const) {
+      const result = await manager.addTeamNotification(
+        makeTeamPayload({ teamEventType, dedupeKey: `policy-${teamEventType}` })
+      );
+      expect(result).toBeNull();
+    }
+
+    const stored = await manager.getNotifications({ limit: 20 });
+    expect(stored.notifications).toHaveLength(0);
   });
 });
