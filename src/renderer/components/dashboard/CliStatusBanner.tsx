@@ -84,7 +84,6 @@ import {
   Loader2,
   LogIn,
   LogOut,
-  Puzzle,
   RefreshCw,
   SlidersHorizontal,
   Terminal,
@@ -799,13 +798,11 @@ const InstalledBanner = ({
     () => buildProviderRuntimeBackendSummaryText(commonT),
     [commonT]
   );
-  const openExtensionsTab = useStore((s) => s.openExtensionsTab);
   const styles = VARIANT_STYLES[variant];
   const visibleProviders = useMemo(
     () => filterMainScreenCliProviders(cliStatus.providers),
     [cliStatus.providers]
   );
-  const canOpenExtensions = cliStatus.installed;
   const runtimeLabel = formatRuntimeLabel(cliStatus);
   const runtimeAuthSummary = formatRuntimeAuthSummary(cliStatus, visibleProviders, t);
   const showCollapseControl = visibleProviders.length > 0;
@@ -928,19 +925,6 @@ const InstalledBanner = ({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-8">
-          {/* Extensions button — available whenever the runtime is installed */}
-          {canOpenExtensions && (
-            <button
-              onClick={openExtensionsTab}
-              className="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"
-              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-            >
-              <Puzzle className="size-3.5" />
-              {t('cliStatus.actions.extensions')}
-            </button>
-          )}
-        </div>
       </div>
       {showExpandedContent && cliStatusError && !cliStatusLoading && (
         <p className="mt-2 text-xs" style={{ color: '#f87171' }}>

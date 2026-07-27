@@ -56,7 +56,6 @@ import {
   Loader2,
   LogIn,
   LogOut,
-  Puzzle,
   RefreshCw,
   SlidersHorizontal,
   Terminal,
@@ -130,7 +129,6 @@ export const CliStatusSection = (): React.JSX.Element | null => {
   const selectedProjectId = useStore((s) => s.selectedProjectId);
   const projects = useStore((s) => s.projects);
   const repositoryGroups = useStore((s) => s.repositoryGroups);
-  const openExtensionsTab = useStore((s) => s.openExtensionsTab);
   const updateConfig = useStore((s) => s.updateConfig);
   const {
     cliStatus,
@@ -204,7 +202,6 @@ export const CliStatusSection = (): React.JSX.Element | null => {
       ),
     [loadingCliStatus?.providers]
   );
-  const canOpenExtensions = effectiveCliStatus?.installed === true;
   const showInstalledControls =
     effectiveCliStatus !== null && (installerState === 'idle' || installerState === 'completed');
 
@@ -421,21 +418,6 @@ export const CliStatusSection = (): React.JSX.Element | null => {
                       )}
                     </button>
                   ) : null}
-                  {/* Extensions button — right-aligned */}
-                  {canOpenExtensions && (
-                    <button
-                      type="button"
-                      onClick={openExtensionsTab}
-                      className="ml-auto flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-white/5"
-                      style={{
-                        borderColor: 'var(--color-border)',
-                        color: 'var(--color-text-secondary)',
-                      }}
-                    >
-                      <Puzzle className="size-3.5" />
-                      {t('cliRuntime.actions.extensions')}
-                    </button>
-                  )}
                 </div>
                 {effectiveCliStatus.showBinaryPath && effectiveCliStatus.binaryPath && (
                   <p

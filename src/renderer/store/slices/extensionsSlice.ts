@@ -1,6 +1,5 @@
 /**
  * Extensions slice — global catalog caches shared across all Extensions tabs.
- * Per-tab UI state lives in useExtensionsTabState() hook, NOT here.
  */
 
 import { api } from '@renderer/api';
@@ -130,7 +129,6 @@ export interface ExtensionsSlice {
   deleteApiKey: (id: string) => Promise<void>;
 
   // ── Tab opener ──
-  openExtensionsTab: () => void;
 
   // ── GitHub Stars ──
   fetchMcpGitHubStars: (repositoryUrls: string[]) => void;
@@ -1363,37 +1361,6 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     }
   },
 
-  // ── Tab opener ──
-  openExtensionsTab: () => {
-    const state = get();
-    const currentProjectId = state.selectedProjectId ?? state.activeProjectId ?? undefined;
-    const focusedPane = state.paneLayout.panes.find((p) => p.id === state.paneLayout.focusedPaneId);
-    const existingTab = focusedPane?.tabs.find((tab) => tab.type === 'extensions');
-    if (existingTab) {
-      // Update projectId to reflect the currently selected project
-      if (existingTab.projectId !== currentProjectId) {
-        const pane = findPaneByTabId(state.paneLayout, existingTab.id);
-        if (pane) {
-          set({
-            paneLayout: updatePane(state.paneLayout, {
-              ...pane,
-              tabs: pane.tabs.map((t) =>
-                t.id === existingTab.id ? { ...t, projectId: currentProjectId } : t
-              ),
-            }),
-          });
-        }
-      }
-      state.setActiveTab(existingTab.id);
-      return;
-    }
-
-    state.openTab({
-      type: 'extensions',
-      label: 'Extensions',
-      projectId: currentProjectId,
-    });
-  },
 
   // ── GitHub Stars (fire-and-forget) ──
   fetchMcpGitHubStars: (repositoryUrls: string[]) => {

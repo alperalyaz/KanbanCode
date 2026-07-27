@@ -19,9 +19,9 @@ vi.mock('../dashboard/DashboardView', () => ({
   DashboardView: () => React.createElement('div', { 'data-view': 'dashboard' }, 'Dashboard view'),
 }));
 
-vi.mock('../extensions/ExtensionStoreView', () => ({
-  ExtensionStoreView: () =>
-    React.createElement('div', { 'data-view': 'extensions' }, 'Extension store view'),
+vi.mock('../notifications/NotificationsView', () => ({
+  NotificationsView: () =>
+    React.createElement('div', { 'data-view': 'notifications' }, 'Notifications view'),
 }));
 
 vi.mock('../team/TeamDetailView', () => teamDetailViewMock.promise);
@@ -47,10 +47,10 @@ const dashboardTab: Tab = {
   createdAt: 1,
 };
 
-const extensionTab: Tab = {
-  id: 'tab-extensions',
-  type: 'extensions',
-  label: 'Extensions',
+const notificationsTab: Tab = {
+  id: 'tab-notifications',
+  type: 'notifications',
+  label: 'Notifications',
   createdAt: 2,
 };
 
@@ -127,29 +127,29 @@ describe('PaneContent', () => {
   it('does not mount inactive lazy tab content during initial pane render', async () => {
     const { host, root } = createHarness();
 
-    await renderPane(root, createPane([dashboardTab, extensionTab], dashboardTab.id));
+    await renderPane(root, createPane([dashboardTab, notificationsTab], dashboardTab.id));
 
     expect(host.textContent).toContain('Dashboard view');
-    expect(host.textContent).not.toContain('Extension store view');
+    expect(host.textContent).not.toContain('Notifications view');
     expect(host.querySelector('[role="status"]')).toBeNull();
   });
 
   it('loads a lazy tab on first activation and keeps it mounted after switching away', async () => {
     const { host, root } = createHarness();
 
-    await renderPane(root, createPane([dashboardTab, extensionTab], dashboardTab.id));
-    expect(host.textContent).not.toContain('Extension store view');
+    await renderPane(root, createPane([dashboardTab, notificationsTab], dashboardTab.id));
+    expect(host.textContent).not.toContain('Notifications view');
 
-    await renderPane(root, createPane([dashboardTab, extensionTab], extensionTab.id));
-    await waitForText(host, 'Extension store view');
+    await renderPane(root, createPane([dashboardTab, notificationsTab], notificationsTab.id));
+    await waitForText(host, 'Notifications view');
 
-    const extensionView = host.querySelector<HTMLElement>('[data-view="extensions"]');
-    expect(extensionView).not.toBeNull();
+    const notificationsView = host.querySelector<HTMLElement>('[data-view="notifications"]');
+    expect(notificationsView).not.toBeNull();
 
-    await renderPane(root, createPane([dashboardTab, extensionTab], dashboardTab.id));
+    await renderPane(root, createPane([dashboardTab, notificationsTab], dashboardTab.id));
 
-    expect(host.querySelector('[data-view="extensions"]')).toBe(extensionView);
-    expect(extensionView?.closest<HTMLElement>('.absolute')?.style.display).toBe('none');
+    expect(host.querySelector('[data-view="notifications"]')).toBe(notificationsView);
+    expect(notificationsView?.closest<HTMLElement>('.absolute')?.style.display).toBe('none');
   });
 
   it('uses the team loading skeleton while the team tab chunk is loading', async () => {

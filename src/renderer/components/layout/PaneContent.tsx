@@ -19,11 +19,6 @@ import { TeamLoadingSkeleton } from '../team/TeamLoadingSkeleton';
 import type { Pane } from '@renderer/types/panes';
 import type { Tab } from '@renderer/types/tabs';
 
-const ExtensionStoreView = lazy(() =>
-  import('../extensions/ExtensionStoreView').then((module) => ({
-    default: module.ExtensionStoreView,
-  }))
-);
 const NotificationsView = lazy(() =>
   import('../notifications/NotificationsView').then((module) => ({
     default: module.NotificationsView,
@@ -162,11 +157,6 @@ const PaneTabSlot = ({ tab, isActive, isPaneFocused }: PaneTabSlotProps): React.
             </TabUIProvider>
           )}
           {tab.type === 'report' && <SessionReportTab tab={tab} />}
-          {tab.type === 'extensions' && (
-            <TabUIProvider tabId={tab.id}>
-              <ExtensionStoreView />
-            </TabUIProvider>
-          )}
         </Suspense>
       )}
     </div>

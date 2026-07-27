@@ -4,7 +4,6 @@ export const TRANSLATION_NAMESPACES = [
   'errors',
   'report',
   'dashboard',
-  'extensions',
   'team',
 ] as const;
 

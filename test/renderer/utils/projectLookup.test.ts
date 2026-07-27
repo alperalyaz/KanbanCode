@@ -431,7 +431,6 @@ describe('resolveProjectPathById', () => {
     it('resolves projectPath from id when only repositoryGroups is populated', () => {
       // This is the exact scenario that caused skills not to show:
       // viewMode=grouped → projects=[] but repositoryGroups has the data
-      // ExtensionStoreView used projects.find(p => p.id === tabProjectId)
       // which returned null, so projectPath was null and no project skills loaded
       const emptyProjects: ProjectWithName[] = [];
       const populatedGroups: RepoGroupLike[] = [CRYPTO_REPO_GROUP, CLAUDE_REPO_GROUP];

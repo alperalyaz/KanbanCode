@@ -59,7 +59,6 @@ interface StoreState {
     };
   };
   updateConfig: ReturnType<typeof vi.fn>;
-  openExtensionsTab: ReturnType<typeof vi.fn>;
 }
 
 const storeState = {} as StoreState;
@@ -447,7 +446,6 @@ describe('CLI status visibility during completed install state', () => {
       },
     };
     storeState.updateConfig = vi.fn().mockResolvedValue(undefined);
-    storeState.openExtensionsTab = vi.fn();
     window.localStorage.clear();
   });
 
@@ -490,39 +488,6 @@ describe('CLI status visibility during completed install state', () => {
     });
 
     expect(host.textContent).toContain('Extensions');
-
-    await act(async () => {
-      root.unmount();
-      await Promise.resolve();
-    });
-  });
-
-  it('keeps the dashboard Extensions button visible before authentication completes', async () => {
-    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-    storeState.cliStatus = createInstalledCliStatus({
-      authLoggedIn: false,
-    });
-
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => {
-      root.render(React.createElement(CliStatusBanner));
-      await Promise.resolve();
-    });
-
-    const extensionsButton = Array.from(host.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Extensions')
-    );
-    expect(extensionsButton).not.toBeNull();
-
-    await act(async () => {
-      extensionsButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(storeState.openExtensionsTab).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       root.unmount();
@@ -2439,43 +2404,6 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
-  it('keeps installed controls visible in settings and wires the Extensions button correctly', async () => {
-    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-    storeState.cliStatus = createInstalledCliStatus({
-      authLoggedIn: true,
-    });
-
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => {
-      root.render(React.createElement(CliStatusSection));
-      await Promise.resolve();
-    });
-
-    expect(host.textContent).toContain('Installed v2.1.100');
-    expect(host.textContent).toContain('Multimodel');
-    expect(host.textContent).toContain('Extensions');
-
-    const extensionsButton = Array.from(host.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Extensions')
-    );
-    expect(extensionsButton).not.toBeNull();
-
-    await act(async () => {
-      extensionsButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(storeState.openExtensionsTab).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      root.unmount();
-      await Promise.resolve();
-    });
-  });
-
   it('uses provider-first bootstrap when settings re-check runs in multimodel mode', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'idle';
@@ -2542,39 +2470,6 @@ describe('CLI status visibility during completed install state', () => {
       },
     });
     expect(storeState.fetchCliProviderStatus).toHaveBeenCalledWith('codex');
-
-    await act(async () => {
-      root.unmount();
-      await Promise.resolve();
-    });
-  });
-
-  it('keeps the settings Extensions button visible when the runtime is installed but not authenticated yet', async () => {
-    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-    storeState.cliStatus = createInstalledCliStatus({
-      authLoggedIn: false,
-    });
-
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => {
-      root.render(React.createElement(CliStatusSection));
-      await Promise.resolve();
-    });
-
-    const extensionsButton = Array.from(host.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Extensions')
-    );
-    expect(extensionsButton).not.toBeNull();
-
-    await act(async () => {
-      extensionsButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(storeState.openExtensionsTab).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       root.unmount();
