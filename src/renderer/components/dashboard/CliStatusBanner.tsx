@@ -172,7 +172,11 @@ const DashboardRateLimitChips = ({
             </span>
             <span
               className="text-xs font-medium"
-              style={{ color: item.isDepleted ? '#f87171' : '#86efac' }}
+              style={{
+                color: item.isDepleted
+                  ? 'var(--color-status-danger)'
+                  : 'var(--color-status-success)',
+              }}
             >
               {item.remaining}
             </span>
@@ -298,8 +302,8 @@ const InstallCompletedNotice = ({
         backgroundColor: VARIANT_STYLES.success.bg,
       }}
     >
-      <CheckCircle className="size-4 shrink-0" style={{ color: '#4ade80' }} />
-      <span className="text-sm" style={{ color: '#4ade80' }}>
+      <CheckCircle className="size-4 shrink-0" style={{ color: 'var(--color-status-success)' }} />
+      <span className="text-sm" style={{ color: 'var(--color-status-success)' }}>
         {t('cliStatus.installer.success', {
           runtime: runtimeDisplayName,
           version: version ?? 'latest',
@@ -326,9 +330,9 @@ const ErrorDisplay = ({
     <div className="space-y-2">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" style={{ color: '#f87171' }} />
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" style={{ color: 'var(--color-status-danger)' }} />
           <div className="min-w-0">
-            <p className="text-sm font-medium" style={{ color: '#f87171' }}>
+            <p className="text-sm font-medium" style={{ color: 'var(--color-status-danger)' }}>
               {title}
             </p>
             {details.length > 0 && (
@@ -450,7 +454,7 @@ function getProviderStatusColor(statusText: string, authenticated: boolean): str
     return 'var(--color-text-secondary)';
   }
 
-  return authenticated ? '#4ade80' : 'var(--color-text-muted)';
+  return authenticated ? 'var(--color-status-success)' : 'var(--color-text-muted)';
 }
 
 function getApiKeyActionRequiredProviders(
@@ -904,7 +908,7 @@ const InstalledBanner = ({
               ) : null}
 
               {runtimeAuthSummary && (
-                <span className="text-xs" style={{ color: '#4ade80' }}>
+                <span className="text-xs text-green-700 dark:text-green-400">
                   {runtimeAuthSummary}
                 </span>
               )}
@@ -927,7 +931,7 @@ const InstalledBanner = ({
 
       </div>
       {showExpandedContent && cliStatusError && !cliStatusLoading && (
-        <p className="mt-2 text-xs" style={{ color: '#f87171' }}>
+        <p className="mt-2 text-xs" style={{ color: 'var(--color-status-danger)' }}>
           {t('cliStatus.errors.refreshFailed')}
         </p>
       )}
@@ -1107,7 +1111,7 @@ const InstalledBanner = ({
                                   style={{
                                     borderColor: 'rgba(245, 158, 11, 0.22)',
                                     backgroundColor: 'rgba(245, 158, 11, 0.05)',
-                                    color: '#fbbf24',
+                                    color: 'var(--color-status-warning)',
                                   }}
                                 >
                                   {t('cliStatus.actions.useCode')}
@@ -1127,7 +1131,7 @@ const InstalledBanner = ({
                                 style={{
                                   borderColor: 'rgba(245, 158, 11, 0.28)',
                                   backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                                  color: '#fbbf24',
+                                  color: 'var(--color-status-warning)',
                                 }}
                               >
                                 {codexLoginAuthUrl
@@ -1152,7 +1156,7 @@ const InstalledBanner = ({
                         className="flex items-center gap-1 rounded-md border px-2 py-[3px] text-[10px] font-medium transition-colors hover:bg-white/5 disabled:opacity-50"
                         style={{
                           borderColor: 'rgba(34, 197, 94, 0.34)',
-                          color: '#86efac',
+                          color: 'var(--color-status-success)',
                         }}
                         title={
                           codexRuntimeStatus?.error ??
@@ -1183,7 +1187,7 @@ const InstalledBanner = ({
                         className="flex items-center gap-1 rounded-md border px-2 py-[3px] text-[10px] font-medium transition-colors hover:bg-white/5 disabled:opacity-50"
                         style={{
                           borderColor: 'rgba(14, 165, 233, 0.36)',
-                          color: '#7dd3fc',
+                          color: 'var(--color-accent)',
                         }}
                         title={
                           openCodeRuntimeStatus?.error ??
@@ -1768,11 +1772,11 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
             }}
           >
             {loginLauncher.phase === 'polling' || loginLauncher.phase === 'launching' ? (
-              <Loader2 className="size-3.5 shrink-0 animate-spin" style={{ color: '#f59e0b' }} />
+              <Loader2 className="size-3.5 shrink-0 animate-spin" style={{ color: 'var(--color-status-warning)' }} />
             ) : loginLauncher.phase === 'success' ? (
-              <CheckCircle className="size-3.5 shrink-0" style={{ color: '#4ade80' }} />
+              <CheckCircle className="size-3.5 shrink-0" style={{ color: 'var(--color-status-success)' }} />
             ) : (
-              <AlertTriangle className="size-3.5 shrink-0" style={{ color: '#f59e0b' }} />
+              <AlertTriangle className="size-3.5 shrink-0" style={{ color: 'var(--color-status-warning)' }} />
             )}
             <span className="min-w-0 flex-1">{loginStatusText}</span>
             {loginStatusIsProblem && loginActiveProviderId ? (
@@ -1780,7 +1784,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
                 type="button"
                 onClick={() => handleShowProviderLoginCommand(loginActiveProviderId)}
                 className="shrink-0 rounded px-1.5 py-0.5 font-medium underline decoration-dotted underline-offset-2 hover:bg-white/5"
-                style={{ color: '#fbbf24' }}
+                style={{ color: 'var(--color-status-warning)' }}
               >
                 {t('cliStatus.oneClickLogin.copyFallback')}
               </button>
@@ -1858,8 +1862,8 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
         >
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="size-4 shrink-0" style={{ color: '#f87171' }} />
-              <span className="text-sm" style={{ color: '#f87171' }}>
+              <AlertTriangle className="size-4 shrink-0" style={{ color: 'var(--color-status-danger)' }} />
+              <span className="text-sm" style={{ color: 'var(--color-status-danger)' }}>
                 {t('cliStatus.errors.checkStatusFailed')}
               </span>
             </div>
@@ -2055,9 +2059,9 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
       >
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 size-5 shrink-0" style={{ color: '#ef4444' }} />
+            <AlertTriangle className="mt-0.5 size-5 shrink-0" style={{ color: 'var(--color-status-danger)' }} />
             <div>
-              <p className="text-sm font-medium" style={{ color: '#f87171' }}>
+              <p className="text-sm font-medium" style={{ color: 'var(--color-status-danger)' }}>
                 {cliLaunchIssue
                   ? t('cliStatus.runtime.foundButFailed', { runtime: runtimeDisplayName })
                   : t('cliStatus.runtime.isRequired', { runtime: runtimeDisplayName })}
@@ -2252,9 +2256,9 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
         >
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 size-5 shrink-0" style={{ color: '#f59e0b' }} />
+              <AlertTriangle className="mt-0.5 size-5 shrink-0" style={{ color: 'var(--color-status-warning)' }} />
               <div>
-                <p className="text-sm font-medium" style={{ color: '#fbbf24' }}>
+                <p className="text-sm font-medium" style={{ color: 'var(--color-status-warning)' }}>
                   {warningTitle}
                 </p>
                 <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
@@ -2337,11 +2341,11 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
               }}
             >
               {loginLauncher.phase === 'polling' || loginLauncher.phase === 'launching' ? (
-                <Loader2 className="size-3.5 shrink-0 animate-spin" style={{ color: '#f59e0b' }} />
+                <Loader2 className="size-3.5 shrink-0 animate-spin" style={{ color: 'var(--color-status-warning)' }} />
               ) : loginLauncher.phase === 'success' ? (
-                <CheckCircle className="size-3.5 shrink-0" style={{ color: '#4ade80' }} />
+                <CheckCircle className="size-3.5 shrink-0" style={{ color: 'var(--color-status-success)' }} />
               ) : (
-                <AlertTriangle className="size-3.5 shrink-0" style={{ color: '#f59e0b' }} />
+                <AlertTriangle className="size-3.5 shrink-0" style={{ color: 'var(--color-status-warning)' }} />
               )}
               <span className="min-w-0 flex-1">{loginStatusText}</span>
               {loginStatusIsProblem ? (
@@ -2349,7 +2353,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
                   type="button"
                   onClick={() => setShowLoginTerminal(true)}
                   className="shrink-0 rounded px-1.5 py-0.5 font-medium underline decoration-dotted underline-offset-2 hover:bg-white/5"
-                  style={{ color: '#fbbf24' }}
+                  style={{ color: 'var(--color-status-warning)' }}
                 >
                   {t('cliStatus.oneClickLogin.copyFallback')}
                 </button>
@@ -2389,7 +2393,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
                     }}
                     className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium transition-colors hover:bg-white/10"
                     style={{
-                      color: '#fbbf24',
+                      color: 'var(--color-status-warning)',
                       backgroundColor: 'rgba(245, 158, 11, 0.1)',
                     }}
                   >

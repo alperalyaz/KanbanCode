@@ -57,11 +57,11 @@ export const DashboardUpdateBanner = (): React.JSX.Element | null => {
         backgroundColor: 'rgba(34, 197, 94, 0.04)',
       }}
     >
-      <ArrowUpCircle className="size-4 shrink-0 text-green-400" />
+      <ArrowUpCircle className="size-4 shrink-0 text-green-700 dark:text-green-400" />
       <span className="flex-1 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
         {t('updateBanner.newVersionAvailable')}{' '}
         {availableVersion && (
-          <span className="font-medium text-green-400">v{availableVersion}</span>
+          <span className="font-medium text-green-700 dark:text-green-400">v{availableVersion}</span>
         )}
       </span>
       <button

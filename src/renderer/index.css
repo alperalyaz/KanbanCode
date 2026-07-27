@@ -214,6 +214,11 @@
   --assess-warning: #fbbf24;
   --assess-danger: #f87171;
   --assess-neutral: #a1a1aa;
+  /* Status text colors — must stay legible as foreground on the page surface.
+     Light mode overrides these with darker shades; never hardcode the hex. */
+  --color-status-success: #4ade80;
+  --color-status-warning: #fbbf24;
+  --color-status-danger: #f87171;
   /* Sticky Context button — cyan glass */
   --context-btn-bg: rgba(148, 163, 184, 0.08);
   --context-btn-bg-hover: rgba(148, 163, 184, 0.14);
@@ -524,6 +529,11 @@
   --assess-warning: #d97706;
   --assess-danger: #dc2626;
   --assess-neutral: #57534e;
+  /* Status text colors - darker so they stay readable on the warm off-white
+     surface. The dark-theme values (#4ade80/#fbbf24/#f87171) wash out here. */
+  --color-status-success: #15803d;
+  --color-status-warning: #b45309;
+  --color-status-danger: #b91c1c;
   /* Scrollbar colors for light mode */
   --scrollbar-thumb: rgba(0, 0, 0, 0.15);
   --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);

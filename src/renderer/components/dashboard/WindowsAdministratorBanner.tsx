@@ -54,9 +54,13 @@ export const WindowsAdministratorBanner = (): React.JSX.Element | null => {
         backgroundColor: 'rgba(245, 158, 11, 0.07)',
       }}
     >
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-amber-200">{t('windowsAdmin.title')}</div>
+        {/* amber-200 is only legible on a dark surface; light mode needs a dark
+            amber or the warning title disappears into the background. */}
+        <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
+          {t('windowsAdmin.title')}
+        </div>
         <p className="mt-1 text-xs leading-5" style={{ color: 'var(--color-text-secondary)' }}>
           {t('windowsAdmin.description')}
         </p>
