@@ -1,6 +1,13 @@
+import type { TranslationNamespace } from '@features/localization/contracts';
 import type { MemberDraft } from '@renderer/components/team/members/membersEditorTypes';
 import type { TeamProviderId } from '@shared/types';
 import type { TFunction } from 'i18next';
+
+/**
+ * These helpers are handed the `t` returned by useAppTranslation, which is
+ * branded with every namespace — not the bare `TFunction` default ('common').
+ */
+type AppTFunction = TFunction<TranslationNamespace, undefined>;
 
 const OPENCODE_LEAD_LOCKED_PROVIDERS = [
   'anthropic',
@@ -13,7 +20,7 @@ const OPENCODE_LEAD_LOCKED_PROVIDERS = [
  * Disable non-OpenCode provider tabs on teammate model selectors.
  */
 export function buildOpenCodeLeadTeammateProviderDisabledReasons(
-  t: TFunction
+  t: AppTFunction
 ): Partial<Record<TeamProviderId, string>> {
   const reason = t('modelSelector.openCodeLead.teammateProviderDisabled');
   return Object.fromEntries(
@@ -22,7 +29,7 @@ export function buildOpenCodeLeadTeammateProviderDisabledReasons(
 }
 
 export function buildOpenCodeLeadTeammateProviderDisabledBadges(
-  t: TFunction
+  t: AppTFunction
 ): Partial<Record<TeamProviderId, string>> {
   const badge = t('modelSelector.openCodeLead.teammateProviderBadge');
   return Object.fromEntries(

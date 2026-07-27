@@ -22,6 +22,12 @@ vi.mock('@renderer/api', () => ({
 vi.mock('@renderer/store', () => ({
   useStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
+      // TaskDetailDialog reads the team snapshot through selectTeamDataForName,
+      // which indexes teamDataCacheByName directly. Omitting these three fields
+      // makes the selector throw before the component ever renders.
+      teamDataCacheByName: {},
+      selectedTeamName: null,
+      selectedTeamData: null,
       updateTaskFields: hoisted.updateTaskFields,
       recordTaskChangePresence: hoisted.recordTaskChangePresence,
       setSelectedTeamTaskChangePresence: hoisted.setSelectedTeamTaskChangePresence,
