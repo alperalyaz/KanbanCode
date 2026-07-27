@@ -267,6 +267,7 @@ interface ValidationResult {
 }
 
 import {
+  getDefaultCreateTeamMemberConfigs,
   isLegacyDefaultCreateTeamMemberNames,
   remapLegacyDefaultCreateTeamMemberNames,
   remapThemedMemberNames,
@@ -1504,9 +1505,24 @@ export const CreateTeamDialog = ({
           initialData.members.every((member) => member.isolation === 'worktree')
       );
       setSyncModelsWithLead(nextSyncModelsWithLead, { persistStoredPreference: false });
+    } else if (simpleMode && members.length === 0) {
+      // One-click mode seeds a balanced starting crew (architect + 2 developers
+      // + QA) so a new user gets a real working team instead of a solo lead.
+      // Only when the roster is empty, so a restored draft is never overwritten.
+      // The full form (advanced mode) still starts empty — see the lead-only
+      // token-saving note in the dialog.
+      setMembers(
+        getDefaultCreateTeamMemberConfigs(memberNameLocale).map((config) =>
+          normalizeMemberDraftForProviderMode(
+            createMemberDraft(
+              { name: config.name, roleSelection: config.roleSelection },
+              { memberNameLocale }
+            )
+          )
+        )
+      );
     }
 
-    // No default seeding: a new team starts with only the lead (empty roster).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialData is checked once on open/draftLoaded
   }, [memberNameLocale, open, draftLoaded, t]);
 
