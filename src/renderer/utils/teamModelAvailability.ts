@@ -10,6 +10,7 @@ import {
   getTeamProviderLabel,
   getTeamProviderModelOptions,
   getVisibleTeamProviderModels,
+  hasExplicitFreeOpenCodeModelMarker,
   isSupportedAnthropicTeamModel,
   normalizeTeamModelForUi as normalizeCatalogTeamModelForUi,
   sortTeamProviderModels,
@@ -896,6 +897,16 @@ export function getTeamModelSelectionError(
   }
 
   if (isTeamProviderModelVerificationPending(providerId, providerStatus)) {
+    return null;
+  }
+
+  // OpenCode's free floor model (big-pickle) is the one-click / zero-setup
+  // default. Its 200+ model catalog can be slow, partial, or fail to hydrate on
+  // a cold start, which would leave the floor model missing from visibleModels
+  // and block team creation entirely with a dead Create button. The floor model
+  // is always launchable once the OpenCode CLI exists, so never report it as
+  // unavailable just because the catalog has not caught up.
+  if (providerId === 'opencode' && hasExplicitFreeOpenCodeModelMarker(trimmed)) {
     return null;
   }
 

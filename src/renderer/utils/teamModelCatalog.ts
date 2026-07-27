@@ -554,7 +554,7 @@ export function getRuntimeAwareTeamModelBadgeLabel(
   return getTeamModelBadgeLabel(providerId, model);
 }
 
-function hasExplicitFreeOpenCodeModelMarker(model: string): boolean {
+export function hasExplicitFreeOpenCodeModelMarker(model: string): boolean {
   const normalized = model.trim().toLowerCase();
   return (
     normalized === 'opencode/big-pickle' ||
