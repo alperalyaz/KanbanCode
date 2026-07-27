@@ -12,19 +12,28 @@ function capitalizeMemberName(name: string, locale: ResolvedAppLocale): string {
   return `${first}${lower.slice(1)}`;
 }
 
-/** Fantasy-companion themed name pools used when suggesting new teammate ids. */
+/**
+ * Call-sign themed name pools used when suggesting new teammate ids.
+ *
+ * Both pools are deliberately franchise-free. The previous English pool used
+ * Tolkien/Narnia characters and the Turkish pool used Karagöz/Nasreddin figures;
+ * the Tolkien and Narnia names are still under active estate copyright, which is
+ * not something a Store-distributed app should ship as a baked-in default.
+ * Real people's names (footballers, celebrities) are avoided for the same reason
+ * — personality rights.
+ *
+ * English: stars, constellations and Greek-myth figures — all public domain.
+ * Turkish: generic weather / bird / element words — nobody owns them.
+ */
 const MEMBER_NAME_SETS_BY_LOCALE = {
   en: [
-    ['Frodo', 'Sam', 'Aragorn', 'Legolas', 'Gimli', 'Gandalf'],
-    ['Galadriel', 'Eowyn', 'Arwen', 'Faramir', 'Boromir', 'Bilbo'],
-    ['Thorin', 'Balin', 'Bard', 'Kili', 'Fili', 'Dwalin'],
-    ['Aslan', 'Lucy', 'Edmund', 'Peter', 'Susan', 'Caspian'],
+    ['Atlas', 'Orion', 'Vega', 'Lyra', 'Rigel', 'Nova'],
+    ['Altair', 'Sirius', 'Antares', 'Polaris', 'Draco', 'Corvus'],
+    ['Phoenix', 'Aquila', 'Cygnus', 'Perseus', 'Cassiopeia', 'Andromeda'],
   ],
-  // Public-domain Turkish folk-humour characters — warm, memorable, and safe to
-  // ship (no franchise/IP). Karagöz shadow theatre + Nasreddin Hoca / fıkra world.
   tr: [
-    ['Karagöz', 'Hacivat', 'Beberuhi', 'Tiryaki', 'Çelebi', 'Tuzsuz'],
-    ['Nasreddin', 'Keloğlan', 'Bekri', 'İncili', 'Bektaşi', 'Köse'],
+    ['Poyraz', 'Şahin', 'Bora', 'Kartal', 'Yıldırım', 'Tufan'],
+    ['Ateş', 'Doğan', 'Kasırga', 'Çelik', 'Fırtına', 'Alev'],
   ],
 } as const satisfies Record<ResolvedAppLocale, readonly (readonly string[])[]>;
 
@@ -37,7 +46,7 @@ const ASCII_TURKISH_MEMBER_NAME_MIGRATION: Readonly<Record<string, string>> = {
   yigen: 'Yiğen',
   asli: 'Aslı',
   selcan: 'Selcan',
-  // Current folk-humour set — ASCII spellings map to proper Turkish display.
+  // Legacy folk-humour set (kept so teams created with it keep their spelling).
   karagoz: 'Karagöz',
   hacivat: 'Hacivat',
   beberuhi: 'Beberuhi',
@@ -50,6 +59,19 @@ const ASCII_TURKISH_MEMBER_NAME_MIGRATION: Readonly<Record<string, string>> = {
   incili: 'İncili',
   bektasi: 'Bektaşi',
   kose: 'Köse',
+  // Current call-sign set — ASCII spellings map to proper Turkish display.
+  poyraz: 'Poyraz',
+  sahin: 'Şahin',
+  bora: 'Bora',
+  kartal: 'Kartal',
+  yildirim: 'Yıldırım',
+  tufan: 'Tufan',
+  ates: 'Ateş',
+  dogan: 'Doğan',
+  kasirga: 'Kasırga',
+  celik: 'Çelik',
+  firtina: 'Fırtına',
+  alev: 'Alev',
 };
 
 export interface DefaultCreateTeamMemberConfig {
@@ -66,16 +88,16 @@ const DEFAULT_CREATE_TEAM_MEMBERS_BY_LOCALE: Record<
   // to implement in parallel, and a QA to review finished work (the lead prompt
   // requires review_request to a QA member once substantial work completes).
   en: [
-    { name: 'Gandalf', roleSelection: 'architect' },
-    { name: 'Aragorn', roleSelection: 'developer' },
-    { name: 'Legolas', roleSelection: 'developer' },
-    { name: 'Gimli', roleSelection: 'qa', workflowKind: 'reviewer' },
+    { name: 'Atlas', roleSelection: 'architect' },
+    { name: 'Orion', roleSelection: 'developer' },
+    { name: 'Vega', roleSelection: 'developer' },
+    { name: 'Lyra', roleSelection: 'qa', workflowKind: 'reviewer' },
   ],
   tr: [
-    { name: 'Beberuhi', roleSelection: 'architect' },
-    { name: 'Karagöz', roleSelection: 'developer' },
-    { name: 'Hacivat', roleSelection: 'developer' },
-    { name: 'Tiryaki', roleSelection: 'qa', workflowKind: 'reviewer' },
+    { name: 'Poyraz', roleSelection: 'architect' },
+    { name: 'Şahin', roleSelection: 'developer' },
+    { name: 'Bora', roleSelection: 'developer' },
+    { name: 'Kartal', roleSelection: 'qa', workflowKind: 'reviewer' },
   ],
 };
 

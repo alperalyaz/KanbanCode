@@ -17,31 +17,31 @@ describe('memberNameSets', () => {
     expect(resolveMemberNameLocale(undefined)).toBe('en');
   });
 
-  it('suggests English fantasy names with proper capitalization', () => {
-    expect(getNextSuggestedMemberName([], 'en')).toBe('Frodo');
-    expect(getNextSuggestedMemberName(['Frodo', 'Sam'], 'en')).toBe('Aragorn');
-    expect(getNextSuggestedMemberName(['frodo', 'sam'], 'en')).toBe('Aragorn');
+  it('suggests English call-sign names with proper capitalization', () => {
+    expect(getNextSuggestedMemberName([], 'en')).toBe('Atlas');
+    expect(getNextSuggestedMemberName(['Atlas', 'Orion'], 'en')).toBe('Vega');
+    expect(getNextSuggestedMemberName(['atlas', 'orion'], 'en')).toBe('Vega');
   });
 
-  it('suggests Turkish folk-humour names with diacritics and capitalization', () => {
-    expect(getNextSuggestedMemberName([], 'tr')).toBe('Karagöz');
-    expect(getNextSuggestedMemberName(['Karagöz', 'Hacivat'], 'tr')).toBe('Beberuhi');
-    expect(getNextSuggestedMemberName(['karagoz', 'hacivat'], 'tr')).toBe('Beberuhi');
-    expect(getNextSuggestedMemberName(['karagöz', 'hacivat'], 'tr')).toBe('Beberuhi');
+  it('suggests Turkish call-sign names with diacritics and capitalization', () => {
+    expect(getNextSuggestedMemberName([], 'tr')).toBe('Poyraz');
+    expect(getNextSuggestedMemberName(['Poyraz', 'Şahin'], 'tr')).toBe('Bora');
+    expect(getNextSuggestedMemberName(['poyraz', 'sahin'], 'tr')).toBe('Bora');
+    expect(getNextSuggestedMemberName(['poyraz', 'şahin'], 'tr')).toBe('Bora');
   });
 
   it('keeps locale-specific default create-team members', () => {
     expect(getDefaultCreateTeamMemberConfigs('en').map((member) => member.name)).toEqual([
-      'Gandalf',
-      'Aragorn',
-      'Legolas',
-      'Gimli',
+      'Atlas',
+      'Orion',
+      'Vega',
+      'Lyra',
     ]);
     expect(getDefaultCreateTeamMemberConfigs('tr').map((member) => member.name)).toEqual([
-      'Beberuhi',
-      'Karagöz',
-      'Hacivat',
-      'Tiryaki',
+      'Poyraz',
+      'Şahin',
+      'Bora',
+      'Kartal',
     ]);
   });
 
@@ -58,26 +58,26 @@ describe('memberNameSets', () => {
   });
 
   it('creates numeric suffixes when a themed name is already taken', () => {
-    expect(getNextSuggestedMemberName(['Frodo'], 'en')).toBe('Sam');
+    expect(getNextSuggestedMemberName(['Atlas'], 'en')).toBe('Orion');
     expect(
       getNextSuggestedMemberName(
-        ['Frodo', 'Sam', 'Aragorn', 'Legolas', 'Gimli', 'Gandalf'],
+        ['Atlas', 'Orion', 'Vega', 'Lyra', 'Rigel', 'Nova'],
         'en'
       )
-    ).toBe('Galadriel');
-    expect(getNextSuggestedMemberName(['Frodo', 'Frodo-2'], 'en')).toBe('Sam');
+    ).toBe('Altair');
+    expect(getNextSuggestedMemberName(['Atlas', 'Atlas-2'], 'en')).toBe('Orion');
   });
 
   it('detects and remaps legacy default create-team member names', () => {
     expect(isLegacyDefaultCreateTeamMemberNames(['alice', 'tom', 'bob', 'jack'])).toBe(true);
     expect(isLegacyDefaultCreateTeamMemberNames(['Alice', 'Tom', 'Bob', 'Jack'])).toBe(true);
-    expect(isLegacyDefaultCreateTeamMemberNames(['Frodo', 'Sam', 'Aragorn', 'Legolas'])).toBe(false);
+    expect(isLegacyDefaultCreateTeamMemberNames(['Atlas', 'Orion', 'Vega', 'Lyra'])).toBe(false);
 
     expect(remapLegacyDefaultCreateTeamMemberNames(['alice', 'tom', 'bob', 'jack'], 'tr')).toEqual([
-      'Beberuhi',
-      'Karagöz',
-      'Hacivat',
-      'Tiryaki',
+      'Poyraz',
+      'Şahin',
+      'Bora',
+      'Kartal',
     ]);
   });
 
@@ -96,12 +96,12 @@ describe('memberNameSets', () => {
       'Boğaç',
       'Aslı',
     ]);
-    expect(remapThemedMemberNames(['eowyn', 'aragorn', 'legolas', 'gimli'], 'en')).toEqual([
-      'Eowyn',
-      'Aragorn',
-      'Legolas',
-      'Gimli',
+    expect(remapThemedMemberNames(['altair', 'sirius', 'polaris', 'draco'], 'en')).toEqual([
+      'Altair',
+      'Sirius',
+      'Polaris',
+      'Draco',
     ]);
-    expect(remapThemedMemberNames(['frodo', 'aragorn'], 'en')).toEqual(['Frodo', 'Aragorn']);
+    expect(remapThemedMemberNames(['atlas', 'orion'], 'en')).toEqual(['Atlas', 'Orion']);
   });
 });
