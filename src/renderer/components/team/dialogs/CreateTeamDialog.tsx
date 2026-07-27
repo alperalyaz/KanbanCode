@@ -79,9 +79,11 @@ import {
 import {
   applyFirstRunCreateTeamDefaults,
   getFirstRunConnectPath,
+  markAdvancedCreateModePreferred,
   markFirstRunComplete,
   shouldDeferCreatePreflight,
   shouldShowSimplifiedCreateDialog,
+  shouldUseSimpleCreateMode,
 } from '@renderer/services/firstRunExperience';
 import { useStore } from '@renderer/store';
 import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
@@ -430,7 +432,14 @@ export const CreateTeamDialog = ({
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
   const firstRunMode = shouldShowSimplifiedCreateDialog(Boolean(initialData));
-  const [showAdvancedCreateOptions, setShowAdvancedCreateOptions] = useState(!firstRunMode);
+  // One-click mode: ask only for name + project, use the free OpenCode defaults
+  // for everything else. Applies to every creation, not just the first run.
+  const simpleMode = shouldUseSimpleCreateMode(Boolean(initialData));
+  const [showAdvancedCreateOptions, setShowAdvancedCreateOptions] = useState(!simpleMode);
+  const revealAdvancedCreateOptions = useCallback(() => {
+    setShowAdvancedCreateOptions(true);
+    markAdvancedCreateModePreferred();
+  }, []);
   const anthropicProviderFastModeDefault = useStore(
     (s) => s.appConfig?.providerConnections?.anthropic.fastModeDefault ?? false
   );
@@ -541,13 +550,15 @@ export const CreateTeamDialog = ({
   }, []);
 
   useEffect(() => {
-    if (!open || !firstRunMode) {
+    if (!open || !simpleMode) {
       return;
     }
+    // One-click mode: seed the free OpenCode defaults (applied once) and keep
+    // the advanced section collapsed so only name + project are asked for.
     applyFirstRunCreateTeamDefaults();
     void requestProviderRuntimeChecks();
     setShowAdvancedCreateOptions(false);
-  }, [firstRunMode, open]);
+  }, [simpleMode, open]);
 
   useEffect(() => {
     if (!open) {
@@ -2766,7 +2777,7 @@ export const CreateTeamDialog = ({
                       </div>
                     )}
 
-                    {showAdvancedCreateOptions || !firstRunMode ? (
+                    {showAdvancedCreateOptions ? (
                       <OptionalSettingsSection
                         title={t('create.optional.launchSettingsTitle')}
                         description={t('create.optional.launchSettingsDescription')}
@@ -2871,7 +2882,7 @@ export const CreateTeamDialog = ({
                 ) : null}
               </div>
 
-              {showAdvancedCreateOptions || !firstRunMode ? (
+              {showAdvancedCreateOptions ? (
                 <div>
                   <OptionalSettingsSection
                     title={t('create.optional.teamDetailsTitle')}
@@ -2958,13 +2969,13 @@ export const CreateTeamDialog = ({
 
         <DialogFooter className="shrink-0 pt-4 sm:justify-end">
           <div className="flex shrink-0 flex-col items-end gap-1">
-            {firstRunMode && !showAdvancedCreateOptions ? (
+            {!showAdvancedCreateOptions ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 className="self-end"
-                onClick={() => setShowAdvancedCreateOptions(true)}
+                onClick={revealAdvancedCreateOptions}
               >
                 {t('create.firstRun.showAdvanced')}
               </Button>

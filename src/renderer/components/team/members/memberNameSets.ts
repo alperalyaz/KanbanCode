@@ -36,6 +36,7 @@ const ASCII_TURKISH_MEMBER_NAME_MIGRATION: Readonly<Record<string, string>> = {
   bogac: 'Boğaç',
   yigen: 'Yiğen',
   asli: 'Aslı',
+  selcan: 'Selcan',
   // Current folk-humour set — ASCII spellings map to proper Turkish display.
   karagoz: 'Karagöz',
   hacivat: 'Hacivat',
@@ -61,17 +62,20 @@ const DEFAULT_CREATE_TEAM_MEMBERS_BY_LOCALE: Record<
   ResolvedAppLocale,
   readonly DefaultCreateTeamMemberConfig[]
 > = {
+  // Balanced starting crew: an architect to decompose the work, two developers
+  // to implement in parallel, and a QA to review finished work (the lead prompt
+  // requires review_request to a QA member once substantial work completes).
   en: [
-    { name: 'Eowyn', roleSelection: 'reviewer', workflowKind: 'reviewer' },
+    { name: 'Gandalf', roleSelection: 'architect' },
     { name: 'Aragorn', roleSelection: 'developer' },
     { name: 'Legolas', roleSelection: 'developer' },
-    { name: 'Gimli', roleSelection: 'developer' },
+    { name: 'Gimli', roleSelection: 'qa', workflowKind: 'reviewer' },
   ],
   tr: [
-    { name: 'Hacivat', roleSelection: 'reviewer', workflowKind: 'reviewer' },
+    { name: 'Beberuhi', roleSelection: 'architect' },
     { name: 'Karagöz', roleSelection: 'developer' },
-    { name: 'Nasreddin', roleSelection: 'developer' },
-    { name: 'Keloğlan', roleSelection: 'developer' },
+    { name: 'Hacivat', roleSelection: 'developer' },
+    { name: 'Tiryaki', roleSelection: 'qa', workflowKind: 'reviewer' },
   ],
 };
 

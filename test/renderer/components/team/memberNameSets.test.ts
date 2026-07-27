@@ -23,26 +23,38 @@ describe('memberNameSets', () => {
     expect(getNextSuggestedMemberName(['frodo', 'sam'], 'en')).toBe('Aragorn');
   });
 
-  it('suggests Turkish folktale hero names with diacritics and capitalization', () => {
-    expect(getNextSuggestedMemberName([], 'tr')).toBe('Köroğlu');
-    expect(getNextSuggestedMemberName(['Köroğlu', 'Alpamış'], 'tr')).toBe('Boğaç');
-    expect(getNextSuggestedMemberName(['koroglu', 'alpamis'], 'tr')).toBe('Boğaç');
-    expect(getNextSuggestedMemberName(['köroğlu', 'alpamış'], 'tr')).toBe('Boğaç');
+  it('suggests Turkish folk-humour names with diacritics and capitalization', () => {
+    expect(getNextSuggestedMemberName([], 'tr')).toBe('Karagöz');
+    expect(getNextSuggestedMemberName(['Karagöz', 'Hacivat'], 'tr')).toBe('Beberuhi');
+    expect(getNextSuggestedMemberName(['karagoz', 'hacivat'], 'tr')).toBe('Beberuhi');
+    expect(getNextSuggestedMemberName(['karagöz', 'hacivat'], 'tr')).toBe('Beberuhi');
   });
 
   it('keeps locale-specific default create-team members', () => {
     expect(getDefaultCreateTeamMemberConfigs('en').map((member) => member.name)).toEqual([
-      'Eowyn',
+      'Gandalf',
       'Aragorn',
       'Legolas',
       'Gimli',
     ]);
     expect(getDefaultCreateTeamMemberConfigs('tr').map((member) => member.name)).toEqual([
-      'Selcan',
-      'Köroğlu',
-      'Alpamış',
-      'Boğaç',
+      'Beberuhi',
+      'Karagöz',
+      'Hacivat',
+      'Tiryaki',
     ]);
+  });
+
+  it('starts every locale with an architect, two developers and a QA reviewer', () => {
+    for (const locale of ['en', 'tr'] as const) {
+      expect(getDefaultCreateTeamMemberConfigs(locale).map((m) => m.roleSelection)).toEqual([
+        'architect',
+        'developer',
+        'developer',
+        'qa',
+      ]);
+      expect(getDefaultCreateTeamMemberConfigs(locale).at(-1)?.workflowKind).toBe('reviewer');
+    }
   });
 
   it('creates numeric suffixes when a themed name is already taken', () => {
@@ -62,10 +74,10 @@ describe('memberNameSets', () => {
     expect(isLegacyDefaultCreateTeamMemberNames(['Frodo', 'Sam', 'Aragorn', 'Legolas'])).toBe(false);
 
     expect(remapLegacyDefaultCreateTeamMemberNames(['alice', 'tom', 'bob', 'jack'], 'tr')).toEqual([
-      'Selcan',
-      'Köroğlu',
-      'Alpamış',
-      'Boğaç',
+      'Beberuhi',
+      'Karagöz',
+      'Hacivat',
+      'Tiryaki',
     ]);
   });
 

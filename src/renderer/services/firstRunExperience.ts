@@ -9,6 +9,8 @@ import type { TeamProviderId } from '@shared/types';
 
 const FIRST_RUN_COMPLETE_KEY = 'kanbancode:firstRunComplete';
 const FIRST_RUN_DEFAULTS_APPLIED_KEY = 'kanbancode:firstRunDefaultsApplied';
+/** Set once the user explicitly opens the advanced create options. */
+const ADVANCED_CREATE_MODE_KEY = 'kanbancode:advancedCreateModePreferred';
 
 export const FIRST_RUN_DEFAULT_PROVIDER: TeamProviderId = 'opencode';
 export const FIRST_RUN_DEFAULT_MODEL = 'opencode/big-pickle';
@@ -59,6 +61,33 @@ export function shouldDeferCreatePreflight(): boolean {
 
 export function shouldShowSimplifiedCreateDialog(hasCopySource: boolean): boolean {
   return isFirstRunExperienceActive() && !hasCopySource;
+}
+
+/**
+ * "One-click team" mode: the create dialog asks only for a team name and a
+ * project, and everything else (provider, model, roles) uses the free
+ * OpenCode defaults. This is the default for EVERY team creation — not just
+ * the first run — so an amateur user can get a working team without paying
+ * for anything or understanding provider/model settings.
+ *
+ * Copying an existing team always shows the full form, and once a user
+ * explicitly opens the advanced options we remember that preference.
+ */
+export function shouldUseSimpleCreateMode(hasCopySource: boolean): boolean {
+  if (hasCopySource) {
+    return false;
+  }
+  return !readFlag(ADVANCED_CREATE_MODE_KEY);
+}
+
+/** Remember that this user prefers the full create form from now on. */
+export function markAdvancedCreateModePreferred(): void {
+  writeFlag(ADVANCED_CREATE_MODE_KEY, true);
+}
+
+/** Return to the simplified one-click create form. */
+export function clearAdvancedCreateModePreference(): void {
+  writeFlag(ADVANCED_CREATE_MODE_KEY, false);
 }
 
 /**
