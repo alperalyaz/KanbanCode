@@ -79,7 +79,6 @@ import {
 import {
   applyFirstRunCreateTeamDefaults,
   getFirstRunConnectPath,
-  markAdvancedCreateModePreferred,
   markFirstRunComplete,
   shouldDeferCreatePreflight,
   shouldShowSimplifiedCreateDialog,
@@ -438,8 +437,9 @@ export const CreateTeamDialog = ({
   const simpleMode = shouldUseSimpleCreateMode(Boolean(initialData));
   const [showAdvancedCreateOptions, setShowAdvancedCreateOptions] = useState(!simpleMode);
   const revealAdvancedCreateOptions = useCallback(() => {
+    // Per-dialog only: expanding advanced options must not permanently disable
+    // one-click mode (default crew + free model) for future team creations.
     setShowAdvancedCreateOptions(true);
-    markAdvancedCreateModePreferred();
   }, []);
   const anthropicProviderFastModeDefault = useStore(
     (s) => s.appConfig?.providerConnections?.anthropic.fastModeDefault ?? false

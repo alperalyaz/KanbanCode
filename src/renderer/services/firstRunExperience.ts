@@ -9,8 +9,6 @@ import type { TeamProviderId } from '@shared/types';
 
 const FIRST_RUN_COMPLETE_KEY = 'kanbancode:firstRunComplete';
 const FIRST_RUN_DEFAULTS_APPLIED_KEY = 'kanbancode:firstRunDefaultsApplied';
-/** Set once the user explicitly opens the advanced create options. */
-const ADVANCED_CREATE_MODE_KEY = 'kanbancode:advancedCreateModePreferred';
 
 export const FIRST_RUN_DEFAULT_PROVIDER: TeamProviderId = 'opencode';
 export const FIRST_RUN_DEFAULT_MODEL = 'opencode/big-pickle';
@@ -70,24 +68,13 @@ export function shouldShowSimplifiedCreateDialog(hasCopySource: boolean): boolea
  * the first run — so an amateur user can get a working team without paying
  * for anything or understanding provider/model settings.
  *
- * Copying an existing team always shows the full form, and once a user
- * explicitly opens the advanced options we remember that preference.
+ * Opening the advanced options is a per-dialog choice, NOT a permanent one:
+ * expanding them once (out of curiosity) must not silently strip the default
+ * crew and one-click behaviour from every future team. Copying an existing
+ * team always shows the full form, since the point is to edit its settings.
  */
 export function shouldUseSimpleCreateMode(hasCopySource: boolean): boolean {
-  if (hasCopySource) {
-    return false;
-  }
-  return !readFlag(ADVANCED_CREATE_MODE_KEY);
-}
-
-/** Remember that this user prefers the full create form from now on. */
-export function markAdvancedCreateModePreferred(): void {
-  writeFlag(ADVANCED_CREATE_MODE_KEY, true);
-}
-
-/** Return to the simplified one-click create form. */
-export function clearAdvancedCreateModePreference(): void {
-  writeFlag(ADVANCED_CREATE_MODE_KEY, false);
+  return !hasCopySource;
 }
 
 /**
