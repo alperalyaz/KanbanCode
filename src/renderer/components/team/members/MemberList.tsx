@@ -2,6 +2,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { useTheme } from '@renderer/hooks/useTheme';
+import { useStore } from '@renderer/store';
+import { selectTeamDataForName } from '@renderer/store/team/teamDataSelectors';
 import {
   deriveReviewActivityTimerAnchor,
   deriveWorkActivityTimerAnchor,
@@ -927,7 +929,12 @@ export const MemberList = memo(function MemberList({
     () => activeMembers.filter((member) => !isLeadMember(member)).length,
     [activeMembers]
   );
-  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
+  // Team config.color is the human user's identity color (Edit Team picker).
+  const teamUserColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
+  const colorMap = useMemo(
+    () => buildMemberColorMap(members, teamUserColor),
+    [members, teamUserColor]
+  );
   const avatarMap = useMemo(() => buildMemberAvatarMap(members), [members]);
   const cardRuntimeEntries = useMemo(() => {
     const nextEntries = buildCachedMemberRuntimeEntries(

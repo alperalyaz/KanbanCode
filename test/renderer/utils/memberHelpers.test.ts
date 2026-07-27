@@ -80,7 +80,7 @@ describe('memberHelpers spawn-aware presence', () => {
         spawnLaunchState: 'confirmed_alive',
         spawnRuntimeAlive: false,
       })
-    ).toBe(false);
+    ).toBe(true);
 
     expect(
       shouldDisplayMemberCurrentTask({
@@ -92,7 +92,7 @@ describe('memberHelpers spawn-aware presence', () => {
     ).toBe(false);
   });
 
-  it('does not display current task labels for runtime entries without a live agent runtime', () => {
+  it('keeps board work visible for soft runtime probe gaps', () => {
     expect(
       shouldDisplayMemberCurrentTask({
         member: { ...member, currentTaskId: 'task-1' },
@@ -108,7 +108,7 @@ describe('memberHelpers spawn-aware presence', () => {
           updatedAt: '2026-04-24T12:00:00.000Z',
         },
       })
-    ).toBe(false);
+    ).toBe(true);
 
     expect(
       shouldDisplayMemberCurrentTask({
@@ -124,7 +124,7 @@ describe('memberHelpers spawn-aware presence', () => {
           updatedAt: '2026-04-24T12:00:00.000Z',
         },
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('keeps current task labels for confirmed online members', () => {
@@ -681,42 +681,67 @@ describe('memberHelpers spawn-aware presence', () => {
         isTeamProvisioning: false,
       })
     ).toMatchObject({
+      presenceLabel: 'runtime probe stale',
+      launchVisualState: 'stale_runtime',
+      launchStatusLabel: 'runtime probe stale',
+      dotClass: expect.stringContaining('bg-amber-400'),
+    });
+  });
+
+  it('marks dead confirmed runtime entries as stale runtime', () => {
+    expect(
+      buildMemberLaunchPresentation({
+        member,
+        spawnStatus: 'online',
+        spawnLaunchState: 'confirmed_alive',
+        spawnLivenessSource: 'process',
+        spawnRuntimeAlive: true,
+        spawnBootstrapConfirmed: true,
+        runtimeEntry: {
+          memberName: 'alice',
+          alive: false,
+          restartable: true,
+          livenessKind: 'runtime_process',
+          updatedAt: '2026-04-24T12:00:00.000Z',
+        },
+        runtimeAdvisory: undefined,
+        isLaunchSettling: false,
+        isTeamAlive: true,
+        isTeamProvisioning: false,
+      })
+    ).toMatchObject({
       presenceLabel: 'stale runtime',
       launchVisualState: 'stale_runtime',
       launchStatusLabel: 'stale runtime',
       dotClass: expect.stringContaining('bg-red-400'),
     });
-  });
 
-  it('marks dead confirmed runtime entries as stale runtime', () => {
-    for (const livenessKind of ['runtime_process', 'confirmed_bootstrap'] as const) {
-      expect(
-        buildMemberLaunchPresentation({
-          member,
-          spawnStatus: 'online',
-          spawnLaunchState: 'confirmed_alive',
-          spawnLivenessSource: 'process',
-          spawnRuntimeAlive: true,
-          spawnBootstrapConfirmed: true,
-          runtimeEntry: {
-            memberName: 'alice',
-            alive: false,
-            restartable: true,
-            livenessKind,
-            updatedAt: '2026-04-24T12:00:00.000Z',
-          },
-          runtimeAdvisory: undefined,
-          isLaunchSettling: false,
-          isTeamAlive: true,
-          isTeamProvisioning: false,
-        })
-      ).toMatchObject({
-        presenceLabel: 'stale runtime',
-        launchVisualState: 'stale_runtime',
-        launchStatusLabel: 'stale runtime',
-        dotClass: expect.stringContaining('bg-red-400'),
-      });
-    }
+    expect(
+      buildMemberLaunchPresentation({
+        member,
+        spawnStatus: 'online',
+        spawnLaunchState: 'confirmed_alive',
+        spawnLivenessSource: 'process',
+        spawnRuntimeAlive: true,
+        spawnBootstrapConfirmed: true,
+        runtimeEntry: {
+          memberName: 'alice',
+          alive: false,
+          restartable: true,
+          livenessKind: 'confirmed_bootstrap',
+          updatedAt: '2026-04-24T12:00:00.000Z',
+        },
+        runtimeAdvisory: undefined,
+        isLaunchSettling: false,
+        isTeamAlive: true,
+        isTeamProvisioning: false,
+      })
+    ).toMatchObject({
+      presenceLabel: 'runtime probe stale',
+      launchVisualState: 'stale_runtime',
+      launchStatusLabel: 'runtime probe stale',
+      dotClass: expect.stringContaining('bg-amber-400'),
+    });
   });
 
   it('marks stuck OpenCode launch states as manually relaunchable', () => {

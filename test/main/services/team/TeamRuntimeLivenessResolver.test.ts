@@ -283,6 +283,28 @@ describe('resolveTeamMemberRuntimeLiveness', () => {
     expect(extractCliArgValues(command, '--team-name')).toEqual(['demo']);
   });
 
+  it('matches a verified process when the CLI rewrote a Turkish agent-id to an ASCII slug', () => {
+    const result = resolveTeamMemberRuntimeLiveness({
+      teamName: 'codex-takimi',
+      memberName: 'Karagöz',
+      agentId: 'Karagöz@codex-takimi',
+      backendType: 'process',
+      processRows: [
+        {
+          pid: 4242,
+          ppid: 1,
+          command: 'node runtime --team-name codex-takimi --agent-id Karag-z@codex-takimi',
+        },
+      ],
+      processTableAvailable: true,
+      nowIso: NOW,
+    });
+
+    expect(result.alive).toBe(true);
+    expect(result.livenessKind).toBe('runtime_process');
+    expect(result.pid).toBe(4242);
+  });
+
   it('returns no CLI arg values when the flag is absent', () => {
     expect(extractCliArgValues('node runtime --other value', '--agent-id')).toEqual([]);
   });

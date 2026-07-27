@@ -23,6 +23,7 @@ import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { useTaskSuggestions } from '@renderer/hooks/useTaskSuggestions';
 import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
 import { useStore } from '@renderer/store';
+import { selectTeamDataForName } from '@renderer/store/team/teamDataSelectors';
 import { chipToken, serializeChipsWithText } from '@renderer/types/inlineChip';
 import { buildReplyBlock } from '@renderer/utils/agentMessageFormatting';
 import {
@@ -116,7 +117,11 @@ export const SendMessageDialog = ({
 }: SendMessageDialogProps): React.JSX.Element => {
   const { t } = useAppTranslation('team');
   const { t: tCommon } = useAppTranslation('common');
-  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
+  const teamUserColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
+  const colorMap = useMemo(
+    () => buildMemberColorMap(members, teamUserColor),
+    [members, teamUserColor]
+  );
   const projectPath = useStore((s) => s.selectedTeamData?.config.projectPath ?? null);
   const [quote, setQuote] = useState<QuotedMessage | undefined>(undefined);
   const [quoteExpanded, setQuoteExpanded] = useState(false);

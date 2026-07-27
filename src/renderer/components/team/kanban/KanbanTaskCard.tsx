@@ -16,19 +16,9 @@ import {
   isTeamTaskFinishedForDependency,
   isTeamTaskNeedsFixActionable,
 } from '@shared/utils/teamTaskState';
-import {
-  ArrowLeftFromLine,
-  ArrowRightFromLine,
-  FileCode,
-  HelpCircle,
-} from 'lucide-react';
+import { ArrowLeftFromLine, ArrowRightFromLine, FileCode, HelpCircle } from 'lucide-react';
 
-import type {
-  KanbanColumnId,
-  KanbanTaskState,
-  TeamTask,
-  TeamTaskWithKanban,
-} from '@shared/types';
+import type { KanbanColumnId, KanbanTaskState, TeamTask, TeamTaskWithKanban } from '@shared/types';
 
 interface KanbanTaskCardProps {
   task: TeamTaskWithKanban;
@@ -232,7 +222,7 @@ const TaskMetaActions = memo(function TaskMetaActions({
       className={
         changesNeedAttention
           ? 'text-amber-400 hover:bg-amber-500/10 hover:text-amber-300'
-          : 'text-sky-700 dark:text-sky-400 hover:bg-sky-500/10 hover:text-sky-800 dark:hover:text-sky-300'
+          : 'text-sky-700 hover:bg-sky-500/10 hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-300'
       }
       onClick={(e) => {
         e.stopPropagation();
@@ -257,7 +247,14 @@ export const KanbanTaskCard = memo(
     const { isLight } = useTheme();
     const blockedByIds = task.blockedBy?.filter((id) => id.length > 0) ?? [];
     const blocksIds = task.blocks?.filter((id) => id.length > 0) ?? [];
-    const hasBlockedBy = blockedByIds.length > 0;
+    // Only unfinished blockers count as "still blocked". Completed/approved deps stay on the
+    // task record for history, but the card must not look stuck when the blocker is already Done.
+    const activeBlockedByIds = blockedByIds.filter((id) => {
+      const blocker = taskMap.get(id);
+      if (!blocker) return true;
+      return !isTeamTaskFinishedForDependency(blocker);
+    });
+    const hasBlockedBy = activeBlockedByIds.length > 0;
     const hasBlocks = blocksIds.length > 0;
     const shouldHighlightBlocked = hasBlockedBy && columnId !== 'done' && columnId !== 'approved';
     const cardSurfaceClass = isLight ? 'bg-white' : 'bg-[var(--color-surface-raised)]';
@@ -306,6 +303,14 @@ export const KanbanTaskCard = memo(
         ) : null}
         <div className="mb-2 pt-[11px]">
           {!compact && <TruncatedTitle text={task.subject} className="min-w-0" />}
+          {!compact &&
+          typeof task.description === 'string' &&
+          task.description.trim() &&
+          task.description.trim() !== task.subject.trim() ? (
+            <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--color-text-muted)]">
+              {task.description.trim()}
+            </p>
+          ) : null}
           {task.needsClarification ? (
             <span
               className={`mt-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
@@ -336,7 +341,7 @@ export const KanbanTaskCard = memo(
               <ArrowLeftFromLine size={10} />
               {t('kanban.taskCard.blockedBy')}
             </span>
-            {blockedByIds.map((id) => (
+            {activeBlockedByIds.map((id) => (
               <DependencyBadge
                 key={id}
                 taskId={id}

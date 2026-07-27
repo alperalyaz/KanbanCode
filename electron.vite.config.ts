@@ -1,6 +1,6 @@
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
-import { readFileSync } from 'fs'
+import { realpathSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import type { Plugin } from 'vite'
 
@@ -10,6 +10,19 @@ import type { Plugin } from 'vite'
 const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'))
 const prodDeps = Object.keys(pkg.dependencies || {})
 const rendererDependencyEsbuildTarget = 'esnext'
+
+// On Windows, PowerShell/`cd` can enter the repo with a different path casing
+// than the filesystem canonical name (e.g. C:\kanbancode vs C:\KanbanCode).
+// Vite's html-proxy map is case-sensitive, so pin roots to the real path.
+function resolveCanonicalRoot(): string {
+  try {
+    return realpathSync(__dirname)
+  } catch {
+    return __dirname
+  }
+}
+
+const repoRoot = resolveCanonicalRoot()
 
 // Fastify and its plugins rely on runtime module resolution that breaks when bundled.
 const runtimeExternalDeps = new Set([
@@ -46,6 +59,7 @@ const sourceMapSetting = process.env.AGENT_TEAMS_DISABLE_SOURCEMAPS === '1' ? fa
 
 export default defineConfig({
   main: {
+    root: repoRoot,
     plugins: [
       nativeModuleStub(),
     ],
@@ -54,10 +68,10 @@ export default defineConfig({
     },
     resolve: {
       alias: {
-        '@features': resolve(__dirname, 'src/features'),
-        '@main': resolve(__dirname, 'src/main'),
-        '@shared': resolve(__dirname, 'src/shared'),
-        '@preload': resolve(__dirname, 'src/preload')
+        '@features': resolve(repoRoot, 'src/features'),
+        '@main': resolve(repoRoot, 'src/main'),
+        '@shared': resolve(repoRoot, 'src/shared'),
+        '@preload': resolve(repoRoot, 'src/preload')
       }
     },
     build: {
@@ -68,10 +82,10 @@ export default defineConfig({
       outDir: 'dist-electron/main',
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/main/index.ts'),
-          'team-fs-worker': resolve(__dirname, 'src/main/workers/team-fs-worker.ts'),
-          'task-change-worker': resolve(__dirname, 'src/main/workers/task-change-worker.ts'),
-          'team-data-worker': resolve(__dirname, 'src/main/workers/team-data-worker.ts')
+          index: resolve(repoRoot, 'src/main/index.ts'),
+          'team-fs-worker': resolve(repoRoot, 'src/main/workers/team-fs-worker.ts'),
+          'task-change-worker': resolve(repoRoot, 'src/main/workers/task-change-worker.ts'),
+          'team-data-worker': resolve(repoRoot, 'src/main/workers/team-data-worker.ts')
         },
         output: {
           // CJS format so bundled deps can use __dirname/require.
@@ -88,19 +102,20 @@ export default defineConfig({
     }
   },
   preload: {
+    root: repoRoot,
     resolve: {
       alias: {
-        '@features': resolve(__dirname, 'src/features'),
-        '@preload': resolve(__dirname, 'src/preload'),
-        '@shared': resolve(__dirname, 'src/shared'),
-        '@main': resolve(__dirname, 'src/main')
+        '@features': resolve(repoRoot, 'src/features'),
+        '@preload': resolve(repoRoot, 'src/preload'),
+        '@shared': resolve(repoRoot, 'src/shared'),
+        '@main': resolve(repoRoot, 'src/main')
       }
     },
     build: {
       outDir: 'dist-electron/preload',
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/preload/index.ts')
+          index: resolve(repoRoot, 'src/preload/index.ts')
         },
         output: {
           format: 'cjs',
@@ -110,7 +125,8 @@ export default defineConfig({
     }
   },
   renderer: {
-    cacheDir: resolve(__dirname, 'node_modules/.vite/electron-renderer'),
+    root: resolve(repoRoot, 'src/renderer'),
+    cacheDir: resolve(repoRoot, 'node_modules/.vite/electron-renderer'),
     optimizeDeps: {
       // Electron owns the renderer runtime, so dependency prebundling can keep modern syntax.
       // This avoids esbuild trying to downlevel large ESM deps like Radix/CodeMirror.
@@ -127,15 +143,15 @@ export default defineConfig({
     },
     resolve: {
       alias: {
-        '@features': resolve(__dirname, 'src/features'),
-        '@renderer': resolve(__dirname, 'src/renderer'),
-        '@shared': resolve(__dirname, 'src/shared'),
-        '@main': resolve(__dirname, 'src/main'),
+        '@features': resolve(repoRoot, 'src/features'),
+        '@renderer': resolve(repoRoot, 'src/renderer'),
+        '@shared': resolve(repoRoot, 'src/shared'),
+        '@main': resolve(repoRoot, 'src/main'),
         '@radix-ui/react-compose-refs': resolve(
-          __dirname,
+          repoRoot,
           'src/renderer/vendor/radixComposeRefs.ts'
         ),
-        '@claude-teams/agent-graph': resolve(__dirname, 'packages/agent-graph/src/index.ts')
+        '@claude-teams/agent-graph': resolve(repoRoot, 'packages/agent-graph/src/index.ts')
       }
     },
     plugins: [react()],
@@ -143,7 +159,7 @@ export default defineConfig({
       sourcemap: sourceMapSetting,
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/renderer/index.html')
+          index: resolve(repoRoot, 'src/renderer/index.html')
         }
       }
     }

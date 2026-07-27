@@ -1529,8 +1529,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       : 560,
   sidebarLogsHeight: 213,
   setMessagesPanelMode: (mode: TeamMessagesPanelMode) => {
-    savePersistedMessagesPanelMode(mode);
-    set({ messagesPanelMode: mode });
+    void mode;
+    savePersistedMessagesPanelMode('sidebar');
+    set({ messagesPanelMode: 'sidebar' });
   },
   setMessagesPanelWidth: (width: number) => set({ messagesPanelWidth: width }),
   setSidebarLogsHeight: (height: number) => set({ sidebarLogsHeight: height }),

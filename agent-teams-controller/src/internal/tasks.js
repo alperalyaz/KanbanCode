@@ -323,12 +323,64 @@ function resolveTaskId(context, taskRef) {
     return taskStore.resolveTaskRef(context.paths, taskRef, { includeDeleted: true });
 }
 
+function isHumanBoardActor(actor) {
+    const normalized = normalizeActorName(actor).toLowerCase();
+    return !normalized || normalized === 'user';
+}
+
+function hasAgentResultComment(task) {
+    const comments = Array.isArray(task.comments) ? task.comments : [];
+    return comments.some((comment) => {
+        const author = String(comment?.author || '')
+            .trim()
+            .toLowerCase();
+        const type = String(comment?.type || 'regular')
+            .trim()
+            .toLowerCase();
+        if (!author || author === 'system' || type === 'system') {
+            return false;
+        }
+        return String(comment?.text || '').trim().length >= 12;
+    });
+}
+
+function assertAgentCanCompleteTask(task, actor) {
+    if (isHumanBoardActor(actor)) {
+        return;
+    }
+    if (task.status === 'completed') {
+        return;
+    }
+    if (task.status !== 'in_progress') {
+        throw new Error(
+            `Task #${task.displayId || task.id} must be in_progress before task_complete (current: ${task.status}). Call task_start, do the work, leave a result comment via task_add_comment, then task_complete.`
+        );
+    }
+    if (!hasAgentResultComment(task)) {
+        throw new Error(
+            `Task #${task.displayId || task.id} needs a result comment before task_complete. Post findings/summary with task_add_comment first, then task_complete. Empty completions are not allowed.`
+        );
+    }
+}
+
 function setTaskStatus(context, taskId, status, actor) {
     return withTeamBoardLock(context.paths, () => {
-        const before = taskStore.readTask(context.paths, taskId, { includeDeleted: true });
+        let before = taskStore.readTask(context.paths, taskId, { includeDeleted: true });
         const normalizedStatus = String(status || '').trim();
         if (before.status === 'deleted' && normalizedStatus !== 'deleted') {
             throw new Error(`Task #${before.displayId || before.id} is deleted; use task_restore before changing status`);
+        }
+        if (normalizedStatus === 'completed') {
+            // Human/UI may mark TODO items done directly; agents must follow the board lifecycle.
+            if (isHumanBoardActor(actor) && before.status === 'pending') {
+                before = taskStore.setTaskStatus(
+                    context.paths,
+                    taskId,
+                    'in_progress',
+                    normalizeActorName(actor) || 'user'
+                );
+            }
+            assertAgentCanCompleteTask(before, actor);
         }
         let task = taskStore.setTaskStatus(context.paths, taskId, status, actor);
         if (normalizedStatus === 'deleted' || normalizedStatus === 'in_progress' || normalizedStatus === 'pending') {
@@ -732,11 +784,11 @@ function buildMemberTaskProtocol(teamName, messagingProtocol = createMemberMessa
    - Never do comment-driven implementation/fix work while the task is still shown as pending, review, completed, or approved.
    - After task_complete, send a notification to your team lead via ${messagingProtocol.sendLeadPhrase}. Use the comment.id you saved earlier (first 8 characters). Your message must include: (a) which task is done, (b) a brief summary of the outcome (2-4 sentences), (c) a pointer to the full comment so the lead can fetch it, (d) what you will do next. Do NOT duplicate the entire results.
      Example: ${notifyLeadExample}${runtimeVisibleMessageRule}${runtimeTaskToolHint}
-   - After task_complete, call review_request ONLY when review is explicitly expected for THIS task and a concrete reviewer is already known.
+   - After task_complete, call review_request when a concrete reviewer is known OR when the team roster includes a QA/Reviewer role member (prefer QA, then Reviewer). Pass that member as reviewer.
      Example:
      { teamName: "${teamName}", taskId: "<taskId>", from: "<your-name>", reviewer: "<reviewer-name>" }
-     Do NOT infer mandatory review just from free-form teammate roles like "reviewer", "qa", or "tech-lead".
-     If review is not explicitly requested yet or the reviewer is still undecided, leave the task completed and wait.
+     If the roster has no QA/Reviewer and review was not requested, leave the task completed and wait.
+     Do NOT invent a random developer as reviewer when a QA/Reviewer exists on the roster.
 3b. When you BEGIN reviewing a task, FIRST call review_start to ensure it appears in the REVIEW column:
    { teamName: "${teamName}", taskId: "<taskId>", from: "<your-name>" }
    This is MANDATORY before review_approve or review_request_changes. Without this step, the kanban board may not show the task in REVIEW during your review.

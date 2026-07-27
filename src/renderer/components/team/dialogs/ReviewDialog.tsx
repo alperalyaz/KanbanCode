@@ -12,6 +12,7 @@ import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { useTaskSuggestions } from '@renderer/hooks/useTaskSuggestions';
 import { useStore } from '@renderer/store';
+import { selectTeamDataForName } from '@renderer/store/team/teamDataSelectors';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import {
@@ -49,7 +50,11 @@ export const ReviewDialog = ({
     key: `requestChanges:${teamName}:${taskId ?? ''}`,
     enabled: Boolean(teamName && taskId),
   });
-  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
+  const teamUserColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
+  const colorMap = useMemo(
+    () => buildMemberColorMap(members, teamUserColor),
+    [members, teamUserColor]
+  );
 
   const mentionSuggestions = useMemo<MentionSuggestion[]>(
     () =>

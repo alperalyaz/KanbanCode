@@ -1,11 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-
 import {
   __resetShortLivedProviderPrepareCacheForTests,
   getShortLivedProviderPrepareModelIssueReasons,
   getShortLivedProviderPrepareModelResults,
   storeShortLivedProviderPrepareModelResults,
 } from '@renderer/components/team/dialogs/providerPrepareShortLivedCache';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('providerPrepareShortLivedCache', () => {
   afterEach(() => {
@@ -292,6 +291,33 @@ describe('providerPrepareShortLivedCache', () => {
       })
     ).toEqual({
       modelAdvisoryReasonByValue: {},
+      modelIssueReasonByValue: {},
+      modelUnavailableReasonByValue: {},
+    });
+  });
+
+  it('strips model labels from compatibility-pending advisory reasons', () => {
+    storeShortLivedProviderPrepareModelResults({
+      providerId: 'opencode',
+      cacheKey: 'key-compat',
+      modelResultsById: {
+        'deepseek-ai/deepseek-v4-pro': {
+          status: 'notes',
+          line: 'deepseek-ai/deepseek-v4-pro - compatible, deep verification pending...',
+          warningLine: null,
+        },
+      },
+    });
+
+    expect(
+      getShortLivedProviderPrepareModelIssueReasons({
+        providerId: 'opencode',
+        cacheKey: 'key-compat',
+      })
+    ).toEqual({
+      modelAdvisoryReasonByValue: {
+        'deepseek-ai/deepseek-v4-pro': 'compatible, deep verification pending',
+      },
       modelIssueReasonByValue: {},
       modelUnavailableReasonByValue: {},
     });

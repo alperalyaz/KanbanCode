@@ -353,21 +353,22 @@ describe('teamSlice actions', () => {
     vi.useRealTimers();
   });
 
-  it('restores the selected messages panel mode from localStorage', () => {
+  it('keeps the messages panel pinned to the left sidebar', () => {
     window.localStorage.setItem('team:messagesPanelMode', 'bottom-sheet');
 
     const store = createSliceStore();
 
-    expect(store.getState().messagesPanelMode).toBe('bottom-sheet');
+    expect(store.getState().messagesPanelMode).toBe('sidebar');
   });
 
-  it('persists messages panel mode changes and ignores invalid stored values', () => {
+  it('ignores relocate requests and always persists sidebar', () => {
     const store = createSliceStore();
 
     store.getState().setMessagesPanelMode('floating-composer');
 
-    expect(window.localStorage.getItem('team:messagesPanelMode')).toBe('floating-composer');
-    expect(loadPersistedMessagesPanelMode()).toBe('floating-composer');
+    expect(window.localStorage.getItem('team:messagesPanelMode')).toBe('sidebar');
+    expect(loadPersistedMessagesPanelMode()).toBe('sidebar');
+    expect(store.getState().messagesPanelMode).toBe('sidebar');
 
     window.localStorage.setItem('team:messagesPanelMode', 'bad-mode');
 
@@ -375,7 +376,7 @@ describe('teamSlice actions', () => {
 
     savePersistedMessagesPanelMode('inline');
 
-    expect(window.localStorage.getItem('team:messagesPanelMode')).toBe('inline');
+    expect(window.localStorage.getItem('team:messagesPanelMode')).toBe('sidebar');
   });
 
   it('updates selected team task change presence in one batch', () => {
@@ -2997,7 +2998,9 @@ describe('teamSlice actions', () => {
     expect(hoisted.deleteTeam).toHaveBeenCalledWith('my-team');
     expect(store.getState().selectedTeamName).toBeNull();
     expect(store.getState().selectedTeamData).toBeNull();
-    expect(store.getState().teams.find((team) => team.teamName === 'my-team')).toBeUndefined();
+    expect(
+      store.getState().teams.find((team: { teamName: string }) => team.teamName === 'my-team')
+    ).toBeUndefined();
     expect(store.getState().teamDataCacheByName['my-team']).toBeUndefined();
   });
 
@@ -3040,7 +3043,9 @@ describe('teamSlice actions', () => {
 
     const deletePromise = store.getState().permanentlyDeleteTeam('my-team');
 
-    expect(store.getState().teams.map((team) => team.teamName)).toEqual(['other-team']);
+    expect(store.getState().teams.map((team: { teamName: string }) => team.teamName)).toEqual([
+      'other-team',
+    ]);
     expect(store.getState().teamByName['my-team']).toBeUndefined();
     expect(hoisted.permanentlyDeleteTeam).toHaveBeenCalledWith('my-team');
 

@@ -14,6 +14,7 @@ import {
   displayMemberName,
   isOpenCodeRelaunchActionable,
   shouldDisplayMemberCurrentTask,
+  STATUS_DOT_COLORS,
 } from '@renderer/utils/memberHelpers';
 import {
   buildMemberLaunchDiagnosticsPayload,
@@ -45,10 +46,11 @@ import {
   Undo2,
 } from 'lucide-react';
 
-import { CurrentTaskIndicator } from './CurrentTaskIndicator';
-import { MemberLaunchDiagnosticsButton } from './MemberLaunchDiagnosticsButton';
+import { LiveWorkingStatusStrip } from '../activity/LiveWorkingStatusStrip';
 import { MemberColorAvatar } from '../MemberColorAvatar';
 
+import { CurrentTaskIndicator } from './CurrentTaskIndicator';
+import { MemberLaunchDiagnosticsButton } from './MemberLaunchDiagnosticsButton';
 import { MemberPresenceDot } from './MemberPresenceDot';
 
 import type { MemberActivityTimerAnchor } from '@renderer/utils/memberActivityTimer';
@@ -835,6 +837,29 @@ export const MemberCard = memo(function MemberCard({
     member.gitBranch ? `Branch: ${member.gitBranch}` : null,
   ].filter((line): line is string => Boolean(line));
   const activityTask = visibleCurrentTask ?? visibleReviewTask ?? null;
+  const isActivelyWorking =
+    !isRemoved &&
+    (Boolean(activityTask) || inProgress > 0 || (isLead && leadActivity === 'active'));
+  const workPresenceLabel = visibleCurrentTask
+    ? 'working'
+    : visibleReviewTask
+      ? reviewTaskTimer
+        ? 'reviewing'
+        : 'review requested'
+      : inProgress > 0
+        ? 'working'
+        : isLead && leadActivity === 'active'
+          ? 'processing'
+          : null;
+  const resolvedPresenceLabel =
+    isActivelyWorking && workPresenceLabel ? workPresenceLabel : displayPresenceLabel;
+  const resolvedDotClass = isActivelyWorking
+    ? `${STATUS_DOT_COLORS.active} animate-pulse`
+    : dotClass;
+  const resolvedPresenceTitle =
+    isActivelyWorking && launchVisualState === 'stale_runtime'
+      ? `${resolvedPresenceLabel} · runtime probe stale`
+      : resolvedPresenceLabel;
   const activityTitle = visibleCurrentTask
     ? `Current task: #${deriveTaskDisplayId(visibleCurrentTask.id)}`
     : visibleReviewTask
@@ -951,6 +976,7 @@ export const MemberCard = memo(function MemberCard({
   const showLaunchBadge =
     !isRemoved &&
     !runtimeAdvisoryLabel &&
+    !isActivelyWorking &&
     (presenceLabel === 'starting' ||
       presenceLabel === 'connecting' ||
       launchVisualState === 'queued' ||
@@ -1146,7 +1172,9 @@ export const MemberCard = memo(function MemberCard({
         'rounded transition-opacity duration-300',
         usesLaunchSkeletonSurface && rowSurfaceBleedClass,
         isRemoved && 'opacity-50',
-        spawnCardClass
+        spawnCardClass,
+        isActivelyWorking &&
+          'bg-emerald-500/[0.06] ring-1 ring-inset ring-emerald-400/30 dark:bg-emerald-400/[0.07]'
       )}
       onPointerOverCapture={handleRuntimeTelemetryPointerBlockCapture}
       onPointerMoveCapture={handleRuntimeTelemetryPointerBlockCapture}
@@ -1175,8 +1203,17 @@ export const MemberCard = memo(function MemberCard({
         <div className="pointer-events-none absolute inset-0 z-10 rounded transition-colors group-hover:bg-white/5" />
         <div className="relative z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1">
           <div className="relative shrink-0">
+            {isActivelyWorking ? (
+              <span className="pointer-events-none absolute -inset-1.5" aria-hidden="true">
+                <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/30" />
+                <span className="absolute inset-0 rounded-full ring-2 ring-emerald-400/45" />
+              </span>
+            ) : null}
             <MemberColorAvatar color={memberColor} isLight={isLight} className="size-7" />
-            <MemberPresenceDot className={`size-2.5 ${dotClass}`} label={displayPresenceLabel} />
+            <MemberPresenceDot
+              className={`size-2.5 ${resolvedDotClass}`}
+              label={resolvedPresenceTitle}
+            />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1.5 text-sm">
@@ -1234,24 +1271,44 @@ export const MemberCard = memo(function MemberCard({
                 <>
                   {runtimeAdvisoryTone === 'error' ? (
                     <AlertTriangle className="size-3 shrink-0 text-red-400" />
-                  ) : (
-                    <SyncedLoader2
-                      className={`size-3 shrink-0 ${runtimeAdvisoryLabel ? 'text-amber-400' : ''}`}
-                      style={runtimeAdvisoryLabel ? undefined : { color: colors.border }}
+                  ) : teamName ? (
+                    <LiveWorkingStatusStrip
+                      teamName={teamName}
+                      members={[member]}
+                      variant="member"
+                      memberName={member.name}
+                      leadActivity={leadActivity}
+                      awaitingFallbackLabel={
+                        runtimeAdvisoryLabel ?? t('activity.pendingReplies.awaitingReply')
+                      }
                     />
+                  ) : (
+                    <>
+                      <SyncedLoader2
+                        className={`size-3 shrink-0 ${runtimeAdvisoryLabel ? 'text-amber-400' : ''}`}
+                        style={runtimeAdvisoryLabel ? undefined : { color: colors.border }}
+                      />
+                      <span
+                        className={`shrink-0 text-[10px] ${
+                          runtimeAdvisoryLabel ? 'text-amber-300' : 'text-[var(--color-text-muted)]'
+                        }`}
+                        title={
+                          runtimeAdvisoryTitle ??
+                          t('activity.pendingReplies.messageSentAwaitingReply')
+                        }
+                      >
+                        {runtimeAdvisoryLabel ?? t('activity.pendingReplies.awaitingReply')}
+                      </span>
+                    </>
                   )}
-                  <span
-                    className={`shrink-0 text-[10px] ${
-                      runtimeAdvisoryTone === 'error'
-                        ? 'text-red-300'
-                        : runtimeAdvisoryLabel
-                          ? 'text-amber-300'
-                          : 'text-[var(--color-text-muted)]'
-                    }`}
-                    title={runtimeAdvisoryTitle ?? 'Message sent, awaiting reply'}
-                  >
-                    {runtimeAdvisoryLabel ?? 'awaiting reply'}
-                  </span>
+                  {runtimeAdvisoryTone === 'error' ? (
+                    <span
+                      className="shrink-0 text-[10px] text-red-300"
+                      title={runtimeAdvisoryTitle ?? undefined}
+                    >
+                      {runtimeAdvisoryLabel}
+                    </span>
+                  ) : null}
                   {canRelaunchRuntimeAdvisoryOpenCode ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1287,6 +1344,15 @@ export const MemberCard = memo(function MemberCard({
                     />
                   ) : null}
                 </>
+              ) : null}
+              {!activityTask && !isAwaitingReply && teamName ? (
+                <LiveWorkingStatusStrip
+                  teamName={teamName}
+                  members={[member]}
+                  variant="member"
+                  memberName={member.name}
+                  leadActivity={leadActivity}
+                />
               ) : null}
             </div>
             {showStartingSkeleton ? (
@@ -1490,7 +1556,7 @@ export const MemberCard = memo(function MemberCard({
                         aria-label={
                           retryingLaunch ? restartActionBusyLabel : restartActionIdleLabel
                         }
-                        className="rounded p-1 text-zinc-600 dark:text-zinc-300 transition-colors hover:bg-zinc-500/10 hover:text-zinc-800 dark:hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded p-1 text-zinc-600 transition-colors hover:bg-zinc-500/10 hover:text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-300 dark:hover:text-zinc-100"
                         disabled={retryingLaunch}
                         onClick={handleRestartMember}
                       >
@@ -1574,9 +1640,17 @@ export const MemberCard = memo(function MemberCard({
                 className={`shrink-0 px-1.5 py-0.5 text-[10px] font-normal leading-none ${isRemoved ? 'bg-zinc-600 text-zinc-300' : 'text-[var(--color-text-muted)]'}`}
                 title={isRemoved ? 'This member has been removed' : activityTitle}
               >
-                {isRemoved ? 'removed' : displayPresenceLabel}
+                {isRemoved ? 'removed' : resolvedPresenceLabel}
               </Badge>
-            ) : null}
+            ) : (
+              <Badge
+                variant="secondary"
+                className="shrink-0 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-emerald-600 dark:text-emerald-300"
+                title={resolvedPresenceTitle}
+              >
+                {resolvedPresenceLabel}
+              </Badge>
+            )}
             <MemberTaskProgressBadge
               showStartingSkeleton={showStartingSkeleton}
               memberTaskCount={member.taskCount}

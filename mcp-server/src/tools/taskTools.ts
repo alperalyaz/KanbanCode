@@ -72,7 +72,8 @@ function buildCreateTaskPayload(params: {
 export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
   server.addTool({
     name: 'task_create',
-    description: 'Create a team task',
+    description:
+      'Create a team task. Defaults to pending/TODO. Omit startImmediately (or set false) when seeding backlog; only set startImmediately true for the single active task you intend to begin now.',
     parameters: z.object({
       ...toolContextSchema,
       subject: z.string().min(1),
@@ -83,7 +84,12 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       blockedBy: z.array(z.string().min(1)).optional(),
       related: z.array(z.string().min(1)).optional(),
       prompt: z.string().optional(),
-      startImmediately: z.boolean().optional(),
+      startImmediately: z
+        .boolean()
+        .optional()
+        .describe(
+          'If true and owner is set, create the task already in_progress. Default/omit for pending TODO backlog seeding.'
+        ),
     }),
     execute: async ({
       teamName,
@@ -131,7 +137,7 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
   server.addTool({
     name: 'task_create_from_message',
     description:
-      'Create a task from a persisted user message. Resolves the message by exact messageId, builds sanitized provenance, and creates the task through the canonical path.',
+      'Create a task from a persisted user message. Resolves the message by exact messageId, builds sanitized provenance, and creates the task through the canonical path. Defaults to pending/TODO; omit startImmediately when seeding backlog.',
     parameters: z.object({
       ...toolContextSchema,
       messageId: z.string().min(1),
@@ -142,7 +148,12 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       blockedBy: z.array(z.string().min(1)).optional(),
       related: z.array(z.string().min(1)).optional(),
       prompt: z.string().optional(),
-      startImmediately: z.boolean().optional(),
+      startImmediately: z
+        .boolean()
+        .optional()
+        .describe(
+          'If true and owner is set, create the task already in_progress. Default/omit for pending TODO backlog seeding.'
+        ),
     }),
     execute: async ({
       teamName,
@@ -390,7 +401,8 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
 
   server.addTool({
     name: 'task_complete',
-    description: 'Mark task as completed',
+    description:
+      'Mark an in_progress task as completed. Agents must task_start first, leave a result comment via task_add_comment, then call task_complete. Completing from pending/TODO or without a result comment is rejected.',
     parameters: z.object({
       ...toolContextSchema,
       taskId: z.string().min(1),

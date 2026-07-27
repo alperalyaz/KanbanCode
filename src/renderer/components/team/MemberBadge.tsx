@@ -3,6 +3,7 @@ import { memo, useMemo } from 'react';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
 import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
+import { selectTeamDataForName } from '@renderer/store/team/teamDataSelectors';
 import {
   buildMemberAvatarMap,
   buildMemberColorMap,
@@ -10,8 +11,8 @@ import {
   resolveCanonicalMemberName,
 } from '@renderer/utils/memberHelpers';
 
-import { MemberColorAvatar } from './MemberColorAvatar';
 import { MemberHoverCard } from './members/MemberHoverCard';
+import { MemberColorAvatar } from './MemberColorAvatar';
 
 import type { ResolvedTeamMember } from '@shared/types';
 
@@ -36,7 +37,10 @@ interface MemberBadgeProps {
 
 const EMPTY_TEAM_MEMBERS: readonly ResolvedTeamMember[] = [];
 const memberAvatarMapCache = new WeakMap<readonly ResolvedTeamMember[], Map<string, string>>();
-const memberColorMapCache = new WeakMap<readonly ResolvedTeamMember[], Map<string, string>>();
+const memberColorMapCache = new WeakMap<
+  readonly ResolvedTeamMember[],
+  Map<string, Map<string, string>>
+>();
 
 function getCachedMemberAvatarMap(members: readonly ResolvedTeamMember[]): Map<string, string> {
   const cached = memberAvatarMapCache.get(members);
@@ -49,14 +53,23 @@ function getCachedMemberAvatarMap(members: readonly ResolvedTeamMember[]): Map<s
   return next;
 }
 
-function getCachedMemberColorMap(members: readonly ResolvedTeamMember[]): Map<string, string> {
-  const cached = memberColorMapCache.get(members);
+function getCachedMemberColorMap(
+  members: readonly ResolvedTeamMember[],
+  userColor?: string
+): Map<string, string> {
+  const cacheKey = userColor?.trim() || '';
+  let byUserColor = memberColorMapCache.get(members);
+  if (!byUserColor) {
+    byUserColor = new Map();
+    memberColorMapCache.set(members, byUserColor);
+  }
+  const cached = byUserColor.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const next = buildMemberColorMap([...members]);
-  memberColorMapCache.set(members, next);
+  const next = buildMemberColorMap([...members], userColor);
+  byUserColor.set(cacheKey, next);
   return next;
 }
 
@@ -104,9 +117,7 @@ const MemberBadgeResolvedContent = memo(
     // reads as one consistent color everywhere (roster, kanban owner badge, chat).
     // `variant="neutral"` only neutralizes the name pill, NOT the dot — otherwise
     // neutral badges fell back to the default blue and mismatched the roster.
-    const avatar = (
-      <MemberColorAvatar color={color} isLight={isLight} className={avatarClass} />
-    );
+    const avatar = <MemberColorAvatar color={color} isLight={isLight} className={avatarClass} />;
 
     const badge = (
       <span
@@ -160,8 +171,14 @@ const MemberBadgeWithResolvedAvatar = memo((props: MemberBadgeContentProps): Rea
       ? selectResolvedMembersForTeamName(s, effectiveAvatarTeamName)
       : EMPTY_TEAM_MEMBERS
   );
+  const teamUserColor = useStore(
+    (s) => selectTeamDataForName(s, effectiveAvatarTeamName)?.config.color
+  );
   const avatarMap = useMemo(() => getCachedMemberAvatarMap(teamMembers), [teamMembers]);
-  const colorMap = useMemo(() => getCachedMemberColorMap(teamMembers), [teamMembers]);
+  const colorMap = useMemo(
+    () => getCachedMemberColorMap(teamMembers, teamUserColor),
+    [teamMembers, teamUserColor]
+  );
   // Recover the canonical roster name when a slugified handle (e.g. "k-ro-lu")
   // slipped into a message recipient/sender, so Turkish names render correctly.
   const canonicalName = useMemo(
@@ -170,8 +187,8 @@ const MemberBadgeWithResolvedAvatar = memo((props: MemberBadgeContentProps): Rea
   );
   // Prefer an explicit color prop; otherwise resolve the member's real color from
   // the same roster color map the roster/chat use, so the avatar dot matches.
-  const resolvedColor =
-    props.color ?? colorMap.get(canonicalName) ?? colorMap.get(props.name);
+  // For the human `user` pseudo-member, team config.color is the identity color.
+  const resolvedColor = props.color ?? colorMap.get(canonicalName) ?? colorMap.get(props.name);
   return (
     <MemberBadgeResolvedContent
       {...props}

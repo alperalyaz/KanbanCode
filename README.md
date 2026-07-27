@@ -38,6 +38,8 @@ pnpm dev
 
 `pnpm dev` starts the desktop Electron app with hot reload. The desktop app is the supported way to run agent teams; the browser/web path is limited and not intended for normal use.
 
+On Windows, open the folder with its real casing (`C:\KanbanCode`, not `C:\kanbancode`). Mixed casing can break Vite's HTML proxy during `pnpm dev`.
+
 Repo working instructions live in [CLAUDE.md](CLAUDE.md).
 
 ### Scripts

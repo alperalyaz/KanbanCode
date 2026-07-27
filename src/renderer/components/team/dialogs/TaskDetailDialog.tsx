@@ -37,6 +37,7 @@ import { useTheme } from '@renderer/hooks/useTheme';
 import { useViewportCommentRead } from '@renderer/hooks/useViewportCommentRead';
 import { getLegacyCutoff, getReadCommentIds } from '@renderer/services/commentReadStorage';
 import { useStore } from '@renderer/store';
+import { selectTeamDataForName } from '@renderer/store/team/teamDataSelectors';
 import { isImageMimeType } from '@renderer/utils/attachmentUtils';
 import { isImeComposing } from '@renderer/utils/imeComposition';
 import {
@@ -219,7 +220,11 @@ export const TaskDetailDialog = ({
   focusCommentId,
   headerExtra,
 }: TaskDetailDialogProps): React.JSX.Element => {
-  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
+  const teamUserColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
+  const colorMap = useMemo(
+    () => buildMemberColorMap(members, teamUserColor),
+    [members, teamUserColor]
+  );
   const { isLight } = useTheme();
   const { t } = useAppTranslation('team');
   const currentTask = task ? (taskMap.get(task.id) ?? task) : null;
@@ -994,7 +999,7 @@ export const TaskDetailDialog = ({
                           <TooltipTrigger asChild>
                             <button
                               type="button"
-                              className="inline-flex items-center rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300 transition-colors hover:bg-purple-500/25"
+                              className="inline-flex items-center rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 transition-colors hover:bg-purple-500/25 dark:text-purple-300"
                               onClick={() => handleDependencyClick(id)}
                             >
                               {depTask

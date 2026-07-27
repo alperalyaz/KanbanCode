@@ -1,3 +1,4 @@
+import { isCodexChatGptSunsetModel } from '@shared/utils/codexChatGptSunsetModels';
 import { inferContextWindowTokens } from '@shared/utils/contextMetrics';
 import { parseModelString } from '@shared/utils/modelParser';
 import {
@@ -17,7 +18,7 @@ export {
 type SupportedProviderId = CliProviderId | TeamProviderId;
 type RuntimeAwareProviderStatus = Pick<
   CliProviderStatus,
-  'providerId' | 'authMethod' | 'backend' | 'modelCatalog'
+  'providerId' | 'authMethod' | 'backend' | 'modelCatalog' | 'modelAvailability'
 >;
 type RuntimeModelCatalog = NonNullable<RuntimeAwareProviderStatus['modelCatalog']>;
 type RuntimeCatalogModel = RuntimeModelCatalog['models'][number];
@@ -645,10 +646,20 @@ function isRuntimeHiddenTeamModel(
   model: string,
   providerStatus?: RuntimeAwareProviderStatus | null
 ): boolean {
-  return (
-    providerId === 'codex' &&
-    model === 'gpt-5.1-codex-max' &&
-    isCodexChatGptSubscriptionProviderStatus(providerStatus)
+  if (providerId !== 'codex') {
+    return false;
+  }
+  if (!isCodexChatGptSubscriptionProviderStatus(providerStatus)) {
+    return false;
+  }
+  if (model === 'gpt-5.1-codex-max' || isCodexChatGptSunsetModel(model)) {
+    return true;
+  }
+  // Live probe results: hide models Codex already marked unavailable for this account.
+  return (providerStatus?.modelAvailability ?? []).some(
+    (entry) =>
+      entry.status === 'unavailable' &&
+      entry.modelId.trim().toLowerCase() === model.trim().toLowerCase()
   );
 }
 

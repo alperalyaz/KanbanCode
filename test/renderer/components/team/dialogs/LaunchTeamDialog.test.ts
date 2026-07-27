@@ -1599,6 +1599,7 @@ describe('LaunchTeamDialog', () => {
   it('keeps create-team preflight alive across same-signature rerenders', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     vi.useFakeTimers();
+    localStorage.setItem('kanbancode:firstRunComplete', 'true');
     storeState.cliStatus = {
       flavor: 'agent_teams_orchestrator',
       providers: [
@@ -1740,6 +1741,45 @@ describe('LaunchTeamDialog', () => {
       callsAfterSameSignatureRerender
     );
     expect(host.textContent).toContain('All selected providers are ready.');
+
+    await act(async () => {
+      root.unmount();
+      await flush();
+    });
+  });
+
+  it('uses the open project instead of asking again in Create Team', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    localStorage.setItem('kanbancode:firstRunComplete', 'true');
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(CreateTeamDialog, {
+          open: true,
+          canCreate: true,
+          provisioningErrorsByTeam: {},
+          clearProvisioningError: vi.fn(),
+          existingTeamNames: [],
+          provisioningTeamNames: [],
+          activeTeams: [],
+          defaultProjectPath: '/tmp/project',
+          onClose: vi.fn(),
+          onCreate: vi.fn(async () => {}),
+          onOpenTeam: vi.fn(),
+        })
+      );
+      await flush();
+    });
+
+    expect(host.querySelector('[data-testid="create-team-current-project"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="project-path"]')).toBeNull();
+    expect(host.textContent).toContain('Using project');
+    expect(host.textContent).toContain('you do not need to pick it again');
+    expect(host.textContent).toContain('Use a different folder');
 
     await act(async () => {
       root.unmount();

@@ -478,6 +478,14 @@ describe('teamModelAvailability', () => {
     expect(getTeamModelSelectionError('codex', '')).toBeNull();
   });
 
+  it('does not treat the persisted Default sentinel as a concrete Codex model id', () => {
+    const providerStatus = createCodexProviderStatus(['gpt-5.5', 'gpt-5.4']);
+
+    expect(getTeamModelSelectionError('codex', 'default', providerStatus)).toBeNull();
+    expect(getTeamModelSelectionError('codex', 'Default', providerStatus)).toBeNull();
+    expect(getTeamModelSelectionError('codex', '__provider_default__', providerStatus)).toBeNull();
+  });
+
   it('keeps known Codex selections stable while the runtime is still on placeholder checking state', () => {
     const providerStatus = createCodexProviderStatus([], {
       authMethod: null,

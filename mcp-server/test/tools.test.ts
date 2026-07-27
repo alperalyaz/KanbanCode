@@ -29,6 +29,7 @@ function parseJsonToolResult(result: unknown) {
   return JSON.parse(text);
 }
 
+
 describe('agent-teams-mcp tools', () => {
   const tools = collectTools();
   const tempDirs: string[] = [];
@@ -43,6 +44,34 @@ describe('agent-teams-mcp tools', () => {
     const tool = tools.get(name);
     expect(tool).toBeDefined();
     return tool!;
+  }
+
+  async function finishAgentTaskViaMcp(params: {
+    claudeDir: string;
+    teamName: string;
+    taskId: string;
+    actor?: string;
+  }) {
+    const actor = params.actor ?? 'alice';
+    await getTool('task_start').execute({
+      claudeDir: params.claudeDir,
+      teamName: params.teamName,
+      taskId: params.taskId,
+      actor,
+    });
+    await getTool('task_add_comment').execute({
+      claudeDir: params.claudeDir,
+      teamName: params.teamName,
+      taskId: params.taskId,
+      text: 'Automated MCP test result comment for completion.',
+      from: actor,
+    });
+    return getTool('task_complete').execute({
+      claudeDir: params.claudeDir,
+      teamName: params.teamName,
+      taskId: params.taskId,
+      actor,
+    });
   }
 
   function makeClaudeDir() {
@@ -1077,7 +1106,7 @@ describe('agent-teams-mcp tools', () => {
         owner: 'alice',
       })
     );
-    await getTool('task_complete').execute({
+    await finishAgentTaskViaMcp({
       claudeDir,
       teamName,
       taskId: completedTask.id,
@@ -1280,7 +1309,7 @@ describe('agent-teams-mcp tools', () => {
       })
     );
 
-    await getTool('task_complete').execute({
+    await finishAgentTaskViaMcp({
       claudeDir,
       teamName,
       taskId: reviewTask.id,
@@ -1354,7 +1383,7 @@ describe('agent-teams-mcp tools', () => {
       })
     );
 
-    await getTool('task_complete').execute({
+    await finishAgentTaskViaMcp({
       claudeDir,
       teamName,
       taskId: createdTask.id,
@@ -1518,7 +1547,7 @@ describe('agent-teams-mcp tools', () => {
         owner: 'bob',
       })
     );
-    await getTool('task_complete').execute({
+    await finishAgentTaskViaMcp({
       claudeDir,
       teamName,
       taskId: reviewTask.id,
@@ -1595,7 +1624,7 @@ describe('agent-teams-mcp tools', () => {
         owner: 'bob',
       })
     );
-    await getTool('task_complete').execute({
+    await finishAgentTaskViaMcp({
       claudeDir,
       teamName,
       taskId: quietTask.id,
@@ -1627,7 +1656,7 @@ describe('agent-teams-mcp tools', () => {
         owner: 'bob',
       })
     );
-    await getTool('task_complete').execute({
+    await finishAgentTaskViaMcp({
       claudeDir,
       teamName,
       taskId: notifyingTask.id,

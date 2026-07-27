@@ -85,6 +85,11 @@ export interface OpenCodeTeamRuntimeMessageInput {
   workSyncReviewRequestEventIds?: string[];
   controlUrl?: string;
   taskRefs?: TaskRef[];
+  /**
+   * Durable teammate roster for lead deliveries. When present and non-empty,
+   * DELEGATE mode must treat the team as non-solo and assign these members.
+   */
+  teammateRoster?: { name: string; role?: string }[];
   forceSessionRefreshReason?: string;
   bootstrapCheckinRetry?: {
     runtimeSessionId: string;
@@ -1200,11 +1205,29 @@ function buildOpenCodeRuntimeMessageText(input: OpenCodeTeamRuntimeMessageInput)
     input.taskRefs
       ?.map((ref) => ref.taskId?.trim())
       .filter((taskId): taskId is string => Boolean(taskId)) ?? [];
+  const durableTeammates =
+    input.teammateRoster
+      ?.map((member) => {
+        const name = member.name.trim();
+        if (!name) return null;
+        const role = member.role?.trim();
+        return role ? `${name} (${role})` : name;
+      })
+      .filter((entry): entry is string => Boolean(entry)) ?? [];
+  const hasDurableTeammates = durableTeammates.length > 0;
+  const rosterContextReminder = hasDurableTeammates
+    ? [
+        `Current durable team roster (authoritative for this turn): ${durableTeammates.join(', ')}.`,
+        'This team is NOT in solo mode. Do not claim there are no teammates / no other members.',
+      ].join(' ')
+    : null;
   const actionModeWorkScopeReminder =
     input.actionMode === 'ask'
       ? 'Action mode ASK is read-only for this delivered message: do not edit files, change task state, or run side-effecting tools for this message.'
       : input.actionMode === 'delegate'
-        ? 'Action mode DELEGATE is orchestration-only for this delivered message: pass the task with context instead of implementing or editing files yourself.'
+        ? hasDurableTeammates
+          ? 'Action mode DELEGATE is orchestration-only for this delivered message: decompose the work, create board tasks with owners from the durable roster above, start what should begin now, and do not implement or edit files yourself. Never invent a solo-team limitation while that roster lists teammates.'
+          : 'Action mode DELEGATE is orchestration-only for this delivered message: pass the task with context instead of implementing or editing files yourself. Only treat the team as solo when the durable roster truly has zero teammates.'
         : 'If this delivered message assigns implementation, fixes, review follow-up, or concrete investigation, you may inspect, read/search, and edit files in the project working directory as your available tools allow.';
   // Work-sync nudges are health/reporting probes. Requiring a visible
   // message_send reply here causes false delivery failures, so accept the
@@ -1257,6 +1280,7 @@ function buildOpenCodeRuntimeMessageText(input: OpenCodeTeamRuntimeMessageInput)
       ? `<opencode_delivery_context>${deliveryContext}</opencode_delivery_context>`
       : null,
     'You are running in OpenCode, not Claude Code or Codex native.',
+    rosterContextReminder,
     actionModeWorkScopeReminder,
     ...responseInstructions,
     'Do not call runtime_bootstrap_checkin or member_briefing just to answer this delivered app message.',

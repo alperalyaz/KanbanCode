@@ -86,6 +86,11 @@ import {
   clearInheritedMemberModelsUnavailableForProvider,
   resolveProviderScopedMemberModel,
 } from './memberModelScope';
+import {
+  buildOpenCodeLeadTeammateProviderDisabledBadges,
+  buildOpenCodeLeadTeammateProviderDisabledReasons,
+  coerceTeammatesToOpenCodeForOpenCodeLead,
+} from './openCodeLeadProviderLocks';
 import { OptionalSettingsSection } from './OptionalSettingsSection';
 import {
   isDeletedProjectPathSelection,
@@ -569,6 +574,16 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   }, [membersDrafts, open, runtimeProviderStatusById, selectedProviderId]);
 
   useEffect(() => {
+    if (!open || selectedProviderId !== 'opencode' || syncModelsWithLead) {
+      return;
+    }
+    setMembersDrafts((prev) => {
+      const coerced = coerceTeammatesToOpenCodeForOpenCodeLead(prev);
+      return coerced.changed ? coerced.members : prev;
+    });
+  }, [membersDrafts, open, selectedProviderId, syncModelsWithLead]);
+
+  useEffect(() => {
     if (!open || cliStatus || cliStatusLoading) {
       return;
     }
@@ -826,6 +841,20 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       tmuxRuntime.loading,
       tmuxRuntime.status,
     ]
+  );
+  const openCodeLeadTeammateProviderDisabledReasonById = useMemo(
+    () =>
+      selectedProviderId === 'opencode' && !syncModelsWithLead
+        ? buildOpenCodeLeadTeammateProviderDisabledReasons(t)
+        : undefined,
+    [selectedProviderId, syncModelsWithLead, t]
+  );
+  const openCodeLeadTeammateProviderDisabledBadgeById = useMemo(
+    () =>
+      selectedProviderId === 'opencode' && !syncModelsWithLead
+        ? buildOpenCodeLeadTeammateProviderDisabledBadges(t)
+        : undefined,
+    [selectedProviderId, syncModelsWithLead, t]
   );
   const teammateRuntimeProviderNoticeById:
     | Partial<Record<TeamProviderId, React.ReactNode>>
@@ -2390,6 +2419,8 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                 }
                 softDeleteMembers
                 disableGeminiOption={isGeminiUiFrozen()}
+                providerDisabledReasonById={openCodeLeadTeammateProviderDisabledReasonById}
+                providerDisabledBadgeLabelById={openCodeLeadTeammateProviderDisabledBadgeById}
                 headerBottom={
                   showRosterTeammateRuntimeCompatibility || hasSelectedWorktreeIsolation ? (
                     <div className="space-y-2">

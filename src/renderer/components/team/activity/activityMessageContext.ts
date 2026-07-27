@@ -27,7 +27,8 @@ export function buildMessageContext(
   if ((!members || members.length === 0) && !userColor) return EMPTY_CONTEXT;
 
   const roster = members ?? [];
-  const colorMap = buildMemberColorMap(roster);
+  // Pass team config.color so the reserved `user` entry matches Edit Team's picker.
+  const colorMap = buildMemberColorMap(roster, userColor);
   const localMemberNames = new Set(roster.map((m) => m.name.trim()));
 
   const memberInfo = new Map<string, { role?: string; color?: string }>();
@@ -44,10 +45,7 @@ export function buildMessageContext(
 
   // The human user is not a roster member, but the team's chosen "Color" represents
   // them — thread it through so their messages render in that color.
-  const resolvedUserColor = userColor ?? colorMap.get('user');
-  if (resolvedUserColor) {
-    colorMap.set('user', resolvedUserColor);
-  }
+  const resolvedUserColor = colorMap.get('user');
   memberInfo.set('user', { role: undefined, color: resolvedUserColor });
 
   return { colorMap, localMemberNames, memberInfo };

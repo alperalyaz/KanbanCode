@@ -143,6 +143,54 @@ describe('useCreateTeamDraft', () => {
     });
   });
 
+  it('does not restore a stale project path from draft snapshots', async () => {
+    loadSnapshotMock.mockResolvedValue({
+      version: 1,
+      teamName: 'codex-takimi',
+      members: [],
+      syncModelsWithLead: true,
+      teammateWorktreeDefault: false,
+      cwdMode: 'custom',
+      selectedProjectPath: 'C:/SomeOtherRepo',
+      customCwd: 'C:/SomeOtherRepo',
+      launchTeam: true,
+      teamColor: '',
+      updatedAt: Date.now(),
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    let loadedDraft: ReturnType<typeof useCreateTeamDraft> | null = null;
+
+    await act(async () => {
+      root.render(
+        React.createElement(HookProbeWithDraft, {
+          onLoaded: (draft) => {
+            loadedDraft = draft;
+          },
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const draft = loadedDraft as ReturnType<typeof useCreateTeamDraft> | null;
+    expect(draft).not.toBeNull();
+    if (!draft) {
+      throw new Error('Draft did not load');
+    }
+
+    expect(draft.teamName).toBe('codex-takimi');
+    expect(draft.cwdMode).toBe('project');
+    expect(draft.selectedProjectPath).toBe('');
+    expect(draft.customCwd).toBe('');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
   it('preserves per-member MCP policy in saved create-team drafts', async () => {
     loadSnapshotMock.mockResolvedValue({
       version: 1,

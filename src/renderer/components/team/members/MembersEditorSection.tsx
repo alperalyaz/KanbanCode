@@ -88,6 +88,8 @@ export interface MembersEditorSectionProps {
   memberWarningById?: Record<string, string | null | undefined>;
   memberInfoById?: Record<string, string | null | undefined>;
   disableGeminiOption?: boolean;
+  providerDisabledReasonById?: Partial<Record<TeamProviderId, string | null | undefined>>;
+  providerDisabledBadgeLabelById?: Partial<Record<TeamProviderId, string | null | undefined>>;
   memberModelIssueById?: Record<string, string | null | undefined>;
   modelAdvisoryReasonByProvider?: Partial<
     Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
@@ -143,6 +145,8 @@ export const MembersEditorSection = ({
   memberWarningById,
   memberInfoById,
   disableGeminiOption = false,
+  providerDisabledReasonById,
+  providerDisabledBadgeLabelById,
   memberModelIssueById,
   modelAdvisoryReasonByProvider,
   modelIssueReasonByProvider,
@@ -567,6 +571,8 @@ export const MembersEditorSection = ({
                     warningText={memberWarningById?.[member.id] ?? null}
                     infoText={memberInfoById?.[member.id] ?? null}
                     disableGeminiOption={disableGeminiOption}
+                    providerDisabledReasonById={providerDisabledReasonById}
+                    providerDisabledBadgeLabelById={providerDisabledBadgeLabelById}
                     modelIssueText={memberModelIssueById?.[member.id] ?? null}
                     modelAdvisoryReasonByProvider={modelAdvisoryReasonByProvider}
                     modelIssueReasonByProvider={modelIssueReasonByProvider}
@@ -620,6 +626,8 @@ export const MembersEditorSection = ({
                         isRemoved
                         warningText={null}
                         disableGeminiOption={disableGeminiOption}
+                        providerDisabledReasonById={providerDisabledReasonById}
+                        providerDisabledBadgeLabelById={providerDisabledBadgeLabelById}
                         modelIssueText={null}
                         onOpenProviderSettings={onOpenProviderSettings}
                       />

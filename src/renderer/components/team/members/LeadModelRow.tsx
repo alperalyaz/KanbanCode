@@ -10,6 +10,7 @@ import {
 import { EffortLevelSelector } from '@renderer/components/team/dialogs/EffortLevelSelector';
 import { LimitContextCheckbox } from '@renderer/components/team/dialogs/LimitContextCheckbox';
 import { OpenCodeContextConfigHint } from '@renderer/components/team/dialogs/OpenCodeContextConfigHint';
+import { localizeOpenCodeModelAdvisoryReason } from '@renderer/components/team/dialogs/openCodeModelAdvisoryCopy';
 import {
   getProviderScopedTeamModelLabel,
   getTeamProviderLabel,
@@ -114,7 +115,9 @@ export const LeadModelRow = ({
       : null;
   const currentModelIssueText =
     modelIssueText ?? selectedModelUnavailableText ?? selectedModelIssueText ?? null;
-  const currentModelAdvisoryText = currentModelIssueText ? null : selectedModelAdvisoryText;
+  const currentModelAdvisoryText = currentModelIssueText
+    ? null
+    : localizeOpenCodeModelAdvisoryReason(selectedModelAdvisoryText, t);
   const hasModelIssue = Boolean(currentModelIssueText);
   const hasModelAdvisory = Boolean(currentModelAdvisoryText);
   const showSonnetExtraUsageWarning =

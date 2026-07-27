@@ -10,6 +10,8 @@ interface ExpandableContentProps {
   children: React.ReactNode;
   /** Maximum height (px) before truncation kicks in. Default: 200. */
   collapsedHeight?: number;
+  /** Start expanded when content is taller than collapsedHeight. */
+  defaultExpanded?: boolean;
   /** Extra className applied to the outermost wrapper. */
   className?: string;
   /** Called when the user clicks "Show more" to expand the content. */
@@ -27,12 +29,13 @@ interface ExpandableContentProps {
 export const ExpandableContent = ({
   children,
   collapsedHeight = DEFAULT_COLLAPSED_HEIGHT,
+  defaultExpanded = false,
   className,
   onExpand,
 }: ExpandableContentProps): React.JSX.Element => {
   const { t } = useAppTranslation('common');
   const anchorRef = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [needsTruncation, setNeedsTruncation] = useState(false);
 
   // Measure content height via callback ref — re-runs when children change

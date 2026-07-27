@@ -198,6 +198,168 @@ describe('resolveCodexRuntimeProfile', () => {
     expect(fast.disabledReason).toContain('not available for GPT-5.4 Mini');
   });
 
+  it('remaps ChatGPT-sunset models to the live catalog default instead of launching them', () => {
+    const selection = resolveCodexRuntimeSelection({
+      source: { providerStatus: makeProviderStatus() },
+      selectedModel: 'gpt-5.3-codex',
+    });
+
+    expect(selection.effectiveAuthMode).toBe('chatgpt');
+    expect(selection.resolvedLaunchModel).toBe('gpt-5.4');
+    expect(selection.catalogModel?.launchModel).toBe('gpt-5.4');
+  });
+
+  it('forces a ChatGPT-safe model when UI selection is default but catalog default is sunset', () => {
+    const selection = resolveCodexRuntimeSelection({
+      source: {
+        providerStatus: makeProviderStatus({
+          modelCatalog: makeCodexCatalog({
+            defaultModelId: 'gpt-5.3-codex',
+            defaultLaunchModel: 'gpt-5.3-codex',
+            models: [
+              {
+                id: 'gpt-5.3-codex',
+                launchModel: 'gpt-5.3-codex',
+                displayName: 'GPT-5.3 Codex',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                defaultReasoningEffort: 'medium',
+                inputModalities: ['text'],
+                supportsPersonality: false,
+                isDefault: true,
+                upgrade: false,
+                source: 'app-server',
+              },
+              {
+                id: 'gpt-5.5',
+                launchModel: 'gpt-5.5',
+                displayName: 'GPT-5.5',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                defaultReasoningEffort: 'medium',
+                inputModalities: ['text'],
+                supportsPersonality: false,
+                supportsFastMode: true,
+                isDefault: false,
+                upgrade: false,
+                source: 'app-server',
+              },
+            ],
+          }),
+        }),
+      },
+      selectedModel: 'default',
+    });
+
+    expect(selection.effectiveAuthMode).toBe('chatgpt');
+    expect(selection.resolvedLaunchModel).toBe('gpt-5.5');
+    expect(selection.catalogModel?.launchModel).toBe('gpt-5.5');
+  });
+
+  it('auto-picks a newer live catalog default without requiring a hardcoded model id', () => {
+    const selection = resolveCodexRuntimeSelection({
+      source: {
+        providerStatus: makeProviderStatus({
+          modelCatalog: makeCodexCatalog({
+            defaultModelId: 'gpt-5.9',
+            defaultLaunchModel: 'gpt-5.9',
+            models: [
+              {
+                id: 'gpt-5.9',
+                launchModel: 'gpt-5.9',
+                displayName: 'GPT-5.9',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                defaultReasoningEffort: 'medium',
+                inputModalities: ['text'],
+                supportsPersonality: false,
+                isDefault: true,
+                upgrade: false,
+                source: 'app-server',
+              },
+              {
+                id: 'gpt-5.5',
+                launchModel: 'gpt-5.5',
+                displayName: 'GPT-5.5',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                defaultReasoningEffort: 'medium',
+                inputModalities: ['text'],
+                supportsPersonality: false,
+                isDefault: false,
+                upgrade: false,
+                source: 'app-server',
+              },
+            ],
+          }),
+        }),
+      },
+      selectedModel: 'default',
+    });
+
+    expect(selection.resolvedLaunchModel).toBe('gpt-5.9');
+    expect(selection.catalogModel?.launchModel).toBe('gpt-5.9');
+  });
+
+  it('still allows sunset Codex models when auth is API key', () => {
+    const selection = resolveCodexRuntimeSelection({
+      source: {
+        providerStatus: {
+          ...makeProviderStatus({
+            authMethod: 'api_key',
+            modelCatalog: makeCodexCatalog({
+              models: [
+                ...makeCodexCatalog().models,
+                {
+                  id: 'gpt-5.3-codex',
+                  launchModel: 'gpt-5.3-codex',
+                  displayName: 'GPT-5.3 Codex',
+                  hidden: false,
+                  supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                  defaultReasoningEffort: 'medium',
+                  inputModalities: ['text'],
+                  supportsPersonality: false,
+                  isDefault: false,
+                  upgrade: false,
+                  source: 'app-server',
+                },
+              ],
+            }),
+          }),
+          connection: {
+            supportsOAuth: true,
+            supportsApiKey: true,
+            configurableAuthModes: ['auto', 'chatgpt', 'api_key'],
+            configuredAuthMode: 'api_key',
+            apiKeyConfigured: true,
+            apiKeySource: 'environment',
+            codex: {
+              preferredAuthMode: 'api_key',
+              effectiveAuthMode: 'api_key',
+              appServerState: 'healthy',
+              appServerStatusMessage: null,
+              managedAccount: null,
+              requiresOpenaiAuth: false,
+              login: {
+                status: 'idle',
+                error: null,
+                startedAt: null,
+              },
+              rateLimits: null,
+              launchAllowed: true,
+              launchIssueMessage: null,
+              launchReadinessState: 'ready_api_key',
+            },
+          },
+        },
+      },
+      selectedModel: 'gpt-5.3-codex',
+    });
+
+    expect(selection.effectiveAuthMode).toBe('api_key');
+    expect(selection.resolvedLaunchModel).toBe('gpt-5.3-codex');
+  });
+
   it('disables Fast when catalog truth is degraded or missing', () => {
     const degraded = resolveCodexRuntimeSelection({
       source: {

@@ -35,6 +35,18 @@ describe('member update notifications', () => {
     );
   });
 
+  it('tells the lead removed-member work must not stay orphaned', () => {
+    const message = buildReplaceMembersSummaryMessage({
+      added: [],
+      removed: ['Karagöz'],
+      updated: [],
+    });
+
+    expect(message).toContain('Karagöz');
+    expect(message).toContain('auto-reassigned');
+    expect(message).toContain('NEVER leave active work owned by a removed member');
+  });
+
   it('reports provider backend and fast mode changes as restart-required updates', () => {
     const diff = buildReplaceMembersDiff(
       [

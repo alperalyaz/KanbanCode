@@ -1,3 +1,5 @@
+import { collectAgentIdIdentityAliases } from '@main/services/team/provisioning/TeamProvisioningMemberIdentity';
+
 import type { RuntimeProcessTableRow, TmuxPaneRuntimeInfo } from '@features/tmux-installer/main';
 import type {
   MemberSpawnStatusEntry,
@@ -12,6 +14,10 @@ export interface ResolveTeamMemberRuntimeLivenessInput {
   teamName: string;
   memberName: string;
   agentId?: string;
+  /** Extra --agent-id values that still identify this member (e.g. CLI ASCII slug). */
+  agentIdAliases?: readonly string[];
+  /** Other expected member names; used to keep CLI slug aliases collision-safe. */
+  allExpectedMemberNames?: readonly string[];
   backendType?: TeamAgentRuntimeBackendType;
   providerId?: TeamProviderId;
   tmuxPaneId?: string;
@@ -180,6 +186,19 @@ export function commandArgEquals(
   return value;
 }
 
+export function commandArgEqualsAny(
+  command: string,
+  argName: string,
+  expectedValues: readonly (string | undefined)[]
+): boolean {
+  for (const expected of expectedValues) {
+    if (commandArgEquals(command, argName, expected)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function collectDescendants(
   rows: readonly RuntimeProcessTableRow[],
   rootPid: number
@@ -207,27 +226,32 @@ function collectDescendants(
 function isVerifiedRuntimeProcess(params: {
   row: RuntimeProcessTableRow;
   teamName: string;
-  agentId?: string;
+  agentIds: readonly string[];
 }): boolean {
   return (
     commandArgEquals(params.row.command, '--team-name', params.teamName) &&
-    commandArgEquals(params.row.command, '--agent-id', params.agentId)
+    commandArgEqualsAny(params.row.command, '--agent-id', params.agentIds)
   );
 }
 
 function findNewestVerifiedRuntimeProcess(params: {
   rows: readonly RuntimeProcessTableRow[];
   teamName: string;
-  agentId?: string;
+  agentIds: readonly string[];
 }): RuntimeProcessTableRow | undefined {
-  const agentId = params.agentId?.trim();
-  if (!agentId) {
+  if (params.agentIds.length === 0) {
     return undefined;
   }
 
   let newest: RuntimeProcessTableRow | undefined;
   for (const row of params.rows) {
-    if (!isVerifiedRuntimeProcess({ row, teamName: params.teamName, agentId })) {
+    if (
+      !isVerifiedRuntimeProcess({
+        row,
+        teamName: params.teamName,
+        agentIds: params.agentIds,
+      })
+    ) {
       continue;
     }
     if (!newest || row.pid > newest.pid) {
@@ -235,6 +259,25 @@ function findNewestVerifiedRuntimeProcess(params: {
     }
   }
   return newest;
+}
+
+function resolveExpectedAgentIds(input: ResolveTeamMemberRuntimeLivenessInput): string[] {
+  const aliases = new Set<string>();
+  for (const alias of input.agentIdAliases ?? []) {
+    const trimmed = alias.trim();
+    if (trimmed) {
+      aliases.add(trimmed);
+    }
+  }
+  for (const alias of collectAgentIdIdentityAliases({
+    agentId: input.agentId,
+    memberName: input.memberName,
+    teamName: input.teamName,
+    allExpectedNames: input.allExpectedMemberNames,
+  })) {
+    aliases.add(alias);
+  }
+  return [...aliases];
 }
 
 function isOpenCodeRuntimeProcess(command: string | undefined): boolean {
@@ -315,10 +358,11 @@ export function resolveTeamMemberRuntimeLiveness(
     });
   }
 
+  const expectedAgentIds = resolveExpectedAgentIds(input);
   const verifiedProcess = findNewestVerifiedRuntimeProcess({
     rows: input.processRows,
     teamName: input.teamName,
-    agentId: input.agentId,
+    agentIds: expectedAgentIds,
   });
   if (verifiedProcess) {
     return result({
@@ -416,7 +460,7 @@ export function resolveTeamMemberRuntimeLiveness(
     const verifiedDescendant = findNewestVerifiedRuntimeProcess({
       rows: descendants,
       teamName: input.teamName,
-      agentId: input.agentId,
+      agentIds: expectedAgentIds,
     });
     if (verifiedDescendant) {
       return result({

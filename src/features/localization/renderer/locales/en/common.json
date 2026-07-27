@@ -20,6 +20,12 @@
     "hide": "Hide",
     "resetSelection": "Reset selection"
   },
+  "mentionable": {
+    "tips": {
+      "mentions": "Tip: Use @ for people or files.",
+      "tasks": "Tip: Use # to link an existing task."
+    }
+  },
   "code": {
     "line": "line {{line}}",
     "lines": "lines {{from}}-{{to}}",

@@ -80,7 +80,11 @@ export const CreateTaskDialog = ({
   submitting = false,
 }: CreateTaskDialogProps): React.JSX.Element => {
   const { t } = useAppTranslation('team');
-  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
+  const teamUserColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
+  const colorMap = useMemo(
+    () => buildMemberColorMap(members, teamUserColor),
+    [members, teamUserColor]
+  );
   const projectPath = useStore(
     (s) => selectTeamDataForName(s, teamName)?.config.projectPath ?? null
   );

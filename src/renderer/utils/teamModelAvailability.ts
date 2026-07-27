@@ -1,4 +1,5 @@
 import { CLI_PROVIDER_STATUS_DEFERRED_MESSAGE } from '@shared/types/cliInstaller';
+import { isDefaultProviderModelSelection } from '@shared/utils/providerModelSelection';
 
 import {
   getProviderScopedTeamModelLabel,
@@ -866,7 +867,7 @@ export function getTeamModelSelectionError(
   providerStatus?: TeamModelRuntimeProviderStatus | null
 ): string | null {
   const trimmed = model?.trim();
-  if (!providerId || !trimmed) {
+  if (!providerId || !trimmed || isDefaultProviderModelSelection(trimmed)) {
     return null;
   }
 

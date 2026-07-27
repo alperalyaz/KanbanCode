@@ -6,6 +6,8 @@ import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { useStore } from '@renderer/store';
+import { selectTeamDataForName } from '@renderer/store/team/teamDataSelectors';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { Filter } from 'lucide-react';
 
@@ -75,9 +77,10 @@ export const MessagesFilterPopover = ({
     }
   }, [open, filter.from, filter.to, filter.showNoise]);
 
+  const teamUserColor = useStore((s) => selectTeamDataForName(s, teamName)?.config.color);
   const colorMap = useMemo(
-    () => (open ? buildMemberColorMap(members) : EMPTY_COLOR_MAP),
-    [members, open]
+    () => (open ? buildMemberColorMap(members, teamUserColor) : EMPTY_COLOR_MAP),
+    [members, open, teamUserColor]
   );
 
   const fromOptions = useMemo(
