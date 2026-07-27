@@ -191,7 +191,9 @@ describe('NotificationManager storage migration', () => {
     await Promise.all(
       Array.from({ length: 20 }, (_, index) =>
         manager.addTeamNotification({
-          teamEventType: 'user_inbox',
+          // Only task_done is stored (see shouldStoreTeamNotification); any other
+          // type would be dropped and nothing would ever be written to disk.
+          teamEventType: 'task_done',
           teamName: 'team-a',
           teamDisplayName: 'Team A',
           from: 'alice',

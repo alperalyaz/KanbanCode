@@ -265,7 +265,7 @@ describe('electron userData migration', () => {
     ]);
   });
 
-  it('uses populated agent-teams-ai when both current product-name and new package-name paths exist', () => {
+  it('keeps the current path when BOTH it and agent-teams-ai hold durable data', () => {
     const root = createTempRoot();
     const completedNewPath = path.join(root, 'agent-teams-ai');
     const currentProductPath = path.join(root, 'Agent Teams UI');
@@ -276,17 +276,17 @@ describe('electron userData migration', () => {
 
     const result = migrateElectronUserDataDirectory(app);
 
+    // Never move a user off a directory that already holds their real data:
+    // the current-populated branch is checked before any legacy reuse. Both
+    // directories are left untouched so nothing is lost either way.
     expect(result).toMatchObject({
       currentPath: currentProductPath,
-      legacyPath: completedNewPath,
+      legacyPath: null,
       migrated: false,
       fallbackToLegacy: false,
-      reason: 'legacy-reused',
+      reason: 'current-populated',
     });
-    expect(app.setPathCalls).toEqual([
-      { name: 'userData', value: completedNewPath },
-      { name: 'sessionData', value: completedNewPath },
-    ]);
+    expect(app.setPathCalls).toEqual([]);
     expect(readFile(completedNewPath, 'data/attachments/team-a/current.txt')).toBe('current');
     expect(readFile(currentProductPath, 'data/attachments/team-a/old.txt')).toBe('old');
   });

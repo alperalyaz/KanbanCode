@@ -148,6 +148,19 @@ vi.mock('agent-teams-controller', () => ({
         hoisted.sendInboxMessage(teamName, message),
     },
   }),
+  createMemberMessagingProtocol: (runtimeProvider: string) => ({
+    runtimeProvider,
+    sendToolName: runtimeProvider === 'native' ? 'SendMessage' : 'agent-teams_message_send',
+    sendToolAliases: ['mcp__agent-teams__message_send', 'message_send'],
+    sendLeadPhrase: 'message the lead',
+    crossTeamPhrase: 'message another team',
+    visibleMessageRule: 'Visible messages must go through the message tool (mock).',
+    taskToolHint: 'Task tools are namespaced under agent-teams (mock).',
+    buildLeadMessageExample: ({ teamName, leadName }: { teamName: string; leadName: string }) =>
+      `LEAD MESSAGE EXAMPLE (mock, team: ${teamName}, lead: ${leadName})`,
+    buildCrossTeamMessageExample: ({ teamName, toTeam }: { teamName: string; toTeam: string }) =>
+      `CROSS TEAM MESSAGE EXAMPLE (mock, from: ${teamName}, to: ${toTeam})`,
+  }),
   protocols: {
     buildActionModeProtocolText: (delegate: string) =>
       `ACTION MODE PROTOCOL (mock, delegate: ${delegate})`,
