@@ -431,7 +431,10 @@ describe('TeamInboxReader', () => {
     first[0]!.to = 'mutated';
     const second = await reader.getMessagesFor('my-team', 'alice');
 
-    expect(hoisted.stat).toHaveBeenCalledTimes(2);
+    // Two stats per call: the canonical inbox path plus its ASCII-slug twin
+    // (the CLI rewrites non-ASCII member names, e.g. Şahin -> -ahin.json).
+    // readFile staying at 1 is what proves the cache actually held.
+    expect(hoisted.stat).toHaveBeenCalledTimes(4);
     expect(hoisted.readFile).toHaveBeenCalledTimes(1);
     expect(second).toEqual([
       expect.objectContaining({

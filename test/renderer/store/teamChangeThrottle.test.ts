@@ -1155,7 +1155,7 @@ describe('team change throttling', () => {
     expect(refreshMemberActivityMetaSpy).toHaveBeenCalledWith('my-team');
   });
 
-  it('lead-message refreshes visible graph tabs even when the team is not selected', async () => {
+  it('lead-message refreshes visible team-scoped tabs even when the team is not selected', async () => {
     useStore.setState({
       selectedTeamName: 'other-team',
       selectedTeamData: {
@@ -1172,7 +1172,7 @@ describe('team change throttling', () => {
           {
             id: 'p1',
             widthFraction: 1,
-            tabs: [{ id: 'g1', type: 'graph', teamName: 'my-team', label: 'My Team Graph' }],
+            tabs: [{ id: 'g1', type: 'usage', teamName: 'my-team', label: 'My Team Usage' }],
             activeTabId: 'g1',
           },
         ],
@@ -1315,7 +1315,7 @@ describe('team change throttling', () => {
     expect(fetchTeamsSpy).not.toHaveBeenCalled();
   });
 
-  it('log-source-change refreshes visible graph tab change presence for non-selected teams', async () => {
+  it('log-source-change refreshes visible team-scoped tab change presence for non-selected teams', async () => {
     useStore.setState({
       selectedTeamName: 'other-team',
       selectedTeamData: {
@@ -1342,7 +1342,7 @@ describe('team change throttling', () => {
           {
             id: 'p1',
             widthFraction: 1,
-            tabs: [{ id: 'g1', type: 'graph', teamName: 'my-team', label: 'My Team Graph' }],
+            tabs: [{ id: 'g1', type: 'usage', teamName: 'my-team', label: 'My Team Usage' }],
             activeTabId: 'g1',
           },
         ],
@@ -1402,7 +1402,7 @@ describe('team change throttling', () => {
     expect(checkTaskHasChanges).not.toHaveBeenCalled();
   });
 
-  it('keeps background polling disabled for visible non-selected graph teams', async () => {
+  it('keeps background polling disabled for visible non-selected teams', async () => {
     const invalidateTaskChangePresence = vi.fn();
     const checkTaskHasChanges = vi.fn(async () => undefined);
 
@@ -1455,7 +1455,7 @@ describe('team change throttling', () => {
           {
             id: 'p1',
             widthFraction: 1,
-            tabs: [{ id: 'g1', type: 'graph', teamName: 'my-team', label: 'My Team Graph' }],
+            tabs: [{ id: 'g1', type: 'usage', teamName: 'my-team', label: 'My Team Usage' }],
             activeTabId: 'g1',
           },
         ],
@@ -1575,7 +1575,7 @@ describe('team change throttling', () => {
     expect(setToolActivityTrackingSpy).toHaveBeenCalledWith('my-team', false);
   });
 
-  it('tracks visible graph tabs for tool activity and disables tracking when graph tab disappears', async () => {
+  it('tracks visible team-scoped tabs for tool activity and disables tracking when the tab disappears', async () => {
     const setToolActivityTrackingSpy = vi.mocked(api.teams.setToolActivityTracking);
     setToolActivityTrackingSpy.mockClear();
 
@@ -1586,7 +1586,7 @@ describe('team change throttling', () => {
           {
             id: 'p1',
             widthFraction: 1,
-            tabs: [{ id: 'g1', type: 'graph', teamName: 'my-team', label: 'My Team Graph' }],
+            tabs: [{ id: 'g1', type: 'usage', teamName: 'my-team', label: 'My Team Usage' }],
             activeTabId: 'g1',
           },
         ],

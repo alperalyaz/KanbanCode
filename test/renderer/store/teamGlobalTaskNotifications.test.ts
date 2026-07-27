@@ -326,7 +326,14 @@ describe('teamGlobalTaskNotifications', () => {
       isInitialFetch: false,
     });
 
+    // task-2 moving to completed emits its own task_done first — that is the one
+    // event type the notification policy still surfaces — then the all-done roll-up.
     expect(sentNotifications()).toMatchObject([
+      {
+        teamEventType: 'task_done',
+        teamName: 'team-a',
+        target: { kind: 'task', teamName: 'team-a', taskId: 'task-2', focus: 'status' },
+      },
       {
         teamEventType: 'all_tasks_completed',
         from: 'system',

@@ -150,9 +150,13 @@ vi.mock('@renderer/api', () => ({
   },
 }));
 
-vi.mock('@renderer/store', () => ({
-  useStore: (selector: (state: typeof storeState) => unknown) => selector(storeState),
-}));
+vi.mock('@renderer/store', () => {
+  const useStore = (selector: (state: typeof storeState) => unknown) => selector(storeState);
+  // The create-team flow reads a fresh snapshot via useStore.getState() (e.g. to
+  // reuse the currently open project instead of asking for a path again).
+  Object.assign(useStore, { getState: () => storeState, setState: vi.fn() });
+  return { useStore };
+});
 
 vi.mock('@renderer/store/slices/teamSlice', () => ({
   isTeamProvisioningActive: () => false,

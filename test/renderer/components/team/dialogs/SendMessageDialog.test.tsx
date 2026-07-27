@@ -149,8 +149,15 @@ vi.mock('@renderer/hooks/useTeamSuggestions', () => ({
 }));
 
 vi.mock('@renderer/store', () => ({
-  useStore: (selector: (state: { selectedTeamData: null }) => unknown) =>
-    selector({ selectedTeamData: null }),
+  // selectTeamDataForName indexes teamDataCacheByName directly, so all three
+  // fields must exist or the dialog throws before it renders.
+  useStore: (
+    selector: (state: {
+      teamDataCacheByName: Record<string, unknown>;
+      selectedTeamName: string | null;
+      selectedTeamData: null;
+    }) => unknown
+  ) => selector({ teamDataCacheByName: {}, selectedTeamName: null, selectedTeamData: null }),
 }));
 
 vi.mock('@renderer/components/team/MemberBadge', () => ({
