@@ -34797,12 +34797,17 @@ export class TeamProvisioningService {
     const isSolo = currentMembers.length === 0;
 
     // Build persistent lead context.
+    // The cross-team protocol is ~4k characters of every lead turn and is dead
+    // weight when this is the only team, so tell the builder whether any other
+    // team actually exists.
+    const hasOtherTeams = this.listPersistedTeamNames().some((name) => name !== run.teamName);
     const persistentContext = buildPersistentLeadContext({
       teamName: run.teamName,
       leadName,
       isSolo,
       members: currentMembers,
       compact: true,
+      hasOtherTeams,
       providerId:
         currentMembers.find((member) => member.name === leadName)?.providerId ??
         currentMembers.find((member) => member.role?.toLowerCase().includes('lead'))?.providerId ??

@@ -276,4 +276,26 @@ describe('TeamProvisioningPromptBuilders', () => {
     expect(prompt).toContain('- @tom: bootstrap confirmed');
     expect(prompt).not.toContain('- @tom: failed to start');
   });
+
+  it('emits the cross-team protocol only when another team exists', () => {
+    const base = {
+      teamName: 'forge-labs',
+      leadName: 'team-lead',
+      isSolo: false,
+      members: [
+        { name: 'alice', role: 'Developer' },
+      ] as TeamCreateRequest['members'],
+    };
+
+    const withOthers = buildPersistentLeadContext({ ...base, hasOtherTeams: true });
+    const soleTeam = buildPersistentLeadContext({ ...base, hasOtherTeams: false });
+
+    expect(withOthers).toContain('cross_team_send');
+    expect(withOthers).toContain('cross_team_list_targets');
+    expect(soleTeam).not.toContain('cross_team_send');
+    // Dropping it must not cost anything else: the rest of the contract stands.
+    expect(soleTeam).toContain('BOARD IS THE ONLY WORK QUEUE');
+    expect(soleTeam).toContain('NEVER GIVE THE HUMAN WORK');
+    expect(soleTeam.length).toBeLessThan(withOthers.length);
+  });
 });

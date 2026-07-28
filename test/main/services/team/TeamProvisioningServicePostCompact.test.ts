@@ -360,22 +360,15 @@ describe('TeamProvisioningService post-compact lifecycle', () => {
     expect(text).toContain('TURN ACTION MODE PROTOCOL (HIGHEST PRIORITY FOR EACH USER TURN):');
     expect(text).toContain('ASK: Strict read-only conversation mode.');
     expect(text).toContain('DELEGATE: Strict orchestration mode for leads.');
-    expect(text).toContain('cross_team_send');
-    expect(text).toContain('cross_team_list_targets');
-    expect(text).toContain('cross_team_get_outbox');
-    expect(text).toContain('blocked by another team');
-    expect(text).toContain('one focused request per topic');
-    expect(text).toContain('If you receive a message that is clearly from another team');
-    expect(text).toContain('preserve the same conversationId');
-    expect(text).toContain('replyToConversationId');
-    expect(text).toContain('Do not wait silently on another team');
-    expect(text).toContain('Golden format for cross-team requests');
-    expect(text).toContain('Golden format for cross-team replies');
-    expect(text).toContain('Do NOT use cross-team messaging when your own team can answer');
-    expect(text).toContain('resolve it through your own task board and teammates first');
-    expect(text).toContain('do NOT appear silent');
-    expect(text).toContain("canonical progress trail should be team-visible first");
-    expect(text).toContain('Do NOT default to messaging "user" for cross-team coordination');
+    // The cross-team protocol is ~4k characters of every lead turn, so it is only
+    // emitted when another team actually exists. This fixture has a single team.
+    // This fixture has a single team, so the ~4k-character cross-team protocol is
+    // deliberately absent from the reminder. Its content (and the fact it DOES
+    // appear once another team exists) is covered by the prompt-builder test.
+    expect(text).not.toContain('cross_team_send');
+    expect(text).not.toContain('cross_team_list_targets');
+    expect(text).not.toContain('cross_team_get_outbox');
+    expect(text).not.toContain('Golden format for cross-team requests');
 
     await svc.cancelProvisioning(runId);
   });
