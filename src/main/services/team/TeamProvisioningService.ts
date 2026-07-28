@@ -33836,7 +33836,7 @@ export class TeamProvisioningService {
    * progress stuck at e.g. 'spawning' ("Starting Claude CLI process…"), so the UI
    * banner keeps showing "Team launching…" forever after the user hits stop.
    */
-  private cancelActiveProvisioningRunsForStop(): void {
+  private async cancelActiveProvisioningRunsForStop(): Promise<void> {
     const cancellableStates = new Set([
       'validating',
       'spawning',
@@ -33853,6 +33853,14 @@ export class TeamProvisioningService {
         run.cancelRequested = true;
         run.processKilled = true;
         killTeamProcess(run.child);
+        // Kill the primary process AND the OpenCode secondary lanes before
+        // cleanupRun() drops this team from the tracking maps. Without this the
+        // team disappears from getShutdownTrackedTeamNames(), so the later
+        // stopTrackedTeamsForShutdown() pass never reaches its lanes and the
+        // OpenCode runtimes survive shutdown as orphan processes.
+        if (this.hasSecondaryRuntimeRuns(run.teamName)) {
+          await this.stopMixedSecondaryRuntimeLanes(run.teamName);
+        }
         const progress = updateProgress(run, 'cancelled', 'Team launch stopped by user');
         run.onProgress(progress);
         this.cleanupRun(run);
@@ -33864,7 +33872,7 @@ export class TeamProvisioningService {
 
   async stopAllTeams(): Promise<void> {
     this.stopAllTeamsGeneration += 1;
-    this.cancelActiveProvisioningRunsForStop();
+    await this.cancelActiveProvisioningRunsForStop();
     for (const teamName of this.getShutdownTrackedTeamNames()) {
       this.taskActivityIntervalService.pauseActiveIntervalsForTeam(teamName);
     }

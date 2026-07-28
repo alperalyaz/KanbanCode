@@ -1278,7 +1278,7 @@ describe('LaunchTeamDialog', () => {
     });
   });
 
-  it('keeps OpenCode lead mixed-provider launches blocked', async () => {
+  it('coerces a saved mixed roster to OpenCode instead of blocking the launch', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliStatus = {
       flavor: 'agent_teams_orchestrator',
@@ -1345,17 +1345,27 @@ describe('LaunchTeamDialog', () => {
       await flush();
     });
 
-    expect(host.textContent).toContain('OpenCode cannot lead mixed-provider teams');
-    const providerNotice = host.querySelector('[data-testid="mock-lead-provider-notice"]');
-    expect(providerNotice?.textContent).toContain('OpenCode cannot lead mixed-provider teams');
-    expect(providerNotice?.textContent).toContain(
-      'OpenCode can be added as a teammate under an Anthropic or Codex lead'
-    );
+    // An OpenCode lead cannot drive teammates on other providers. Rather than
+    // dead-ending the user with a wall of text, the dialog self-heals: the saved
+    // codex teammate is pulled onto OpenCode and the launch stays available.
+    const drafts = teamRosterEditorSectionMock.lastProps.members as {
+      name: string;
+      providerId?: string;
+      model?: string;
+    }[];
+    const alice = drafts.find((member) => member.name === 'alice');
+    expect(alice?.providerId).toBe('opencode');
+    expect(alice?.model).toBe('');
+
+    // Non-OpenCode provider tabs are locked so the roster cannot drift back.
+    expect(
+      teamRosterEditorSectionMock.lastProps.providerDisabledReasonById?.codex
+    ).toBeTruthy();
+
     const submitButton = Array.from(host.querySelectorAll('button')).find(
       (button) => button.textContent === 'Launch team'
     );
-    expect(submitButton?.hasAttribute('disabled')).toBe(true);
-    expect(onLaunch).not.toHaveBeenCalled();
+    expect(submitButton?.hasAttribute('disabled')).toBe(false);
 
     await act(async () => {
       root.unmount();

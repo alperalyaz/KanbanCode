@@ -142,10 +142,7 @@ import {
   cloneLaunchIoGovernorPayload,
   type LaunchIoGovernor,
 } from '../services/team/LaunchIoGovernor';
-import {
-  buildReplaceMembersDiff,
-  buildReplaceMembersSummaryMessage,
-} from '../services/team/memberUpdateNotifications';
+import { buildReplaceMembersDiff } from '../services/team/memberUpdateNotifications';
 import {
   mergeLiveLeadProcessMessages,
   mergeLiveLeadProcessMessagesPage,
@@ -5074,15 +5071,11 @@ async function handleReplaceMembers(
       );
     }
 
+    // Only reassignment notices go to the lead. Updated members are already
+    // reattached above via attachLiveRosterMember(reason: 'member_updated'), so
+    // also telling the lead "restart required, send refreshed instructions"
+    // makes it burn a turn redoing work the app already did.
     const messageParts = [...reassignmentNotices];
-    const updateOnly = buildReplaceMembersSummaryMessage({
-      added: [],
-      removed: [],
-      updated: primaryDiff.updated,
-    });
-    if (updateOnly) {
-      messageParts.push(updateOnly);
-    }
     if (messageParts.length === 0) {
       return;
     }
