@@ -27,7 +27,7 @@ KanbanCode is a fork of [Agent Teams AI](https://github.com/777genius/agent-team
 
 ## Development
 
-**Prerequisites:** Node.js 24.15.0+ (below 25), pnpm 10+
+**Prerequisites:** Node.js 24.11.0+ (below 25; `.node-version` pins 24.16.0), pnpm 10+
 
 ```bash
 git clone https://github.com/alperalyaz/kanbancode.git
@@ -42,6 +42,8 @@ On Windows, open the folder with its real casing (`C:\KanbanCode`, not `C:\kanba
 
 Repo working instructions live in [CLAUDE.md](CLAUDE.md).
 
+The `landing/` folder holds the project's Nuxt landing site; `.github/workflows/landing.yml` builds it and deploys it to GitHub Pages when files under `landing/` change on `main`.
+
 ### Scripts
 
 | Command            | Description                                             |
@@ -51,7 +53,7 @@ Repo working instructions live in [CLAUDE.md](CLAUDE.md).
 | `pnpm typecheck`   | TypeScript type checking                                |
 | `pnpm lint`        | Lint (no auto-fix)                                      |
 | `pnpm test`        | Run all tests                                           |
-| `pnpm check`       | Full quality gate (types + lint + test + build)         |
+| `pnpm check`       | Full quality gate (workspace typecheck + test + build, MCP e2e, lint) |
 | `pnpm dist:win`    | Build Windows installer (`.exe` + `.appx`) locally      |
 | `pnpm dist:mac:arm64` | Build macOS (Apple Silicon) `.dmg`                   |
 | `pnpm dist:mac:x64`   | Build macOS (Intel) `.dmg`                           |
@@ -62,7 +64,7 @@ Repo working instructions live in [CLAUDE.md](CLAUDE.md).
 You do **not** need a local Windows machine to ship Store/installer builds.
 
 1. Open **Actions → Release → Run workflow**.
-2. Leave `release_tag` **empty** — it uses the version in `package.json` automatically (currently `2.1.6` → tag `v2.1.6`).
+2. Leave `release_tag` **empty** — it uses the version in `package.json` automatically (currently `2.1.11` → tag `v2.1.11`).
 3. Leave `publish_release` as `false` for a draft, or set `true` to publish immediately.
 4. When the run finishes, the draft/public GitHub Release contains:
    - `KanbanCode.Setup.<version>.exe` — sideload / direct install
